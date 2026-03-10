@@ -35,6 +35,11 @@
         --accent-glow: rgba(232, 129, 92, 0.4);
       }
 
+      ::selection {
+        background: var(--accent);
+        color: #fff;
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -65,6 +70,12 @@
         padding: 10px 16px;
         border-bottom: 1px solid #18181b;
         background: #0f0f11;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
 
       .header-brand {
@@ -463,13 +474,15 @@
   </head>
   <body>
     <header class="header">
-      <a class="header-brand" href="https://braccato.boidu.dev">
-        <i class="mgc_music_3_line"></i>
-        <span>Braccato</span>
-        <code class="install-cmd" title="Click to copy">
+      <div class="header-left">
+        <a class="header-brand" href="https://braccato.boidu.dev">
+          <i class="mgc_music_3_line"></i>
+          <span>Braccato</span>
+        </a>
+        <code class="install-cmd" id="install-cmd" title="Click to copy">
           <i class="mgc_terminal_line"></i>npm i @braccato/core
         </code>
-      </a>
+      </div>
       <nav class="header-links">
         <a
           href="https://github.com/better-lyrics/braccato"

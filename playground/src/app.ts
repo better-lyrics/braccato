@@ -14,6 +14,7 @@ const lyricsDrop = document.getElementById("lyrics-drop") as HTMLLabelElement;
 const syncBadge = document.getElementById("sync-badge") as HTMLDivElement;
 const eventLog = document.getElementById("event-log") as HTMLDivElement;
 const cssEditor = document.getElementById("css-editor") as HTMLTextAreaElement;
+const installCmd = document.getElementById("install-cmd") as HTMLElement;
 let isManualScrubbing = false;
 let currentLyricsText = "";
 let customStyleEl: HTMLStyleElement | null = null;
@@ -30,6 +31,18 @@ function setDropLabel(label: HTMLLabelElement, iconClass: string, text: string) 
 	icon.className = iconClass;
 	label.prepend(icon, ` ${text}`);
 }
+
+// -- Install Copy --------------------------
+
+installCmd.addEventListener("click", async () => {
+	await navigator.clipboard.writeText("npm i @braccato/core");
+	const icon = installCmd.querySelector("i")!;
+	const origClass = icon.className;
+	icon.className = "mgc_check_line";
+	setTimeout(() => {
+		icon.className = origClass;
+	}, 1500);
+});
 
 // -- Audio Controls --------------------------
 
