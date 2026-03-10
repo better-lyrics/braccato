@@ -13,7 +13,8 @@
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"clean": "turbo clean && rm -rf node_modules",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+		"release": "bash scripts/release.sh"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

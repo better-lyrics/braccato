@@ -1,7 +1,17 @@
 {
 	"name": "@braccato/core",
-	"version": "0.1.0",
+	"version": "0.1.1",
+	"description": "Synchronized lyrics web component with word-by-word animations",
 	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/better-lyrics/braccato",
+		"directory": "packages/core"
+	},
+	"homepage": "https://braccato.boidu.dev",
+	"keywords": ["lyrics", "sync", "web-component", "lit", "music", "karaoke", "ttml"],
+	"sideEffects": true,
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"exports": {
@@ -11,6 +21,9 @@
 		}
 	},
 	"files": ["dist"],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "vite build",
 		"dev": "vite build --watch",

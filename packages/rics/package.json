@@ -1,7 +1,17 @@
 {
 	"name": "@braccato/rics",
-	"version": "0.1.0",
+	"version": "0.1.1",
+	"description": "RICS CSS preprocessor",
 	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/better-lyrics/braccato",
+		"directory": "packages/rics"
+	},
+	"homepage": "https://braccato.boidu.dev",
+	"keywords": ["rics", "css", "preprocessor"],
+	"sideEffects": false,
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"exports": {
@@ -11,6 +21,9 @@
 		}
 	},
 	"files": ["dist"],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "vite build",
 		"dev": "vite build --watch",

@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Braccato Playground</title>
     <link
+      rel="icon"
+      href="https://api.iconify.design/mingcute:music-3-line.svg?color=%23e8815c&height=32"
+      type="image/svg+xml"
+    />
+    <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/mingcute_icon@2.9.71/font/Mingcute.css"
     />
@@ -108,6 +113,35 @@
 
       .header-links a i {
         font-size: 15px;
+      }
+
+      .install-cmd {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+        font-size: 11.5px;
+        color: #71717a;
+        cursor: pointer;
+        transition:
+          color 0.15s,
+          border-color 0.15s,
+          background 0.15s;
+        user-select: all;
+      }
+
+      .install-cmd:hover {
+        color: #a1a1aa;
+        border-color: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .install-cmd i {
+        font-size: 13px;
       }
 
       /* -- Lyrics -- */
@@ -429,10 +463,13 @@
   </head>
   <body>
     <header class="header">
-      <div class="header-brand">
+      <a class="header-brand" href="https://braccato.boidu.dev">
         <i class="mgc_music_3_line"></i>
         <span>Braccato</span>
-      </div>
+        <code class="install-cmd" title="Click to copy">
+          <i class="mgc_terminal_line"></i>npm i @braccato/core
+        </code>
+      </a>
       <nav class="header-links">
         <a
           href="https://github.com/better-lyrics/braccato"
