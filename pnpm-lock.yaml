@@ -58,7 +58,7 @@ importers:
   packages/provider-blyrics:
     dependencies:
       '@braccato/parsers':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../parsers
     devDependencies:
       typescript:
