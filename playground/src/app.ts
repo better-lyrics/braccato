@@ -1,6 +1,13 @@
 import "@braccato/core";
 import type { BraccatoElement } from "@braccato/core";
 import { detectParser } from "@braccato/parsers";
+import {
+	ProviderChain,
+	createBLyricsProvider,
+	createLRCLibSyncedProvider,
+	createLRCLibPlainProvider,
+	createLegatoProvider,
+} from "@braccato/provider-blyrics";
 
 const braccato = document.getElementById("lyrics") as BraccatoElement;
 const audio = document.getElementById("audio") as HTMLAudioElement;
@@ -15,6 +22,13 @@ const syncBadge = document.getElementById("sync-badge") as HTMLDivElement;
 const eventLog = document.getElementById("event-log") as HTMLDivElement;
 const cssEditor = document.getElementById("css-editor") as HTMLTextAreaElement;
 const installCmd = document.getElementById("install-cmd") as HTMLElement;
+const searchSong = document.getElementById("search-song") as HTMLInputElement;
+const searchArtist = document.getElementById("search-artist") as HTMLInputElement;
+const searchAlbum = document.getElementById("search-album") as HTMLInputElement;
+const searchDuration = document.getElementById("search-duration") as HTMLInputElement;
+const searchBtn = document.getElementById("search-btn") as HTMLButtonElement;
+const searchResult = document.getElementById("search-result") as HTMLDivElement;
+const audioUrl = document.getElementById("audio-url") as HTMLInputElement;
 let isManualScrubbing = false;
 let currentLyricsText = "";
 let customStyleEl: HTMLStyleElement | null = null;
@@ -299,6 +313,113 @@ document.addEventListener("keydown", (e) => {
 			logEvent("debug", { enabled: braccato.debug });
 			break;
 	}
+});
+
+// -- Provider Chain --------------------------
+
+const chain = new ProviderChain();
+chain.register({ key: "blyrics", displayName: "bLyrics", syncType: "syllable", fetch: createBLyricsProvider() });
+chain.register({ key: "legato", displayName: "Legato", syncType: "word", fetch: createLegatoProvider() });
+chain.register({ key: "lrclib-synced", displayName: "LRCLib", syncType: "line", fetch: createLRCLibSyncedProvider() });
+chain.register({ key: "lrclib-plain", displayName: "LRCLib", syncType: "unsynced", fetch: createLRCLibPlainProvider() });
+
+let searchAbort: AbortController | null = null;
+
+async function performSearch() {
+	const song = searchSong.value.trim();
+	const artist = searchArtist.value.trim();
+	if (!song) return;
+
+	searchAbort?.abort();
+	searchAbort = new AbortController();
+
+	searchBtn.disabled = true;
+	searchResult.textContent = "Searching...";
+	chain.clearCache();
+
+	const manualDuration = Number(searchDuration.value);
+	const duration =
+		manualDuration > 0 ? manualDuration : audio.duration && Number.isFinite(audio.duration) ? audio.duration : 300;
+	const album = searchAlbum.value.trim() || null;
+
+	let matchedKey = "";
+
+	try {
+		const result = await chain.fetchLyrics(
+			{ song, artist, duration, album, signal: searchAbort.signal },
+			{
+				onProviderResult: (key, r) => {
+					if (r?.lyrics && r.lyrics.length > 0) matchedKey = key;
+				},
+				onProviderError: (key, err) => {
+					logEvent("provider-error", { key, message: err.message });
+				},
+			},
+		);
+
+		if (result?.lyrics && result.lyrics.length > 0) {
+			braccato.lyrics = result.lyrics;
+			const reg = chain.getRegistered().find((r) => r.key === matchedKey);
+			const syncLabel = reg?.syncType ?? "none";
+			searchResult.textContent = "";
+			const srcSpan = document.createElement("span");
+			srcSpan.textContent = result.source;
+			const badge = document.createElement("span");
+			badge.className = "badge";
+			badge.textContent = syncLabel;
+			searchResult.append(srcSpan, badge);
+			logEvent("search", { source: result.source, syncType: syncLabel, lines: result.lyrics.length });
+		} else {
+			searchResult.textContent = "No lyrics found";
+		}
+	} catch {
+		if (!searchAbort.signal.aborted) {
+			searchResult.textContent = "Search failed";
+		}
+	} finally {
+		searchBtn.disabled = false;
+	}
+}
+
+searchBtn.addEventListener("click", performSearch);
+
+for (const input of [searchSong, searchArtist, searchAlbum, searchDuration]) {
+	input.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") performSearch();
+	});
+}
+
+audio.addEventListener("loadedmetadata", () => {
+	if (!searchDuration.value) {
+		searchDuration.placeholder = `duration in seconds (${Math.round(audio.duration)})`;
+	}
+});
+
+// -- Audio URL --------------------------
+
+audioUrl.addEventListener("keydown", (e) => {
+	if (e.key !== "Enter") return;
+	const url = audioUrl.value.trim();
+	if (!url) return;
+
+	audio.src = url;
+	audio.addEventListener(
+		"loadedmetadata",
+		() => {
+			scrubber.max = String(audio.duration * 1000);
+			reparseIfNeeded();
+		},
+		{ once: true },
+	);
+
+	let label: string;
+	try {
+		label = new URL(url).hostname;
+	} catch {
+		label = "audio URL";
+	}
+	setDropLabel(audioDrop, "mgc_music_2_line", label);
+	audioDrop.classList.add("loaded");
 });
 
 // -- Load Demo --------------------------

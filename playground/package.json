@@ -11,6 +11,7 @@
 	"dependencies": {
 		"@braccato/core": "workspace:*",
 		"@braccato/parsers": "workspace:*",
+		"@braccato/provider-blyrics": "workspace:*",
 		"lit": "^3.2.1"
 	},
 	"devDependencies": {

@@ -389,6 +389,60 @@
         accent-color: var(--accent);
       }
 
+      /* -- Search -- */
+      .search-input {
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 6px;
+        color: #d4d4d8;
+        font-family: inherit;
+        font-size: 11px;
+        padding: 6px 8px;
+        outline: none;
+        width: 100%;
+      }
+      .search-input:focus {
+        border-color: var(--accent);
+      }
+      .search-input::placeholder {
+        color: #52525b;
+      }
+      .search-btn {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 0;
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        transition: opacity 0.15s;
+      }
+      .search-btn:hover {
+        opacity: 0.85;
+      }
+      .search-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .search-result {
+        font-size: 10px;
+        color: #a1a1aa;
+        min-height: 16px;
+      }
+      .search-result .badge {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 9px;
+        font-weight: 600;
+        margin-left: 4px;
+      }
+
       /* -- CSS Editor -- */
       .css-editor {
         background: #18181b;
@@ -509,6 +563,38 @@
     <div class="sidebar">
       <div class="panel">
         <div class="panel-header">
+          <i class="mgc_search_2_line"></i> Search
+        </div>
+        <input
+          class="search-input"
+          type="text"
+          id="search-song"
+          placeholder="song"
+        />
+        <input
+          class="search-input"
+          type="text"
+          id="search-artist"
+          placeholder="artist"
+        />
+        <input
+          class="search-input"
+          type="text"
+          id="search-album"
+          placeholder="album (optional)"
+        />
+        <input
+          class="search-input"
+          type="text"
+          id="search-duration"
+          placeholder="duration in seconds (optional)"
+        />
+        <button class="search-btn" id="search-btn">Search Lyrics</button>
+        <div class="search-result" id="search-result"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
           <i class="mgc_folder_open_line"></i> Files
         </div>
         <label class="drop-zone" id="audio-drop">
@@ -523,6 +609,12 @@
             accept=".lrc,.ttml,.srt,.txt,.xml,.qrc"
           />
         </label>
+        <input
+          class="search-input"
+          type="text"
+          id="audio-url"
+          placeholder="or paste audio URL..."
+        />
       </div>
 
       <div class="panel">

@@ -101,6 +101,9 @@ importers:
       '@braccato/parsers':
         specifier: workspace:*
         version: link:../packages/parsers
+      '@braccato/provider-blyrics':
+        specifier: workspace:*
+        version: link:../packages/provider-blyrics
       lit:
         specifier: ^3.2.1
         version: 3.3.2
