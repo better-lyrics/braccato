@@ -1,323 +1,353 @@
 :host {
-	display: block;
-	overflow-y: auto;
-	position: relative;
-	container-type: size;
-	scrollbar-width: none;
+  display: block;
+  overflow-y: auto;
+  position: relative;
+  container-type: size;
+  scrollbar-width: none;
 }
 
 :host::-webkit-scrollbar {
-	display: none;
+  display: none;
 }
 
 :host(:has(.braccato--user-scrolling)) {
-	scrollbar-width: thin;
-	scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 :host(:has(.braccato--user-scrolling))::-webkit-scrollbar {
-	display: block;
-	width: 6px;
+  display: block;
+  width: 6px;
 }
 
 :host(:has(.braccato--user-scrolling))::-webkit-scrollbar-thumb {
-	background: rgba(255, 255, 255, 0.15);
-	border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }
 
 :host(:has(.braccato--user-scrolling))::-webkit-scrollbar-track {
-	background: transparent;
+  background: transparent;
 }
 
 .braccato-container {
-	font-family: var(--braccato-font-family);
-	font-size: var(--braccato-font-size);
-	font-weight: var(--braccato-font-weight);
-	isolation: isolate;
-	line-height: var(--braccato-line-height);
-	position: relative;
-	z-index: 1;
-	transition: transform var(--braccato-scroll-duration) var(--braccato-scroll-timing-function) 0s;
-	padding-top: 2rem;
-	padding-bottom: 0;
+  font-family: var(--braccato-font-family);
+  font-size: var(--braccato-font-size);
+  font-weight: var(--braccato-font-weight);
+  isolation: isolate;
+  line-height: var(--braccato-line-height);
+  position: relative;
+  z-index: 1;
+  transition: transform var(--braccato-scroll-duration)
+    var(--braccato-scroll-timing-function) 0s;
+  padding-top: 2rem;
+  padding-bottom: 0;
 }
 
 .braccato-container > div {
-	cursor: pointer;
-	padding: var(--braccato-padding) 0;
-	transform-origin: left center;
-	word-break: break-word;
-	transition: filter calc(var(--braccato-duration) / 3) 0.4s, opacity calc(var(--braccato-duration) / 2) 0.166s,
-		transform 0.166s var(--braccato-anim-delay, 0s);
+  cursor: pointer;
+  padding: var(--braccato-padding) 0;
+  transform-origin: left center;
+  word-break: break-word;
+  transition:
+    filter calc(var(--braccato-duration) / 3) 0.4s,
+    opacity calc(var(--braccato-duration) / 2) 0.166s,
+    transform 0.166s var(--braccato-anim-delay, 0s);
 }
 
 .braccato-container:has(.braccato--active):not(.braccato--user-scrolling)
-	> div:not(.braccato--active):not(.braccato--active ~ div) {
-	opacity: 0.33;
-	filter: blur(2.5px);
+  > div:not(.braccato--active):not(.braccato--active ~ div) {
+  opacity: 0.33;
+  filter: blur(2.5px);
 }
 
 .braccato-container > div.braccato--active {
-	opacity: 1;
-	filter: blur(0px);
+  opacity: 1;
+  filter: blur(0px);
 }
 
 .braccato-container > div.braccato--active ~ div {
-	opacity: 0.66;
-	filter: blur(0px);
+  opacity: 0.66;
+  filter: blur(0px);
 }
 
 .braccato-container > .braccato--animating {
-	opacity: 1 !important;
-	filter: blur(0px) !important;
+  opacity: 1 !important;
+  filter: blur(0px) !important;
 }
 
 .braccato-container > div:hover {
-	opacity: 1 !important;
-	filter: blur(0px) !important;
-	transform: scale(var(--braccato-hover-scale, 1.01));
-	transition: all 0.3s ease;
+  opacity: 1 !important;
+  filter: blur(0px) !important;
+  transform: scale(var(--braccato-hover-scale, 1.01));
+  transition: all 0.3s ease;
 }
 
 .braccato--active {
-	cursor: default;
+  cursor: default;
 }
 
 :not(.braccato-background-lyric) {
-	order: 0;
+  order: 0;
 }
 
 .braccato-background-lyric {
-	order: 2;
+  order: 2;
 }
 
 .braccato--line > span > span.braccato-background-lyric {
-	font-size: 0.75em;
-	font-weight: 500;
+  font-size: 0.675em;
+  font-weight: 400;
 }
 
 .braccato--line {
-	transform: scale(var(--braccato-scale));
-	transition-property: transform;
-	transition-duration: var(--braccato-scale-transition-duration);
-	transition-timing-function: ease;
-	display: flex;
-	flex-flow: row wrap;
-	align-items: start;
-	align-content: flex-start;
-	padding-left: 0.25em;
-	padding-right: 0.25em;
-	box-sizing: border-box;
+  transform: scale(var(--braccato-scale));
+  transition-property: transform;
+  transition-duration: var(--braccato-scale-transition-duration);
+  transition-timing-function: ease;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: start;
+  align-content: flex-start;
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+  box-sizing: border-box;
 }
 
 .braccato--line.braccato--animating {
-	transform: scale(var(--braccato-active-scale));
-	transition-delay: var(--braccato-anim-delay);
+  transform: scale(var(--braccato-active-scale));
+  transition-delay: var(--braccato-anim-delay);
 }
 
 .braccato--line > span {
-	color: var(--braccato-inactive-color);
-	display: inline-block;
-	white-space: pre-wrap;
+  color: var(--braccato-inactive-color);
+  display: inline-block;
+  white-space: pre-wrap;
 }
 
 .braccato--word {
-	white-space: pre;
-	display: inline-block;
-	transform: translateY(0px);
-	position: relative;
+  white-space: pre;
+  display: inline-block;
+  transform: translateY(0px);
+  position: relative;
 }
 
 .braccato--line.braccato--pre-animating,
 .braccato--line.braccato--pre-animating .braccato--word {
-	will-change: transform;
+  will-change: transform;
 }
 
 .braccato--break {
-	flex-basis: 100%;
-	height: 0;
+  flex-basis: 100%;
+  height: 0;
 }
 
 .braccato--word.braccato--animating {
-	animation: braccato-wobble var(--braccato-wobble-duration) forwards ease;
-	animation-delay: var(--braccato-anim-delay);
-	animation-play-state: running;
+  animation: braccato-wobble var(--braccato-wobble-duration) forwards ease;
+  animation-delay: var(--braccato-anim-delay);
+  animation-play-state: running;
 }
 
 .braccato--word.braccato--animating.braccato--paused {
-	animation-play-state: paused;
+  animation-play-state: paused;
 }
 
 .braccato--word::after {
-	position: absolute;
-	content: attr(data-content);
-	top: -2rem;
-	left: -2rem;
-	white-space: pre-wrap;
-	padding: 2rem;
-	pointer-events: none;
-	color: transparent;
-	box-sizing: content-box;
-	width: 100%;
-	background-image: linear-gradient(
-		90deg,
-		var(--braccato-active-color)
-			calc(100% * var(--lyric-transition-amount-start) - 4rem * var(--lyric-transition-amount-start) + 2rem),
-		#00000000 calc(100% * var(--lyric-transition-amount-end) - 4rem * var(--lyric-transition-amount-end) + 2rem + 1px)
-	);
-	opacity: 0;
-	--lyric-transition-amount-start: -0.2;
-	--lyric-transition-amount-end: -0.1;
-	--braccato-glow-color: color(display-p3 1 1 1 / 0.0001);
-	transition: --lyric-transition-amount-start 1s linear 1000s, --lyric-transition-amount-end 1s linear 1000s, opacity
-		0.5s ease;
-	background-clip: text;
+  position: absolute;
+  content: attr(data-content);
+  top: -2rem;
+  left: -2rem;
+  white-space: pre-wrap;
+  padding: 2rem;
+  pointer-events: none;
+  color: transparent;
+  box-sizing: content-box;
+  width: 100%;
+  background-image: linear-gradient(
+    90deg,
+    var(--braccato-active-color)
+      calc(
+        100% * var(--lyric-transition-amount-start) - 4rem *
+          var(--lyric-transition-amount-start) + 2rem
+      ),
+    #00000000
+      calc(
+        100% * var(--lyric-transition-amount-end) - 4rem *
+          var(--lyric-transition-amount-end) + 2rem + 1px
+      )
+  );
+  opacity: 0;
+  --lyric-transition-amount-start: -0.2;
+  --lyric-transition-amount-end: -0.1;
+  --braccato-glow-color: color(display-p3 1 1 1 / 0.0001);
+  transition:
+    --lyric-transition-amount-start 1s linear 1000s,
+    --lyric-transition-amount-end 1s linear 1000s,
+    opacity 0.5s ease;
+  background-clip: text;
 }
 
 /* Long words get visible glow */
 .braccato--word[data-long-word]::after {
-	--braccato-glow-color: color(display-p3 1 1 1 / 1);
+  --braccato-glow-color: color(display-p3 1 1 1 / 1);
 }
 
 .braccato--word.braccato--pre-animating:not(.braccato--animating)::after {
-	transition: none;
-	--lyric-transition-amount-start: -0.2;
-	--lyric-transition-amount-end: -0.1;
-	opacity: 0;
+  transition: none;
+  --lyric-transition-amount-start: -0.2;
+  --lyric-transition-amount-end: -0.1;
+  opacity: 0;
 }
 
-.braccato--word.braccato--pre-animating:not(.braccato--animating):not(.braccato-zero-dur-animate)::after {
-	opacity: 1;
+.braccato--word.braccato--pre-animating:not(.braccato--animating):not(
+    .braccato-zero-dur-animate
+  )::after {
+  opacity: 1;
 }
 
 .braccato--word.braccato--animating::after {
-	opacity: 1;
-	animation: braccato-glow max(calc(var(--braccato-duration) * 1.2), 1.2s) forwards ease;
-	animation-delay: var(--braccato-anim-delay);
-	animation-play-state: running;
-	--lyric-transition-amount-start: 1.4;
-	--lyric-transition-amount-end: 1.5;
-	transition-property: --lyric-transition-amount-start, --lyric-transition-amount-end, opacity;
-	transition-duration: calc(var(--braccato-duration) * 1.6), calc(var(--braccato-duration) * 1.6),
-		var(--braccato-highlight-fade-in-duration);
-	transition-timing-function: linear, linear, ease;
-	transition-delay: var(--braccato-swipe-delay), var(--braccato-swipe-delay), var(--braccato-anim-delay);
+  opacity: 1;
+  animation: braccato-glow max(calc(var(--braccato-duration) * 1.2), 1.2s)
+    forwards ease;
+  animation-delay: var(--braccato-anim-delay);
+  animation-play-state: running;
+  --lyric-transition-amount-start: 1.4;
+  --lyric-transition-amount-end: 1.5;
+  transition-property:
+    --lyric-transition-amount-start, --lyric-transition-amount-end, opacity;
+  transition-duration:
+    calc(var(--braccato-duration) * 1.6), calc(var(--braccato-duration) * 1.6),
+    var(--braccato-highlight-fade-in-duration);
+  transition-timing-function: linear, linear, ease;
+  transition-delay:
+    var(--braccato-swipe-delay), var(--braccato-swipe-delay),
+    var(--braccato-anim-delay);
 }
 
 .braccato--word.braccato--animating.braccato--paused::after {
-	transition-duration: 100000000s, 100000000s, 100000000s;
-	--lyric-transition-amount-start: 10;
-	--lyric-transition-amount-end: 10;
-	opacity: 0.5;
-	animation-play-state: paused;
+  transition-duration: 100000000s, 100000000s, 100000000s;
+  --lyric-transition-amount-start: 10;
+  --lyric-transition-amount-end: 10;
+  opacity: 0.5;
+  animation-play-state: paused;
 }
 
 .braccato--translated,
 .braccato--romanized {
-	display: block;
-	font-size: var(--braccato-translated-font-size);
-	font-weight: var(--braccato-translated-font-weight);
-	font-family: var(--braccato-translated-font-family);
-	color: var(--braccato-translated-color);
-	white-space: normal;
-	line-height: 1.1;
-	margin-top: 8px;
+  display: block;
+  font-size: var(--braccato-translated-font-size);
+  font-weight: var(--braccato-translated-font-weight);
+  font-family: var(--braccato-translated-font-family);
+  color: var(--braccato-translated-color);
+  white-space: normal;
+  line-height: 1.1;
+  margin-top: 8px;
 }
 
 .braccato--romanized > span {
-	color: var(--braccato-inactive-color);
-	display: inline-block;
-	white-space: pre-wrap;
+  color: var(--braccato-inactive-color);
+  display: inline-block;
+  white-space: pre-wrap;
 }
 
 .braccato--romanized {
-	width: fit-content;
-	font-size: calc(var(--braccato-translated-font-size) / 1.25);
-	background: rgba(255, 255, 255, 0.05);
-	padding: 0.375rem 0.75rem;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 1rem;
+  width: fit-content;
+  font-size: calc(var(--braccato-translated-font-size) / 1.25);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.375rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
 }
 
 .braccato-rtl {
-	direction: rtl;
+  direction: rtl;
 }
 
 .braccato-rtl.braccato--word::after {
-	background-image: linear-gradient(
-		270deg,
-		var(--braccato-active-color)
-			calc(100% * var(--lyric-transition-amount-start) - 4rem * var(--lyric-transition-amount-start) + 2rem),
-		#00000000 calc(100% * var(--lyric-transition-amount-end) - 4rem * var(--lyric-transition-amount-end) + 2rem + 1px)
-	);
+  background-image: linear-gradient(
+    270deg,
+    var(--braccato-active-color)
+      calc(
+        100% * var(--lyric-transition-amount-start) - 4rem *
+          var(--lyric-transition-amount-start) + 2rem
+      ),
+    #00000000
+      calc(
+        100% * var(--lyric-transition-amount-end) - 4rem *
+          var(--lyric-transition-amount-end) + 2rem + 1px
+      )
+  );
 }
 
 /* Agent-based alignment */
 .braccato--line[data-agent="v2"],
 .braccato--line[data-agent="v3"] {
-	justify-content: flex-end;
-	text-align: right;
-	transform-origin: right center !important;
+  justify-content: flex-end;
+  text-align: right;
+  transform-origin: right center !important;
 }
 
 .braccato--line[data-agent="v1000"] {
-	justify-content: center;
-	text-align: center;
-	transform-origin: center center !important;
+  justify-content: center;
+  text-align: center;
+  transform-origin: center center !important;
 }
 
 .braccato--spacer {
-	padding: 0;
-	margin: 0;
+  padding: 0;
+  margin: 0;
 }
 
 /* Autoscroll resume button */
 .braccato-autoscroll-btn {
-	font-family: var(--braccato-font-family);
-	position: absolute;
-	display: block;
-	font-size: 1.75rem;
-	font-weight: 600;
-	white-space: normal;
-	line-height: 1.1;
-	width: fit-content;
-	background: rgba(255, 255, 255, 0.05);
-	padding: 0.5rem 1rem;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 1rem;
-	color: rgba(255, 255, 255, 1);
-	left: 50%;
-	transform: translate(-50%, 2em);
-	backdrop-filter: blur(5px);
-	pointer-events: auto;
-	cursor: pointer;
-	user-select: none;
-	z-index: 100;
-	transition: opacity 0.15s linear 0.05s, transform 0.2s cubic-bezier(0.5, 1, 0.89, 1);
+  font-family: var(--braccato-font-family);
+  position: absolute;
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 600;
+  white-space: normal;
+  line-height: 1.1;
+  width: fit-content;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  color: rgba(255, 255, 255, 1);
+  left: 50%;
+  transform: translate(-50%, 2em);
+  backdrop-filter: blur(5px);
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  z-index: 100;
+  transition:
+    opacity 0.15s linear 0.05s,
+    transform 0.2s cubic-bezier(0.5, 1, 0.89, 1);
 }
 
 .braccato-autoscroll-btn[hidden] {
-	transition: opacity 0.1s linear, transform 0.15s ease-in;
-	opacity: 0;
-	pointer-events: none;
-	transform: translate(-50%, -3em);
+  transition:
+    opacity 0.1s linear,
+    transform 0.15s ease-in;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3em);
 }
 
 /* Animations — EBLP-style wobble: subtle vertical lift */
 @keyframes braccato-wobble {
-	0% {
-		transform: translateY(0);
-	}
-	100% {
-		transform: translateY(-0.0375em);
-	}
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-0.0375em);
+  }
 }
 
 @keyframes braccato-glow {
-	0% {
-		filter: drop-shadow(0 0 0.8rem var(--braccato-glow-color));
-	}
-	to {
-		filter: drop-shadow(0 0 0rem var(--braccato-glow-color));
-	}
+  0% {
+    filter: drop-shadow(0 0 0.8rem var(--braccato-glow-color));
+  }
+  to {
+    filter: drop-shadow(0 0 0rem var(--braccato-glow-color));
+  }
 }

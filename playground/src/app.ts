@@ -358,6 +358,7 @@ async function performSearch() {
 		);
 
 		if (result?.lyrics && result.lyrics.length > 0) {
+			currentLyricsText = "";
 			braccato.lyrics = result.lyrics;
 			const reg = chain.getRegistered().find((r) => r.key === matchedKey);
 			const syncLabel = reg?.syncType ?? "none";
