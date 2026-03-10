@@ -1,6 +1,6 @@
 # @braccato/parsers
 
-Lyrics format parsers for TTML, LRC, SRT, QRC, and plain text. Used by [`@braccato/core`](https://github.com/better-lyrics/braccato) for automatic format detection.
+Lyrics format parsers for TTML, LRC, SRT, QRC, and plain text. Used by [`@braccato/core`](https://braccato.boidu.dev) for automatic format detection.
 
 ## Install
 
@@ -38,4 +38,4 @@ interface LyricParser {
 
 `detectParser` tries each format in priority order: TTML, LRC, SRT, QRC, Plain.
 
-See the [full documentation](https://github.com/better-lyrics/braccato) for type definitions.
+See the [full documentation](https://braccato.boidu.dev) for type definitions.

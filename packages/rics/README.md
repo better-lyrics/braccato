@@ -19,4 +19,4 @@ const result = compileRics(ricsSource, { timeout: 3000 });
 const css = compileRicsToCSS(ricsSource);
 ```
 
-See the [full documentation](https://github.com/better-lyrics/braccato) for details.
+See the [full documentation](https://braccato.boidu.dev) for details.

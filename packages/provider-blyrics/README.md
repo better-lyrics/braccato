@@ -44,4 +44,4 @@ const validate = createSimilarityValidator(referenceText, 0.5);
 const result = await chain.fetchLyrics(context, { validate });
 ```
 
-See the [full documentation](https://github.com/better-lyrics/braccato) for details.
+See the [full documentation](https://braccato.boidu.dev) for details.

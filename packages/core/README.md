@@ -60,4 +60,4 @@ braccato-lyrics {
 }
 ```
 
-See the [full documentation](https://github.com/better-lyrics/braccato) for all properties and framework examples.
+See the [full documentation](https://braccato.boidu.dev) for all properties and framework examples.
