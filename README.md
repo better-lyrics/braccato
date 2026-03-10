@@ -319,3 +319,7 @@ braccato/
     rics/              # RICS CSS preprocessor
   playground/          # Interactive demo (Vite)
 ```
+
+## Acknowledgments
+
+Inspired by [apple-music-web-components](https://github.com/binimum/apple-music-web-components) by [@binimum](https://github.com/binimum).
