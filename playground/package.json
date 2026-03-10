@@ -1,0 +1,20 @@
+{
+	"name": "@braccato/playground",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@braccato/core": "workspace:*",
+		"@braccato/parsers": "workspace:*",
+		"lit": "^3.2.1"
+	},
+	"devDependencies": {
+		"typescript": "^5.7.3",
+		"vite": "^6.0.7"
+	}
+}

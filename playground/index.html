@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Braccato Playground</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/mingcute_icon@2.9.71/font/Mingcute.css"
+    />
+    <style>
+      [class^="mgc_"]::before,
+      [class*=" mgc_"]::before {
+        color: inherit !important;
+      }
+      [class^="mgc_"],
+      [class*=" mgc_"] {
+        margin-bottom: 2px;
+      }
+    </style>
+    <style>
+      @import url("https://fonts.boidu.dev/css/satoshi");
+    </style>
+    <style>
+      @import url("https://fonts.boidu.dev/css/abc-diatype-rounded");
+    </style>
+    <style>
+      :root {
+        --accent: #e8815c;
+        --accent-glow: rgba(232, 129, 92, 0.4);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "ABC Diatype Rounded",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #09090b;
+        color: #d4d4d8;
+        height: 100vh;
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        grid-template-rows: auto 1fr auto;
+        overflow: hidden;
+      }
+
+      /* -- Header -- */
+      .header {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #18181b;
+        background: #0f0f11;
+      }
+
+      .header-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        text-decoration: none;
+        color: #e4e4e7;
+      }
+
+      .header-brand i {
+        font-size: 20px;
+      }
+
+      .header-brand span {
+        font-size: 20px;
+        letter-spacing: -0.02em;
+      }
+
+      .header-links {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .header-links a {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #a1a1aa;
+        text-decoration: none;
+        transition:
+          color 0.15s,
+          background 0.15s;
+      }
+
+      .header-links a:hover {
+        color: #e4e4e7;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .header-links a i {
+        font-size: 15px;
+      }
+
+      /* -- Lyrics -- */
+      .lyrics-area {
+        position: relative;
+        overflow: hidden;
+      }
+
+      braccato-lyrics {
+        width: 100%;
+        max-width: 800px;
+        margin: 0 auto;
+        height: 100%;
+        overflow-y: auto;
+      }
+
+      .sync-badge {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        backdrop-filter: blur(8px);
+        pointer-events: none;
+      }
+      .sync-badge[data-sync="richsync"] {
+        color: var(--accent);
+      }
+      .sync-badge[data-sync="synced"] {
+        color: #34d399;
+      }
+      .sync-badge[data-sync="none"] {
+        color: #a1a1aa;
+      }
+
+      /* -- Controls Bar -- */
+      .controls {
+        background: #0f0f11;
+        border-top: 1px solid #18181b;
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .icon-btn {
+        background: none;
+        border: none;
+        color: #d4d4d8;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        transition:
+          color 0.15s,
+          background 0.15s;
+      }
+      .icon-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .icon-btn.active {
+        color: #fff;
+      }
+
+      /* -- Progress Bar (scrubber) -- */
+      input[type="range"]#scrubber {
+        flex: 1;
+        -webkit-appearance: none;
+        appearance: none;
+        height: 4px;
+        background: #27272a;
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+        position: relative;
+      }
+
+      input[type="range"]#scrubber::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: none;
+        cursor: pointer;
+        transition: transform 0.1s ease;
+        box-shadow: 0 0 6px var(--accent-glow);
+      }
+
+      input[type="range"]#scrubber::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 0 6px var(--accent-glow);
+      }
+
+      input[type="range"]#scrubber::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+      }
+
+      input[type="range"]#scrubber::-moz-range-track {
+        height: 4px;
+        background: #27272a;
+        border-radius: 2px;
+        border: none;
+      }
+
+      .time-display {
+        font-variant-numeric: tabular-nums;
+        font-size: 11px;
+        color: #a1a1aa;
+        min-width: 70px;
+        text-align: right;
+        user-select: none;
+      }
+
+      /* -- Sidebar -- */
+      .sidebar {
+        background: #0f0f11;
+        border-left: 1px solid #18181b;
+        overflow-y: auto;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        grid-row: 2 / 4;
+        grid-column: 2;
+        scrollbar-width: thin;
+        scrollbar-color: #27272a transparent;
+      }
+
+      .panel {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #a1a1aa;
+        padding-bottom: 2px;
+      }
+      .panel-header i {
+        font-size: 14px;
+        color: var(--accent);
+      }
+
+      /* -- Drop Zones -- */
+      .drop-zone {
+        border: 1px dashed #3f3f46;
+        border-radius: 8px;
+        padding: 8px 10px;
+        text-align: center;
+        font-size: 11px;
+        color: #a1a1aa;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .drop-zone i {
+        font-size: 14px;
+        color: var(--accent);
+      }
+      .drop-zone:hover,
+      .drop-zone.dragover {
+        color: #d4d4d8;
+        border-color: #71717a;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .drop-zone.loaded {
+        color: #a1a1aa;
+        border-style: solid;
+        border-color: #27272a;
+      }
+      .drop-zone input {
+        display: none;
+      }
+
+      /* -- Prop Controls -- */
+      .prop-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        min-height: 24px;
+      }
+      .prop-row label {
+        font-size: 11px;
+        color: #a1a1aa;
+        flex-shrink: 0;
+      }
+      .prop-row input[type="range"] {
+        flex: 1;
+        accent-color: var(--accent);
+        max-width: 80px;
+        height: 2px;
+      }
+      .prop-row .val {
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+        color: #71717a;
+        min-width: 28px;
+        text-align: right;
+      }
+      .prop-row select {
+        background: #18181b;
+        border: 1px solid #27272a;
+        color: #d4d4d8;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-family: inherit;
+      }
+      .prop-row input[type="checkbox"] {
+        accent-color: var(--accent);
+      }
+
+      /* -- CSS Editor -- */
+      .css-editor {
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 6px;
+        color: #d4d4d8;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 10px;
+        line-height: 1.5;
+        padding: 8px;
+        resize: vertical;
+        min-height: 80px;
+        max-height: 200px;
+        width: 100%;
+        outline: none;
+        tab-size: 2;
+      }
+      .css-editor:focus {
+        border-color: var(--accent);
+      }
+
+      /* -- Event Log -- */
+      .event-log {
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 10px;
+        max-height: 100px;
+        overflow-y: auto;
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 6px;
+        padding: 6px 8px;
+        scrollbar-width: thin;
+        scrollbar-color: #27272a transparent;
+      }
+      .event-log .entry {
+        padding: 1px 0;
+        color: #a1a1aa;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .event-log .ev {
+        color: var(--accent);
+      }
+      .event-log .ts {
+        color: #71717a;
+      }
+
+      /* -- Shortcuts -- */
+      .shortcuts {
+        font-size: 10px;
+        color: #a1a1aa;
+        line-height: 1.8;
+      }
+      .shortcuts kbd {
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 3px;
+        padding: 0 4px;
+        font-family: inherit;
+        font-size: 9px;
+        color: #a1a1aa;
+      }
+
+      /* -- About -- */
+      .about {
+        font-size: 10px;
+        color: #52525b;
+        line-height: 1.6;
+        margin-top: auto;
+        padding-top: 8px;
+        border-top: 1px solid #18181b;
+      }
+      .about a {
+        color: #71717a;
+        text-decoration: none;
+        transition: color 0.15s;
+      }
+      .about a:hover {
+        color: #a1a1aa;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-brand">
+        <i class="mgc_music_3_line"></i>
+        <span>Braccato</span>
+      </div>
+      <nav class="header-links">
+        <a
+          href="https://github.com/better-lyrics/braccato"
+          target="_blank"
+          rel="noopener"
+        >
+          <i class="mgc_github_line"></i> Source
+        </a>
+        <a
+          href="https://better-lyrics.boidu.dev"
+          target="_blank"
+          rel="noopener"
+        >
+          <i class="mgc_external_link_line"></i> Better Lyrics
+        </a>
+      </nav>
+    </header>
+
+    <div class="lyrics-area">
+      <braccato-lyrics id="lyrics"></braccato-lyrics>
+      <div class="sync-badge" id="sync-badge"></div>
+    </div>
+
+    <div class="sidebar">
+      <div class="panel">
+        <div class="panel-header">
+          <i class="mgc_folder_open_line"></i> Files
+        </div>
+        <label class="drop-zone" id="audio-drop">
+          <i class="mgc_music_2_line"></i> audio
+          <input type="file" id="audio-input" accept="audio/*" />
+        </label>
+        <label class="drop-zone" id="lyrics-drop">
+          <i class="mgc_text_line"></i> lyrics
+          <input
+            type="file"
+            id="lyrics-input"
+            accept=".lrc,.ttml,.srt,.txt,.xml,.qrc"
+          />
+        </label>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <i class="mgc_settings_3_line"></i> Properties
+        </div>
+        <div class="prop-row">
+          <label>scroll</label>
+          <select id="scroll-mode">
+            <option value="internal">internal</option>
+            <option value="external">external</option>
+          </select>
+        </div>
+        <div class="prop-row">
+          <label>direction</label>
+          <select id="dir">
+            <option value="auto">auto</option>
+            <option value="ltr">ltr</option>
+            <option value="rtl">rtl</option>
+          </select>
+        </div>
+        <div class="prop-row">
+          <label>richsync</label>
+          <input type="checkbox" id="disable-richsync" />
+          <label for="disable-richsync" style="color: #a1a1aa">disable</label>
+        </div>
+        <div class="prop-row">
+          <label>sync delay</label>
+          <input
+            type="range"
+            id="line-synced-delay"
+            min="0"
+            max="200"
+            value="50"
+            step="5"
+          />
+          <span class="val" id="line-synced-delay-val">50</span>
+        </div>
+        <div class="prop-row">
+          <label>long word</label>
+          <input
+            type="range"
+            id="long-word-threshold"
+            min="500"
+            max="5000"
+            value="1500"
+            step="100"
+          />
+          <span class="val" id="long-word-threshold-val">1500</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><i class="mgc_code_line"></i> Custom CSS</div>
+        <textarea
+          class="css-editor"
+          id="css-editor"
+          spellcheck="false"
+          placeholder="braccato-lyrics {&#10;  --braccato-font-size: 4rem;&#10;}"
+        ></textarea>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><i class="mgc_pulse_line"></i> Events</div>
+        <div class="event-log" id="event-log"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <i class="mgc_keyboard_line"></i> Shortcuts
+        </div>
+        <div class="shortcuts">
+          <kbd>Space</kbd> play / pause<br />
+          <kbd>←</kbd> <kbd>→</kbd> seek 5s<br />
+          <kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd> seek 1s<br />
+          <kbd>R</kbd> resume scroll<br />
+          <kbd>D</kbd> toggle debug
+        </div>
+      </div>
+
+      <div class="about">
+        Braccato is a port of the rendering engine from
+        <a href="https://better-lyrics.boidu.dev" target="_blank" rel="noopener"
+          >Better Lyrics</a
+        >. The demo lyrics for
+        <a
+          href="https://music.youtube.com/watch?v=eqcOYoxjW-c"
+          target="_blank"
+          rel="noopener"
+          >Rumors</a
+        >
+        by Tomas Grey were synced using
+        <a href="https://composer.boidu.dev" target="_blank" rel="noopener"
+          >Composer</a
+        >, an easy-to-use TTML maker.
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="icon-btn" id="play-btn" title="Play/Pause">
+        <i class="mgc_play_fill"></i>
+      </button>
+      <input
+        type="range"
+        id="scrubber"
+        min="0"
+        max="300000"
+        value="0"
+        step="100"
+      />
+      <span class="time-display" id="time-display">0:00 / 0:00</span>
+    </div>
+
+    <audio id="audio"></audio>
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>
