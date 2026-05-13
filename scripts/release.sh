@@ -8,7 +8,7 @@ read -r OTP
 pnpm build:packages
 
 for pkg in parsers rics provider-blyrics core; do
-	(cd "packages/$pkg" && npm publish --access public --otp="$OTP" 2>&1) || echo "Skipped $pkg (already published or error)"
+	(cd "packages/$pkg" && pnpm publish --access public --no-git-checks --otp="$OTP" 2>&1) || echo "Skipped $pkg (already published or error)"
 done
 
 echo "Done."

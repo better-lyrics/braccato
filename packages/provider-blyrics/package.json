@@ -1,6 +1,6 @@
 {
 	"name": "@braccato/provider-blyrics",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Lyrics provider chain with priority and validation",
 	"type": "module",
 	"license": "MIT",
