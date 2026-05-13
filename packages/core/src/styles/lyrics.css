@@ -40,7 +40,7 @@
   transition: transform var(--braccato-scroll-duration)
     var(--braccato-scroll-timing-function) 0s;
   padding-top: 2rem;
-  padding-bottom: 0;
+  padding-bottom: var(--braccato-padding-bottom);
 }
 
 .braccato-container > div {

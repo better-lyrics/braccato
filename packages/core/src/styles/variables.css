@@ -34,6 +34,7 @@
 
 	/* Layout */
 	--braccato-padding: 1.25rem;
+	--braccato-padding-bottom: 50cqh;
 	--braccato-scale: 0.95;
 	--braccato-active-scale: 1;
 
