@@ -270,16 +270,13 @@ function parseTTMLContent(
 	for (const tc of translitContainers) {
 		const translits = tc.querySelectorAll("transliteration");
 		for (const t of translits) {
-			const forKey = t.getAttribute("for");
-			if (!forKey) continue;
-			const line = lyrics.get(forKey);
-			if (!line) continue;
-
 			const textEls = t.querySelectorAll("text");
-			let romanText = "";
-			const romanParts: LyricPart[] = [];
-
 			for (const textEl of textEls) {
+				const forKey = textEl.getAttribute("for");
+				if (!forKey) continue;
+				const line = lyrics.get(forKey);
+				if (!line) continue;
+
 				const spans = Array.from(textEl.childNodes)
 					.filter((n) => n.nodeType === 1 || n.nodeType === 3)
 					.map((n) =>
@@ -287,12 +284,9 @@ function parseTTMLContent(
 					) as ParsedSpan[];
 
 				const parsed = extractParts(spans, line.startTimeMs);
-				romanText += parsed.text;
-				romanParts.push(...parsed.parts);
+				line.romanization = parsed.text;
+				if (parsed.parts.length > 0) line.timedRomanization = parsed.parts;
 			}
-
-			line.romanization = romanText;
-			if (romanParts.length > 0) line.timedRomanization = romanParts;
 		}
 	}
 

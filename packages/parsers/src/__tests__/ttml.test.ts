@@ -140,6 +140,35 @@ describe("TTMLParser", () => {
 			expect(nonInstrumental[0].translation).toEqual({ text: "Hello world", lang: "en" });
 		});
 
+		it("extracts transliterations attached to inner <text> elements", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="ja">
+  <head>
+    <metadata>
+      <transliterations>
+        <transliteration xml:lang="ja-Latn">
+          <text for="l1"><span begin="0s" end="2s">konnichi</span><span begin="2s" end="5s">wa</span></text>
+          <text for="l2"><span begin="5s" end="7s">sayou</span><span begin="7s" end="10s">nara</span></text>
+        </transliteration>
+      </transliterations>
+    </metadata>
+  </head>
+  <body dur="10s">
+    <div>
+      <p begin="0s" end="5s" key="l1">こんにちは</p>
+      <p begin="5s" end="10s" key="l2">さようなら</p>
+    </div>
+  </body>
+</tt>`;
+
+			const result = parseTTMLContent(ttml);
+			const lines = result.lyrics.filter((l) => !l.isInstrumental);
+			expect(lines).toHaveLength(2);
+			expect(lines[0].romanization).toBe("konnichiwa");
+			expect(lines[0].timedRomanization).toHaveLength(2);
+			expect(lines[1].romanization).toBe("sayounara");
+			expect(lines[1].timedRomanization).toHaveLength(2);
+		});
+
 		it("handles empty body", () => {
 			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
   <head><metadata></metadata></head>
