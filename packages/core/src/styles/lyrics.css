@@ -292,6 +292,103 @@
   transform-origin: center center !important;
 }
 
+.braccato--instrumental-icon {
+  height: var(--braccato-font-size);
+  width: calc(var(--braccato-font-size) + var(--braccato-font-size) / 3);
+  overflow: visible;
+  margin-left: calc(var(--braccato-font-size) / -3);
+}
+
+.braccato-rtl.braccato--instrumental .braccato--instrumental-icon {
+  margin-left: 0;
+  margin-right: calc(var(--braccato-font-size) / -3);
+}
+
+.braccato--instrumental[data-agent="v2"] .braccato--instrumental-icon,
+.braccato--instrumental[data-agent="v3"] .braccato--instrumental-icon {
+  margin-left: 0;
+  margin-right: calc(var(--braccato-font-size) / -3);
+}
+
+.braccato--instrumental[data-agent="v1000"] .braccato--instrumental-icon {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.braccato--instrumental-bg {
+  fill: var(--braccato-inactive-color);
+}
+
+.braccato--instrumental-fill {
+  fill: var(--braccato-active-color);
+  transition: opacity var(--braccato-highlight-fade-out-duration, 0.5s) ease;
+  opacity: 0;
+}
+
+.braccato--instrumental.braccato--animating .braccato--instrumental-fill {
+  transition: none;
+  opacity: 1;
+}
+
+.braccato--instrumental:not(.braccato--pre-animating) .braccato--wave-clip {
+  transition-property: transform;
+  transition-duration: 1000000s;
+  transition-delay: 0s;
+  transform: translateY(0%);
+}
+
+.braccato--instrumental.braccato--pre-animating:not(.braccato--animating) .braccato--wave-clip {
+  animation: none;
+  transform: translateY(78%);
+}
+
+.braccato--instrumental.braccato--animating .braccato--wave-clip {
+  transition-property: transform;
+  transition-duration: calc(var(--braccato-duration, 1ms) * 1);
+  transition-timing-function: linear;
+  transition-delay: var(--braccato-anim-delay);
+  transform: translateY(-4%);
+}
+
+.braccato--paused .braccato--wave-clip {
+  transition-duration: 100000000s !important;
+  transform: translateY(100%) !important;
+}
+
+.braccato--wave-path {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: braccato-wave 1.25s ease-in-out infinite;
+  animation-play-state: paused;
+  transform: scaleY(1.2);
+}
+
+.braccato--instrumental.braccato--animating:not(.braccato--paused) .braccato--wave-path {
+  animation-play-state: running;
+  transform: scaleY(0);
+  transition-property: transform;
+  transition-duration: calc(var(--braccato-duration, 1ms) * 1);
+  transition-timing-function: ease-in;
+  transition-delay: var(--braccato-anim-delay);
+}
+
+.braccato--instrumental.braccato--animating.braccato--paused .braccato--wave-path {
+  transform: scaleY(0.0001);
+  transition-duration: 10000000000s;
+  transition-property: transform;
+  transition-timing-function: ease-out;
+  transition-delay: 0s;
+}
+
+@keyframes braccato-wave {
+  0%, 100% {
+    d: path("M -4 3 Q 1 2 5 3 Q 10 4 14 3 Q 18 2 22 3 Q 26 4 30 3 L 30 4 L -4 4 Z");
+  }
+  50% {
+    d: path("M -4 3 Q 1 4 5 3 Q 10 2 14 3 Q 18 4 22 3 Q 26 2 30 3 L 30 4 L -4 4 Z");
+  }
+}
+
 .braccato--spacer {
   padding: 0;
   margin: 0;

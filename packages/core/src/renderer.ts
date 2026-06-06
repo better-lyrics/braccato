@@ -1,3 +1,4 @@
+import { createInstrumentalElement } from "./create-instrumental-element.js";
 import { testRtl } from "./rtl.js";
 import type { LineData, Lyric, LyricPart, LyricsData, PartData, SyncType } from "./types.js";
 
@@ -13,6 +14,26 @@ const ROMANIZED_CLASS = "braccato--romanized";
 const TRANSLATED_CLASS = "braccato--translated";
 
 // -- Helpers --------------------------
+
+function findNearestAgent(lyrics: Lyric[], fromIndex: number): string | undefined {
+	for (let i = fromIndex - 1; i >= 0; i--) {
+		if (!lyrics[i].isInstrumental && lyrics[i].agent) return lyrics[i].agent;
+	}
+	for (let i = fromIndex + 1; i < lyrics.length; i++) {
+		if (!lyrics[i].isInstrumental && lyrics[i].agent) return lyrics[i].agent;
+	}
+	return undefined;
+}
+
+function isNearestLyricRtl(lyrics: Lyric[], fromIndex: number): boolean {
+	for (let i = fromIndex - 1; i >= 0; i--) {
+		if (!lyrics[i].isInstrumental && lyrics[i].words?.trim()) return testRtl(lyrics[i].words);
+	}
+	for (let i = fromIndex + 1; i < lyrics.length; i++) {
+		if (!lyrics[i].isInstrumental && lyrics[i].words?.trim()) return testRtl(lyrics[i].words);
+	}
+	return false;
+}
 
 function createBreakElem(parent: HTMLElement, order: number): void {
 	const br = document.createElement("span");
@@ -127,7 +148,9 @@ export function renderLyrics(lyrics: Lyric[], container: HTMLElement, options: R
 
 	for (let lineIndex = 0; lineIndex < lyrics.length; lineIndex++) {
 		const item = lyrics[lineIndex];
-		const el = document.createElement("div");
+		const el = item.isInstrumental
+			? createInstrumentalElement(item.durationMs, lineIndex)
+			: document.createElement("div");
 		el.classList.add(LINE_CLASS);
 
 		const line: LineData = {
@@ -151,6 +174,11 @@ export function renderLyrics(lyrics: Lyric[], container: HTMLElement, options: R
 			el.dataset.time = String(line.time);
 			el.dataset.duration = String(line.duration);
 			el.dataset.lineNumber = String(lineIndex);
+
+			const nearestAgent = findNearestAgent(lyrics, lineIndex);
+			if (nearestAgent) el.dataset.agent = nearestAgent;
+			if (isNearestLyricRtl(lyrics, lineIndex)) el.classList.add(RTL_CLASS);
+
 			lines.push(line);
 			container.appendChild(el);
 			continue;
