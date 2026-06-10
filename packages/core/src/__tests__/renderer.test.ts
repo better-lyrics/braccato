@@ -9,7 +9,9 @@ function makeLyric(words: string): Lyric {
 describe("renderLyrics", () => {
 	it("produces multiple wrappable group spans for a space-less Japanese line", () => {
 		const container = document.createElement("div");
-		const lyrics: Lyric[] = [makeLyric("これはとても長い日本語の歌詞でスペースが入っていないため横幅を超えたときに自然改行されてほしい")];
+		const lyrics: Lyric[] = [
+			makeLyric("これはとても長い日本語の歌詞でスペースが入っていないため横幅を超えたときに自然改行されてほしい"),
+		];
 
 		renderLyrics(lyrics, container);
 
