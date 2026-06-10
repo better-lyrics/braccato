@@ -5,11 +5,13 @@ export interface SplitSubPart extends LyricPart {
 }
 
 const BREAK_CHAR_RE = /[\s​­\p{Dash_Punctuation}]/u;
+const TRAILING_WS_RE = /\s+$/;
 const SEGMENT_LENGTH_THRESHOLD = 5;
 
 function shouldSplit(text: string): boolean {
-	if (text.length <= SEGMENT_LENGTH_THRESHOLD) return false;
-	return !BREAK_CHAR_RE.test(text);
+	const core = text.replace(TRAILING_WS_RE, "");
+	if (core.length <= SEGMENT_LENGTH_THRESHOLD) return false;
+	return !BREAK_CHAR_RE.test(core);
 }
 
 function segment(text: string): string[] {

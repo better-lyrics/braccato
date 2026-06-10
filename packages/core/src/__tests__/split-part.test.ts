@@ -13,7 +13,7 @@ describe("splitPart", () => {
 		expect(result[0].isWrapAfter).toBe(false);
 	});
 
-	it("does not split parts containing whitespace", () => {
+	it("does not split parts containing internal whitespace", () => {
 		const result = splitPart({ startTimeMs: 0, words: "hello world", durationMs: 100 });
 		expect(result).toHaveLength(1);
 		expect(result[0].words).toBe("hello world");
@@ -27,6 +27,14 @@ describe("splitPart", () => {
 
 	it("segments a long space-less Japanese line into multiple sub-parts", () => {
 		const input = "これはとても長い日本語の歌詞です";
+		const result = splitPart({ startTimeMs: 0, words: input, durationMs: 1000 });
+
+		expect(result.length).toBeGreaterThan(1);
+		expect(result.map((p) => p.words).join("")).toBe(input);
+	});
+
+	it("ignores trailing whitespace when deciding whether to split", () => {
+		const input = "これはとても長い日本語の歌詞です ";
 		const result = splitPart({ startTimeMs: 0, words: input, durationMs: 1000 });
 
 		expect(result.length).toBeGreaterThan(1);

@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { renderLyrics } from "../renderer.js";
 import type { Lyric } from "../types.js";
 
+const GROUP_SELECTOR = ":scope > span:not(.braccato--break)";
+
 function makeLyric(words: string): Lyric {
 	return { startTimeMs: 0, words, durationMs: 1000 };
 }
 
 describe("renderLyrics", () => {
-	it("produces multiple wrappable group spans for a space-less Japanese line", () => {
+	it("wraps a long space-less Japanese line by producing many group spans", () => {
 		const container = document.createElement("div");
 		const lyrics: Lyric[] = [
 			makeLyric("これはとても長い日本語の歌詞でスペースが入っていないため横幅を超えたときに自然改行されてほしい"),
@@ -17,19 +19,19 @@ describe("renderLyrics", () => {
 
 		const line = container.querySelector(".braccato--line") as HTMLDivElement;
 		expect(line).toBeTruthy();
-		const groupSpans = line.querySelectorAll(":scope > span");
-		expect(groupSpans.length).toBeGreaterThan(1);
+		const groupSpans = line.querySelectorAll(GROUP_SELECTOR);
+		expect(groupSpans.length).toBeGreaterThanOrEqual(5);
 	});
 
-	it("produces multiple wrappable group spans for a space-separated English line", () => {
+	it("preserves per-word grouping for a space-separated English line", () => {
 		const container = document.createElement("div");
 		const lyrics: Lyric[] = [makeLyric("the quick brown fox jumps over the lazy dog")];
 
 		renderLyrics(lyrics, container);
 
 		const line = container.querySelector(".braccato--line") as HTMLDivElement;
-		const groupSpans = line.querySelectorAll(":scope > span");
-		expect(groupSpans.length).toBeGreaterThan(1);
+		const groupSpans = line.querySelectorAll(GROUP_SELECTOR);
+		expect(groupSpans.length).toBe(9);
 	});
 
 	it("does not segment English word parts (one word span per source part)", () => {
@@ -73,5 +75,23 @@ describe("renderLyrics", () => {
 		for (const span of wordSpans) {
 			expect((span as HTMLElement).dataset.wrapAfter).toBeUndefined();
 		}
+	});
+
+	it("wraps a long Japanese line emitted via richsync parts (no whitespace, no trailing space)", () => {
+		const container = document.createElement("div");
+		const lyrics: Lyric[] = [
+			{
+				startTimeMs: 0,
+				durationMs: 1000,
+				words: "これはとても長い日本語の歌詞です",
+				parts: [{ startTimeMs: 0, words: "これはとても長い日本語の歌詞です", durationMs: 1000 }],
+			},
+		];
+
+		renderLyrics(lyrics, container);
+
+		const line = container.querySelector(".braccato--line") as HTMLDivElement;
+		const groupSpans = line.querySelectorAll(GROUP_SELECTOR);
+		expect(groupSpans.length).toBeGreaterThanOrEqual(5);
 	});
 });
