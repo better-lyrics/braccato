@@ -16,8 +16,12 @@ function shouldSplit(text: string): boolean {
 
 function segment(text: string): string[] {
 	try {
-		const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
-		return Array.from(segmenter.segment(text), (s) => s.segment);
+		const wordSeg = new Intl.Segmenter(undefined, { granularity: "word" });
+		const words = Array.from(wordSeg.segment(text), (s) => s.segment);
+		if (words.length > 1) return words;
+
+		const graphSeg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+		return Array.from(graphSeg.segment(text), (s) => s.segment);
 	} catch {
 		return Array.from(text);
 	}

@@ -41,6 +41,14 @@ describe("splitPart", () => {
 		expect(result.map((p) => p.words).join("")).toBe(input);
 	});
 
+	it("falls back to grapheme granularity when word granularity returns one segment", () => {
+		const input = "한국어가사도공백없이쭉이어지면자동으로줄바꿈이일어나야합니다";
+		const result = splitPart({ startTimeMs: 0, words: input, durationMs: 1000 });
+
+		expect(result.length).toBeGreaterThan(1);
+		expect(result.map((p) => p.words).join("")).toBe(input);
+	});
+
 	it("marks isWrapAfter true on all sub-parts except the last", () => {
 		const result = splitPart({ startTimeMs: 0, words: "これはとても長い日本語の歌詞です", durationMs: 300 });
 
