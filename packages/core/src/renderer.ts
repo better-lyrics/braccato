@@ -1,5 +1,6 @@
 import { createInstrumentalElement } from "./create-instrumental-element.js";
 import { testRtl } from "./rtl.js";
+import { splitPart } from "./split-part.js";
 import type { LineData, Lyric, LyricPart, LyricsData, PartData, SyncType } from "./types.js";
 
 // -- CSS Class Constants --------------------------
@@ -12,6 +13,8 @@ const RTL_CLASS = "braccato-rtl";
 const ZERO_DUR_CLASS = "braccato-zero-dur-animate";
 const ROMANIZED_CLASS = "braccato--romanized";
 const TRANSLATED_CLASS = "braccato--translated";
+
+const BREAK_CHAR_RE = /[\s​­\p{Dash_Punctuation}]/u;
 
 // -- Helpers --------------------------
 
@@ -43,7 +46,6 @@ function createBreakElem(parent: HTMLElement, order: number): void {
 }
 
 function groupByWordAndInsert(parent: HTMLElement, buffer: HTMLSpanElement[]): void {
-	const breakChar = /([\s\u200B\u00AD\p{Dash_Punctuation}])/gu;
 	let wordGroupBuffer: HTMLSpanElement[] = [];
 	let isCurrentBufferBg = false;
 
@@ -58,22 +60,17 @@ function groupByWordAndInsert(parent: HTMLElement, buffer: HTMLSpanElement[]): v
 	};
 
 	for (const part of buffer) {
-		const isNonMatchingType = isCurrentBufferBg !== part.classList.contains(BG_CLASS);
-		const isElmJustSpace = !(part.textContent!.length === 1 && part.textContent![0] === " ");
-
-		if (!isNonMatchingType) wordGroupBuffer.push(part);
-
-		if (
-			(part.textContent!.length > 0 && breakChar.test(part.textContent![part.textContent!.length - 1])) ||
-			isNonMatchingType
-		) {
+		const partIsBg = part.classList.contains(BG_CLASS);
+		if (isCurrentBufferBg !== partIsBg) {
 			flush();
+			isCurrentBufferBg = partIsBg;
 		}
+		wordGroupBuffer.push(part);
 
-		if (isNonMatchingType && isElmJustSpace) {
-			wordGroupBuffer.push(part);
-			isCurrentBufferBg = part.classList.contains(BG_CLASS);
-		}
+		const text = part.textContent ?? "";
+		const endsOnBreak = text.length > 0 && BREAK_CHAR_RE.test(text[text.length - 1]);
+		const wrapAfter = part.dataset.wrapAfter === "true";
+		if (endsOnBreak || wrapAfter) flush();
 	}
 	flush();
 }
@@ -91,32 +88,37 @@ function buildWordSpans(parts: LyricPart[], line: LineData, container: HTMLEleme
 			rtlBuffer = [];
 		}
 
-		const span = document.createElement("span");
-		span.classList.add(WORD_CLASS);
-		if (part.durationMs === 0) span.classList.add(ZERO_DUR_CLASS);
-		if (isRtl) span.classList.add(RTL_CLASS);
+		const subParts = splitPart(part);
 
-		const partData: PartData = {
-			time: part.startTimeMs / 1000,
-			duration: part.durationMs / 1000,
-			element: span,
-			animationStartTimeMs: Number.POSITIVE_INFINITY,
-		};
+		for (const sub of subParts) {
+			const span = document.createElement("span");
+			span.classList.add(WORD_CLASS);
+			if (sub.durationMs === 0) span.classList.add(ZERO_DUR_CLASS);
+			if (isRtl) span.classList.add(RTL_CLASS);
 
-		span.textContent = part.words;
-		span.dataset.time = String(partData.time);
-		span.dataset.duration = String(partData.duration);
-		span.dataset.content = part.words;
-		span.style.setProperty("--braccato-duration", `${part.durationMs}ms`);
-		if (part.durationMs > longWordThreshold) span.dataset.longWord = "true";
-		if (part.isBackground) span.classList.add(BG_CLASS);
-		if (part.words.trim().length === 0) span.style.display = "inline";
-		if (part.words.trim().length !== 0) line.parts.push(partData);
+			const partData: PartData = {
+				time: sub.startTimeMs / 1000,
+				duration: sub.durationMs / 1000,
+				element: span,
+				animationStartTimeMs: Number.POSITIVE_INFINITY,
+			};
 
-		if (isRtl) {
-			rtlBuffer.push(span);
-		} else {
-			elemBuffer.push(span);
+			span.textContent = sub.words;
+			span.dataset.time = String(partData.time);
+			span.dataset.duration = String(partData.duration);
+			span.dataset.content = sub.words;
+			span.style.setProperty("--braccato-duration", `${sub.durationMs}ms`);
+			if (sub.durationMs > longWordThreshold) span.dataset.longWord = "true";
+			if (sub.isBackground) span.classList.add(BG_CLASS);
+			if (sub.isWrapAfter) span.dataset.wrapAfter = "true";
+			if (sub.words.trim().length === 0) span.style.display = "inline";
+			if (sub.words.trim().length !== 0) line.parts.push(partData);
+
+			if (isRtl) {
+				rtlBuffer.push(span);
+			} else {
+				elemBuffer.push(span);
+			}
 		}
 	}
 
