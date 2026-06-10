@@ -129,6 +129,11 @@
   display: inline-block;
   transform: translateY(0px);
   position: relative;
+  margin-right: -0.25em;
+}
+
+.braccato--has-trailing-space {
+  margin-right: 0.25em;
 }
 
 .braccato--line.braccato--pre-animating,
