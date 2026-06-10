@@ -27,15 +27,19 @@
 	"scripts": {
 		"build": "vite build",
 		"dev": "vite build --watch",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"dependencies": {
 		"@braccato/parsers": "workspace:^",
 		"lit": "^3.2.1"
 	},
 	"devDependencies": {
+		"jsdom": "^28.1.0",
 		"typescript": "^5.7.3",
 		"vite": "^6.0.7",
-		"vite-plugin-dts": "^4.3.0"
+		"vite-plugin-dts": "^4.3.0",
+		"vitest": "^3.0.4"
 	}
 }
