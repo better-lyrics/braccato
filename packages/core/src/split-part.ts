@@ -2,7 +2,6 @@ import type { LyricPart } from "@braccato/parsers";
 
 export interface SplitSubPart extends LyricPart {
 	isWrapAfter: boolean;
-	hasTrailingSpace: boolean;
 }
 
 function segment(text: string): string[] {
@@ -24,7 +23,6 @@ export function splitPart(part: LyricPart): SplitSubPart[] {
 				words: part.words,
 				isBackground: part.isBackground,
 				isWrapAfter: false,
-				hasTrailingSpace: /\s$/.test(part.words),
 			},
 		];
 	}
@@ -36,6 +34,5 @@ export function splitPart(part: LyricPart): SplitSubPart[] {
 		words: seg,
 		isBackground: part.isBackground,
 		isWrapAfter: i < segments.length - 1,
-		hasTrailingSpace: /\s$/.test(seg),
 	}));
 }

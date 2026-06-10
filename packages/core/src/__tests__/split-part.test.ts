@@ -59,19 +59,6 @@ describe("splitPart", () => {
 		}
 	});
 
-	it("marks hasTrailingSpace on segments ending in whitespace", () => {
-		const result = splitPart({
-			startTimeMs: 0,
-			words: "hello world",
-			durationMs: 100,
-		});
-
-		const helloPart = result.find((p) => p.words === "hello");
-		const spacePart = result.find((p) => /\s/.test(p.words));
-		expect(spacePart?.hasTrailingSpace).toBe(true);
-		expect(helloPart?.hasTrailingSpace).toBe(false);
-	});
-
 	it("falls back to code-point split when Intl.Segmenter throws", () => {
 		const SegmenterCtor = Intl.Segmenter;
 		vi.stubGlobal(
