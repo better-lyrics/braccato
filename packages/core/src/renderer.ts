@@ -13,7 +13,8 @@ const RTL_CLASS = "braccato-rtl";
 const ZERO_DUR_CLASS = "braccato-zero-dur-animate";
 const ROMANIZED_CLASS = "braccato--romanized";
 const TRANSLATED_CLASS = "braccato--translated";
-const TRAILING_SPACE_CLASS = "braccato--has-trailing-space";
+
+const BREAK_CHAR_RE = /[\s​­\p{Dash_Punctuation}]/u;
 
 // -- Helpers --------------------------
 
@@ -66,9 +67,10 @@ function groupByWordAndInsert(parent: HTMLElement, buffer: HTMLSpanElement[]): v
 		}
 		wordGroupBuffer.push(part);
 
-		const hasTrailingSpace = part.classList.contains(TRAILING_SPACE_CLASS);
+		const text = part.textContent ?? "";
+		const endsOnBreak = text.length > 0 && BREAK_CHAR_RE.test(text[text.length - 1]);
 		const wrapAfter = part.dataset.wrapAfter === "true";
-		if (hasTrailingSpace || wrapAfter) flush();
+		if (endsOnBreak || wrapAfter) flush();
 	}
 	flush();
 }
@@ -86,13 +88,9 @@ function buildWordSpans(parts: LyricPart[], line: LineData, container: HTMLEleme
 			rtlBuffer = [];
 		}
 
-		const sourceHasTrailingSpace = /\s$/.test(part.words);
 		const subParts = splitPart(part);
 
-		for (let i = 0; i < subParts.length; i++) {
-			const sub = subParts[i];
-			const isLast = i === subParts.length - 1;
-
+		for (const sub of subParts) {
 			const span = document.createElement("span");
 			span.classList.add(WORD_CLASS);
 			if (sub.durationMs === 0) span.classList.add(ZERO_DUR_CLASS);
@@ -113,7 +111,6 @@ function buildWordSpans(parts: LyricPart[], line: LineData, container: HTMLEleme
 			if (sub.durationMs > longWordThreshold) span.dataset.longWord = "true";
 			if (sub.isBackground) span.classList.add(BG_CLASS);
 			if (sub.isWrapAfter) span.dataset.wrapAfter = "true";
-			if (isLast && sourceHasTrailingSpace) span.classList.add(TRAILING_SPACE_CLASS);
 			if (sub.words.trim().length === 0) span.style.display = "inline";
 			if (sub.words.trim().length !== 0) line.parts.push(partData);
 

@@ -4,6 +4,14 @@ export interface SplitSubPart extends LyricPart {
 	isWrapAfter: boolean;
 }
 
+const BREAK_CHAR_RE = /[\s​­\p{Dash_Punctuation}]/u;
+const SEGMENT_LENGTH_THRESHOLD = 5;
+
+function shouldSplit(text: string): boolean {
+	if (text.length <= SEGMENT_LENGTH_THRESHOLD) return false;
+	return !BREAK_CHAR_RE.test(text);
+}
+
 function segment(text: string): string[] {
 	try {
 		const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
@@ -14,17 +22,13 @@ function segment(text: string): string[] {
 }
 
 export function splitPart(part: LyricPart): SplitSubPart[] {
+	if (!shouldSplit(part.words)) {
+		return [{ ...part, isWrapAfter: false }];
+	}
+
 	const segments = segment(part.words);
-	if (segments.length === 0) {
-		return [
-			{
-				startTimeMs: part.startTimeMs,
-				durationMs: part.durationMs,
-				words: part.words,
-				isBackground: part.isBackground,
-				isWrapAfter: false,
-			},
-		];
+	if (segments.length <= 1) {
+		return [{ ...part, isWrapAfter: false }];
 	}
 
 	const perDuration = part.durationMs / segments.length;

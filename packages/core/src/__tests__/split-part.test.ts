@@ -6,38 +6,35 @@ describe("splitPart", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("segments an English sentence at word boundaries", () => {
-		const result = splitPart({
-			startTimeMs: 1000,
-			words: "hello world",
-			durationMs: 2000,
-		});
-
-		const text = result.map((p) => p.words).join("");
-		expect(text).toBe("hello world");
-		expect(result.length).toBeGreaterThanOrEqual(2);
-		expect(result.some((p) => p.words === "hello")).toBe(true);
-		expect(result.some((p) => p.words === "world")).toBe(true);
+	it("does not split short English words", () => {
+		const result = splitPart({ startTimeMs: 0, words: "hello", durationMs: 100 });
+		expect(result).toHaveLength(1);
+		expect(result[0].words).toBe("hello");
+		expect(result[0].isWrapAfter).toBe(false);
 	});
 
-	it("segments a space-less Japanese line into multiple sub-parts", () => {
+	it("does not split parts containing whitespace", () => {
+		const result = splitPart({ startTimeMs: 0, words: "hello world", durationMs: 100 });
+		expect(result).toHaveLength(1);
+		expect(result[0].words).toBe("hello world");
+	});
+
+	it("does not split parts containing dash punctuation", () => {
+		const result = splitPart({ startTimeMs: 0, words: "well-being", durationMs: 100 });
+		expect(result).toHaveLength(1);
+		expect(result[0].words).toBe("well-being");
+	});
+
+	it("segments a long space-less Japanese line into multiple sub-parts", () => {
 		const input = "これはとても長い日本語の歌詞です";
-		const result = splitPart({
-			startTimeMs: 0,
-			words: input,
-			durationMs: 1000,
-		});
+		const result = splitPart({ startTimeMs: 0, words: input, durationMs: 1000 });
 
 		expect(result.length).toBeGreaterThan(1);
 		expect(result.map((p) => p.words).join("")).toBe(input);
 	});
 
 	it("marks isWrapAfter true on all sub-parts except the last", () => {
-		const result = splitPart({
-			startTimeMs: 0,
-			words: "alpha beta gamma",
-			durationMs: 300,
-		});
+		const result = splitPart({ startTimeMs: 0, words: "これはとても長い日本語の歌詞です", durationMs: 300 });
 
 		expect(result.length).toBeGreaterThan(1);
 		for (let i = 0; i < result.length - 1; i++) {
@@ -47,7 +44,7 @@ describe("splitPart", () => {
 	});
 
 	it("interpolates timings so sub-parts span the parent duration", () => {
-		const parent = { startTimeMs: 500, words: "one two three four", durationMs: 1200 };
+		const parent = { startTimeMs: 500, words: "これはとても長い日本語の歌詞です", durationMs: 1200 };
 		const result = splitPart(parent);
 
 		const totalDuration = result.reduce((sum, p) => sum + p.durationMs, 0);
@@ -60,7 +57,6 @@ describe("splitPart", () => {
 	});
 
 	it("falls back to code-point split when Intl.Segmenter throws", () => {
-		const SegmenterCtor = Intl.Segmenter;
 		vi.stubGlobal(
 			"Intl",
 			new Proxy(Intl, {
@@ -77,20 +73,15 @@ describe("splitPart", () => {
 			}),
 		);
 
-		const result = splitPart({
-			startTimeMs: 0,
-			words: "abc",
-			durationMs: 30,
-		});
+		const result = splitPart({ startTimeMs: 0, words: "あいうえおかきくけこ", durationMs: 100 });
 
-		expect(result.map((p) => p.words)).toEqual(["a", "b", "c"]);
-		expect(SegmenterCtor).toBeDefined();
+		expect(result.map((p) => p.words)).toEqual(["あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ"]);
 	});
 
 	it("propagates isBackground from parent to every sub-part", () => {
 		const result = splitPart({
 			startTimeMs: 0,
-			words: "ooh ooh",
+			words: "これはとても長い日本語の歌詞です",
 			durationMs: 200,
 			isBackground: true,
 		});
@@ -99,17 +90,5 @@ describe("splitPart", () => {
 		for (const sub of result) {
 			expect(sub.isBackground).toBe(true);
 		}
-	});
-
-	it("yields a single sub-part with isWrapAfter=false for single-character input", () => {
-		const result = splitPart({
-			startTimeMs: 0,
-			words: "あ",
-			durationMs: 100,
-		});
-
-		expect(result).toHaveLength(1);
-		expect(result[0].isWrapAfter).toBe(false);
-		expect(result[0].words).toBe("あ");
 	});
 });
