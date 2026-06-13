@@ -25,6 +25,19 @@ describe("splitPart", () => {
 		expect(result[0].words).toBe("well-being");
 	});
 
+	it("does not split single long Latin words into characters", () => {
+		const result = splitPart({ startTimeMs: 0, words: "clouds", durationMs: 100 });
+		expect(result).toHaveLength(1);
+		expect(result[0].words).toBe("clouds");
+		expect(result[0].isWrapAfter).toBe(false);
+	});
+
+	it("does not split single long Cyrillic words into characters", () => {
+		const result = splitPart({ startTimeMs: 0, words: "привет", durationMs: 100 });
+		expect(result).toHaveLength(1);
+		expect(result[0].words).toBe("привет");
+	});
+
 	it("segments a long space-less Japanese line into multiple sub-parts", () => {
 		const input = "これはとても長い日本語の歌詞です";
 		const result = splitPart({ startTimeMs: 0, words: input, durationMs: 1000 });

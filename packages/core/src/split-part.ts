@@ -7,6 +7,8 @@ export interface SplitSubPart extends LyricPart {
 const BREAK_CHAR_RE = /[\s​­\p{Dash_Punctuation}]/u;
 const TRAILING_WS_RE = /\s+$/;
 const SEGMENT_LENGTH_THRESHOLD = 5;
+const GRAPHEME_WRAP_RE =
+	/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}]/u;
 
 function shouldSplit(text: string): boolean {
 	const core = text.replace(TRAILING_WS_RE, "");
@@ -19,6 +21,8 @@ function segment(text: string): string[] {
 		const wordSeg = new Intl.Segmenter(undefined, { granularity: "word" });
 		const words = Array.from(wordSeg.segment(text), (s) => s.segment);
 		if (words.length > 1) return words;
+
+		if (!GRAPHEME_WRAP_RE.test(text)) return [text];
 
 		const graphSeg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 		return Array.from(graphSeg.segment(text), (s) => s.segment);
