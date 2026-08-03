@@ -131,12 +131,17 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 				lyric.durationMs = Math.max(latestStart - lyric.startTimeMs, 0);
 			}
 		} else {
-			if (lyric.durationMs === 0) {
-				lyric.durationMs = songDurationMs - lyric.startTimeMs;
+			// The song duration is what the last line ends against, and a caller that passed none left
+			// it at 0. Everything it would produce there runs backwards, so the lengths already on the
+			// line are kept instead.
+			const lineTail = songDurationMs - lyric.startTimeMs;
+			if (lyric.durationMs === 0 && lineTail > 0) {
+				lyric.durationMs = lineTail;
 			}
 			if (lyric.parts && lyric.parts.length > 0) {
 				const lastPart = lyric.parts[lyric.parts.length - 1];
-				lastPart.durationMs = songDurationMs - lastPart.startTimeMs;
+				const partTail = songDurationMs - lastPart.startTimeMs;
+				if (partTail > 0) lastPart.durationMs = partTail;
 			}
 		}
 	}

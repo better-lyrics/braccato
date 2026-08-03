@@ -115,6 +115,29 @@ describe("LRCParser", () => {
 			expect(result[0].parts![0].startTimeMs).toBe(0);
 		});
 
+		it("never gives a negative duration when the caller omits the song duration", () => {
+			// The last line and its last word end against the song duration, and the default is 0, so
+			// subtracting from it used to run every one of them backwards.
+			const lrc = `[00:10.00]Line one
+[00:20.00]<00:20.00>Line <00:21.00>two`;
+
+			for (const lyrics of [LRCParser.parse(lrc), parseLRC(lrc, 0)]) {
+				expect(lyrics).toHaveLength(2);
+				for (const line of lyrics) {
+					expect(line.durationMs).toBeGreaterThanOrEqual(0);
+					for (const part of line.parts ?? []) {
+						expect(part.durationMs).toBeGreaterThanOrEqual(0);
+					}
+				}
+			}
+		});
+
+		it("still ends the last line against a song duration when it is given one", () => {
+			const result = LRCParser.parse("[00:10.00]Line one\n[00:20.00]Line two", 30000);
+
+			expect(result[1].durationMs).toBe(10000);
+		});
+
 		it("survives a line carrying more time tags than a call can take arguments", () => {
 			// Reducing the tags to a start and an end by spreading them into Math.min blew the stack at
 			// roughly 125,000 of them, which a dropped file reaches long before a real lyric does.
