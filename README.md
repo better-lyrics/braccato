@@ -26,6 +26,12 @@ reference for properties, attributes, events, theming and class names.
 **Upgrading from `@braccato/core` 0.1.x?** Version 1.0.0 is a rewrite, not a bump. See
 [MIGRATION.md](MIGRATION.md).
 
+**Looking for the playground?** `playground/` has been retired. The page it served,
+[braccato.boidu.dev](https://braccato.boidu.dev), now lives in
+[`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo) beside the renderer it
+demonstrates, and is built there with `npm run site`. [DEPLOY.md](DEPLOY.md) records what serving it
+takes.
+
 ## Quick Start
 
 ```html
@@ -318,7 +324,6 @@ const css = compileRicsToCSS(ricsSource);
 ```bash
 pnpm install
 pnpm dev              # Watch all packages
-pnpm dev:playground   # Run playground
 pnpm build            # Build all packages
 pnpm test             # Run tests
 pnpm lint             # Biome linting
@@ -326,8 +331,9 @@ pnpm lint:fix         # Auto-fix
 pnpm typecheck        # TypeScript checks
 ```
 
-`pnpm install` does not resolve until `@braccato/core@1.0.0` is published. See
-[MIGRATION.md](MIGRATION.md#developing-before-100-is-published) for the local step in the meantime.
+`pnpm-lock.yaml` still describes the layout from before `packages/core` and `playground` were
+removed. Nothing here depends on `@braccato/core`, so a plain `pnpm install` resolves and rewrites
+it.
 
 ## Project Structure
 
@@ -337,11 +343,12 @@ braccato/
     parsers/           # TTML, LRC, SRT, QRC, Plain parsers
     provider-blyrics/  # Provider chain + built-in providers
     rics/              # RICS CSS preprocessor
-  playground/          # Interactive demo (Vite)
 ```
 
 `@braccato/core` is not here. It is published from
-[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics/tree/master/src/renderer).
+[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics/tree/master/src/renderer),
+and the demo page is built from [`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo)
+in the same repository.
 
 ## Acknowledgments
 

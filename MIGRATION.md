@@ -401,28 +401,27 @@ Two views handed the **same** theme are fine.
 
 ## Developing before 1.0.0 is published
 
-`@braccato/core@1.0.0` is not on npm yet, so `pnpm install` in this repository cannot resolve
-`^1.0.0` and `pnpm-lock.yaml` still describes the old workspace layout. Both resolve themselves the
-moment the Better Lyrics repository publishes, at which point a plain `pnpm install` is all that is
-needed.
-
-Until then, build the artifact from the Better Lyrics checkout and symlink it in. This is a local
-step on purpose: nothing below is committed, because a `file:` or `link:` dependency in a manifest
-outlives the reason for it.
+`@braccato/core@1.0.0` is not on npm yet, so `pnpm add @braccato/core@^1.0.0` cannot resolve. Until
+it lands, build the artifact from a Better Lyrics checkout and symlink it into your project. Keep
+that a local step: a `file:` or `link:` dependency in a manifest outlives the reason for it.
 
 ```bash
 # In your better-lyrics checkout
 npm run package   # emits dist/package/
 
-# Here. node_modules is gitignored, so this touches nothing tracked.
-ln -sfn /path/to/better-lyrics/dist/package playground/node_modules/@braccato/core
+# In your project. node_modules is not tracked, so this touches nothing committed.
+ln -sfn /path/to/better-lyrics/dist/package node_modules/@braccato/core
 ```
 
-Remove the symlink and run `pnpm install` once 1.0.0 is on the registry.
+Remove the symlink and install normally once 1.0.0 is on the registry.
 
 Do not reach for `pnpm link` for this. On pnpm 9.15.4 it leaves `package.json` alone, but it writes
 an `overrides:` entry and a `link:` specifier carrying an absolute path into `pnpm-lock.yaml`, and
 `pnpm unlink` reports "Nothing to unlink" and leaves both behind.
+
+None of this is needed to work on this repository. Nothing here consumes `@braccato/core` any more,
+now that `packages/core` and `playground` are both gone. `pnpm-lock.yaml` still describes the layout
+from before they were removed, and a plain `pnpm install` rewrites it.
 
 ## Reference
 
@@ -430,4 +429,6 @@ an `overrides:` entry and a `link:` specifier carrying an absolute path into `pn
   is the API documentation. It is the owner of that surface; this file only covers what changed.
 - [NOTES.md](https://github.com/better-lyrics/better-lyrics/blob/master/src/renderer/NOTES.md) is the
   design record behind these decisions.
-- [braccato.boidu.dev](https://braccato.boidu.dev) is the full documentation and demo.
+- [braccato.boidu.dev](https://braccato.boidu.dev) is the demo and documentation page, built from
+  [`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo) in the same repository.
+  It is the place to try 1.0.0 against your own audio and lyrics files.
