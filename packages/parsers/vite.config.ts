@@ -10,5 +10,10 @@ export default defineConfig({
 			formats: ["es"],
 			fileName: "index",
 		},
+		rollupOptions: {
+			// Left to itself vite inlines every import that is not marked external, which would bake a
+			// copy of fast-xml-parser into the bundle instead of resolving the one the consumer installs.
+			external: [/^@braccato\//, /^fast-xml-parser/],
+		},
 	},
 });
