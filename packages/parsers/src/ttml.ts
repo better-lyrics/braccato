@@ -1,6 +1,5 @@
+import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import type { Lyric, LyricParser, LyricPart } from "./types.js";
-
-const DEFAULT_INSTRUMENTAL_GAP_MS = 5000;
 
 function parseTime(timeStr: string | number | undefined): number {
 	if (!timeStr) return 0;
@@ -144,43 +143,6 @@ function extractParts(
 	return { parts, text, isWordSynced };
 }
 
-function insertInstrumentalBreaks(lyrics: Lyric[], songDurationMs: number, gapThreshold: number): Lyric[] {
-	if (lyrics.length === 0) return lyrics;
-
-	const result: Lyric[] = [];
-	const mkInstrumental = (startTimeMs: number, durationMs: number): Lyric => ({
-		startTimeMs,
-		durationMs,
-		words: "",
-		parts: [],
-		isInstrumental: true,
-	});
-
-	if (lyrics[0].startTimeMs > gapThreshold) {
-		result.push(mkInstrumental(0, lyrics[0].startTimeMs));
-	}
-
-	for (let i = 0; i < lyrics.length; i++) {
-		result.push(lyrics[i]);
-		if (i < lyrics.length - 1) {
-			const currentEnd = lyrics[i].startTimeMs + lyrics[i].durationMs;
-			const nextStart = lyrics[i + 1].startTimeMs;
-			const gap = nextStart - currentEnd;
-			if (gap > gapThreshold) {
-				result.push(mkInstrumental(currentEnd, gap));
-			}
-		}
-	}
-
-	const last = lyrics[lyrics.length - 1];
-	const lastEnd = last.startTimeMs + last.durationMs;
-	if (songDurationMs - lastEnd > gapThreshold) {
-		result.push(mkInstrumental(lastEnd, songDurationMs - lastEnd));
-	}
-
-	return result;
-}
-
 function parseTTMLContent(
 	xml: string,
 	options: { instrumentalGapMs?: number } = {},
@@ -291,10 +253,7 @@ function parseTTMLContent(
 	}
 
 	let lyricArray = Array.from(lyrics.values());
-	const gapMs = options.instrumentalGapMs ?? DEFAULT_INSTRUMENTAL_GAP_MS;
-	if (songDurationMs > 0) {
-		lyricArray = insertInstrumentalBreaks(lyricArray, songDurationMs, gapMs);
-	}
+	lyricArray = insertInstrumentalBreaks(lyricArray, songDurationMs, options.instrumentalGapMs);
 
 	return { lyrics: lyricArray, isWordSynced, language: lang };
 }
