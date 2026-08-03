@@ -219,6 +219,33 @@ describe("TTMLParser", () => {
 			expect(result).toEqual([]);
 		});
 
+		it("inserts an intro instrumental even when the body carries no dur", () => {
+			// Intentional. Instrumental insertion is not conditional on <body dur>, which is what the
+			// implementation this was ported from does, and it is a change from 0.1.x, where a document
+			// with no dur got no breaks at all. It matters because `@braccato/provider-blyrics` calls
+			// `TTMLParser.parse(ttml)` with no duration, so a bLyrics document whose first line starts
+			// late gains a leading instrumental line it did not have before.
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="en">
+  <body><div>
+    <p begin="10s" end="15s" itunes:key="L1">Late first line</p>
+    <p begin="30s" end="35s" itunes:key="L2">After a solo</p>
+  </div></body>
+</tt>`;
+
+			const result = TTMLParser.parse(ttml);
+
+			expect(result.map((l) => [l.startTimeMs, l.durationMs, l.isInstrumental ?? false])).toEqual([
+				[0, 10000, true],
+				[10000, 5000, false],
+				[15000, 15000, true],
+				[30000, 5000, false],
+			]);
+			// The outro is the one break a document with no dur still cannot have: nothing states where
+			// the song ends.
+			expect(result.at(-1)!.isInstrumental).toBeUndefined();
+		});
+
 		it("ignores the duration argument", () => {
 			// `@braccato/provider-blyrics` calls `TTMLParser.parse(ttml)` with no second argument, so a
 			// version that started honouring the parameter would silently hand that call site a 0 and

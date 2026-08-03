@@ -55,6 +55,8 @@ const { lyrics, isWordSynced, language } = parseTTMLContent(ttmlString, {
 });
 ```
 
+Instrumental lines are inserted whether or not the document states a duration. This changed in 0.2.0: 0.1.x only inserted them for a document whose `<body>` carried a `dur`, and the implementation this package was rewritten from does not gate them, so the gate is gone. A document with no `dur` now gains an intro instrumental when its first line starts more than `instrumentalGapMs` in, and one between any two lines separated by more than that. The outro is the exception, since nothing states where the song ends: pass `songDurationMs` to get it.
+
 It reads syllable timing, `ttm:role="x-bg"` background vocals, `ttm:agent` (mapped to stable vocalist slots `v1`, `v2`, and `v1000` for a group), explicit flags from either `explicit` or AMLL's `obscene`, `itunes:key`, translations and transliterations. Namespace prefixes that a document uses without declaring are recovered rather than rejected, and times may be clock values or offset times such as `432.25s`, `5m` or `250ms`.
 
 ### LRC
