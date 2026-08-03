@@ -393,6 +393,25 @@ describe("TTMLParser", () => {
 			expect(lines[0].translation).toEqual({ text: "Hello world", lang: "en" });
 		});
 
+		it("reads a translation whose text is wrapped in further elements", () => {
+			// 0.1.x read the translation with textContent, which gathered the whole subtree. Reading only
+			// the first child, and only when it was a text node, lost a wrapped one entirely.
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="ja">
+  <head><metadata>
+    <translations lang="en">
+      <translation for="L1"><text><span>Hello</span><span> world</span></text></translation>
+    </translations>
+  </metadata></head>
+  <body dur="10s"><div><p begin="0s" end="5s" itunes:key="L1">Konnichiwa</p></div></body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines[0].translation).toEqual({ text: "Hello world", lang: "en" });
+			expect(lines[0].translations).toEqual({ en: "Hello world" });
+		});
+
 		it("carries a translation onto every line sharing an itunes:key", () => {
 			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
               xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="ja">

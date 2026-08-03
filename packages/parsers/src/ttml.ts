@@ -346,7 +346,9 @@ export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): P
 
 			for (const item of container.translation ?? []) {
 				const forKey = item[":@"]?.["@_for"] ?? containerFor;
-				const text = item.text?.[0]?.["#text"];
+				// The whole subtree, so a `<text>` that wraps its translation in further elements reads
+				// the same as a bare one. 0.1.x used textContent and gathered it the same way.
+				const text = collectSpanText(item.text);
 				if (!lang || !text || !forKey) continue;
 
 				forEachLineWithKey(forKey, (line) => {
