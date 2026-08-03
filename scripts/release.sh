@@ -7,7 +7,8 @@ read -r OTP
 
 pnpm build:packages
 
-for pkg in parsers rics provider-blyrics core; do
+# @braccato/core is published from the better-lyrics repository, not from here. See MIGRATION.md.
+for pkg in parsers rics provider-blyrics; do
 	(cd "packages/$pkg" && pnpm publish --access public --no-git-checks --otp="$OTP" 2>&1) || echo "Skipped $pkg (already published or error)"
 done
 
