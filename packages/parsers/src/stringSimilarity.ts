@@ -8,11 +8,16 @@
  * @param [caseSensitive=false] Optional. Whether you want to consider case in string matching. Default false;
  * @returns Number between 0 and 1, with 0 being a low match score.
  */
-export const stringSimilarity = (str1: string, str2: string, substringLength = 2, caseSensitive = false): number => {
-	if (!caseSensitive) {
-		str1 = str1.toLowerCase();
-		str2 = str2.toLowerCase();
-	}
+export const stringSimilarity = (
+	rawStr1: string,
+	rawStr2: string,
+	substringLength = 2,
+	caseSensitive = false,
+): number => {
+	// Case folding reads as a parameter reassignment upstream. Only the two bindings moved; the
+	// algorithm below is the original.
+	const str1 = caseSensitive ? rawStr1 : rawStr1.toLowerCase();
+	const str2 = caseSensitive ? rawStr2 : rawStr2.toLowerCase();
 	if (str1.length < substringLength || str2.length < substringLength) return 0;
 	const map = new Map<string, number>();
 	for (let i = 0; i < str1.length - (substringLength - 1); i++) {
