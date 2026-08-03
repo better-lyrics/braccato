@@ -1,6 +1,6 @@
 import type { Lyric } from "./types.js";
 
-export const DEFAULT_INSTRUMENTAL_GAP_MS = 5000;
+const DEFAULT_INSTRUMENTAL_GAP_MS = 5000;
 
 /**
  * Turn the silences between lines into explicit instrumental lyrics, so a renderer has something to

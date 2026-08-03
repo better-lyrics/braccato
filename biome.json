@@ -1,9 +1,11 @@
 {
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
-		"ignore": [".turbo/**", "**/dist/**", ".claude/**"]
+		"ignore": [".turbo/**", "**/dist/**", ".claude/**", "demo/generated/**"]
 	},
-	"organizeImports": { "enabled": true },
+	"organizeImports": {
+		"enabled": true
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
@@ -34,12 +36,18 @@
 	"overrides": [
 		{
 			"include": ["packages/core/**", "demo/**", "tooling/**"],
-			"organizeImports": { "enabled": false },
+			"organizeImports": {
+				"enabled": false
+			},
 			"linter": {
 				"rules": {
 					"recommended": false,
-					"correctness": { "noUnusedVariables": "error" },
-					"style": { "useConst": "off" }
+					"correctness": {
+						"noUnusedVariables": "error"
+					},
+					"style": {
+						"useConst": "off"
+					}
 				}
 			},
 			"formatter": {
@@ -55,11 +63,17 @@
 		},
 		{
 			"include": ["packages/core/**/*.css", "demo/**/*.css"],
-			"formatter": { "enabled": false }
+			"formatter": {
+				"enabled": false
+			}
 		},
 		{
 			"include": ["tooling/tsconfig.package.json"],
-			"json": { "parser": { "allowComments": true } }
+			"json": {
+				"parser": {
+					"allowComments": true
+				}
+			}
 		}
 	]
 }

@@ -1,7 +1,7 @@
 /**
  * @author Stephen Brown
  * Source: https://github.com/stephenjjbrown/string-similarity-js/
- * @licence MIT License - https://github.com/stephenjjbrown/string-similarity-js/blob/master/LICENSE.md
+ * @license MIT License - https://github.com/stephenjjbrown/string-similarity-js/blob/master/LICENSE.md
  * @param str1 First string to match
  * @param str2 Second string to match
  * @param [substringLength=2] Optional. Length of substring to be used in calculating similarity. Default 2.
