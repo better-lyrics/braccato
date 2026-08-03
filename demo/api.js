@@ -1,10 +1,10 @@
 // What this page tells a reader about @braccato/core, in one place so there is one place to change
 // it. The page renders its reference and its code samples out of this file, and
 // `tooling/check-api-docs.ts` reads the same file and holds every name in it against what
-// `npm run package` actually emitted. A property renamed in the module fails the package build
+// `pnpm package` actually emitted. A property renamed in the module fails the package build
 // rather than quietly leaving a wrong page on the screen.
 //
-// The prose here is the short answer. `src/renderer/README.md` is the package page, and the page
+// The prose here is the short answer. `packages/core/README.md` is the package page, and the page
 // links to it rather than copying it: this file carries what a consumer needs to write the tag, and
 // stops where the reasoning starts. The reasoning lives beside the code it explains, in the module's
 // own file headers.
@@ -18,7 +18,7 @@ export const PACKAGE = {
   name: "@braccato/core",
   version: "1.0.0",
   npmHref: "https://www.npmjs.com/package/@braccato/core",
-  repoHref: "https://github.com/better-lyrics/better-lyrics/tree/master/src/renderer",
+  repoHref: "https://github.com/better-lyrics/braccato/tree/master/packages/core",
 };
 
 export const INSTALLERS = [

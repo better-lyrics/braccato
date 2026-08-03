@@ -1,9 +1,9 @@
 // Holds both of the package's API documents against the package they document.
 //
-// `demo/api.js` is where the demo page's reference lives, and `src/renderer/README.md` is the npm
+// `demo/api.js` is where the demo page's reference lives, and `packages/core/README.md` is the npm
 // package page. A document that names a property the module renamed last week is worse than one that
 // names nothing: it reads exactly as authoritative either way. So every name in both is looked up in
-// what `npm run package` just emitted, and a name that is not there fails the build that emitted it.
+// what `pnpm package` just emitted, and a name that is not there fails the build that emitted it.
 //
 // What this does not check is the prose. A summary can go stale while its name stays real, and
 // nothing mechanical is going to notice. The names are the half that can be checked, so they are. In

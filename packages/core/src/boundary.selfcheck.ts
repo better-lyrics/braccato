@@ -1,21 +1,20 @@
-// The rules that keep src/renderer/ publishable as @braccato/core, and the check that enforces them.
-// The directory is written as though it already lived on its own, and it is licensed that way too:
-// MIT, in the LICENSE beside this file, while the rest of the repository is GPL-3.0.
+// The rules that keep packages/core/src/ publishable as @braccato/core, and the check that enforces
+// them. The directory is written as though it already lived on its own, which is how it survived
+// being carved out of a browser extension and moved here without a line of it changing.
 //
 // Nothing under this directory may import from `@core/*`, `@modules/*`, `@constants`, `@utils`,
 // `@options` or `@/`, reach outside the directory with a relative path, reference the extension
 // global, or import a package. Nothing under `styles/` may name a YouTube Music selector, or read a
 // custom property the module neither owns nor declares. Nothing outside the directory may import
-// past its published entry points. This file runs as part of `npm run selfcheck`, and if a change
+// past its published entry points. This file runs as part of `pnpm selfcheck`, and if a change
 // makes it fail, the change is wrong, not the check.
 //
 // The one exemption: `*.selfcheck.ts` files may import `node:*` builtins and `typescript`. They are
-// repo infrastructure, never bundled, and `typescript` is a devDependency here and in braccato.
+// repo infrastructure, never bundled, and `typescript` is a devDependency of this repository.
 //
 // The extension global rule is not stylistic. On Firefox this module runs in the PAGE world, because
 // Gecko hands content scripts a cross-origin wrapper on the Picture-in-Picture window. A single
-// reference drags the webext polyfill into that bundle and kills it silently. See
-// `.claude/rules/pitfalls.md`.
+// reference drags the webext polyfill into that bundle and kills it silently.
 
 import { strict as assert } from "node:assert";
 import { readFileSync, readdirSync } from "node:fs";
@@ -425,7 +424,7 @@ function collectCustomPropertyViolations(
       file: displayPath,
       line: source.slice(0, match.index).split("\n").length,
       rule: "no-undeclared-custom-properties",
-      detail: `reads "${property}", which the module neither owns nor declares; declare it under styles/, give it a fallback, or leave the rule in public/css/blyrics/`,
+      detail: `reads "${property}", which the module neither owns nor declares; declare it under styles/, give it a fallback, or leave the rule in the extension styling the page around the lyrics`,
     });
   }
 
@@ -657,7 +656,7 @@ assert.deepEqual(
     new Set(collectDeclaredCustomProperties(CUSTOM_PROPERTY_FIXTURE))
   ).map(violation => `${violation.line} ${violation.rule} ${violation.detail}`),
   [
-    `6 no-undeclared-custom-properties reads "--noto-sans-universal", which the module neither owns nor declares; declare it under styles/, give it a fallback, or leave the rule in public/css/blyrics/`,
+    `6 no-undeclared-custom-properties reads "--noto-sans-universal", which the module neither owns nor declares; declare it under styles/, give it a fallback, or leave the rule in the extension styling the page around the lyrics`,
   ],
   "Given a stylesheet reading custom properties, When they are scanned, Then only one declared nowhere in the module and standing on no fallback is reported"
 );

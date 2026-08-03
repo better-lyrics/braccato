@@ -3,8 +3,8 @@
 // The renderer imports nothing outside its own directory, so there is nothing to bundle and no
 // bundler here: tsc produces both the JavaScript and the types. The one thing it cannot do is write
 // the file extension a browser and Node both require on a relative specifier, because the sources
-// are written extensionless for the extension's own build, so the emitted files are rewritten
-// afterwards.
+// are written extensionless, which is the spelling a bundler wants, so the emitted files are
+// rewritten afterwards.
 
 import { execFileSync } from "child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";

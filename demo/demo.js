@@ -1,4 +1,4 @@
-// Runs @braccato/core straight off the artifact `npm run package` emitted, wires every control on
+// Runs @braccato/core straight off the artifact `pnpm package` emitted, wires every control on
 // the page to a property on the tag, and reports two things that can only be checked in a real
 // browser:
 //
@@ -29,7 +29,7 @@ import { buildScore, SONGS } from "./song.js";
 import { THEMES } from "./themes.js";
 
 // Where the emitted package sits beside this page. It is the only line on the page that names that
-// path, so `npm run site` rewrites this one string when it copies the page out to a directory a
+// path, so `pnpm site` rewrites this one string when it copies the page out to a directory a
 // static host can serve, and the imports and the failure message both follow it.
 const PACKAGE_BASE = "../packages/core/dist/package";
 
