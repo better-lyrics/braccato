@@ -28,18 +28,26 @@ interface ParsedWord {
 	duration: number;
 }
 
-const WORD_REGEX = /(.*?)\((\d+),(\d+)\)/g;
+const TIMING_TOKEN_REGEX = /\((\d+),(\d+)\)/g;
 
+/**
+ * Only the timing tokens are matched; each syllable is the span of text between the end of the
+ * previous token and the start of this one. Capturing that text in the pattern instead costs either
+ * correctness or time: a lazy `.*?` backtracks over the whole line from every start position when a
+ * line holds unmatched brackets, and a `[^(]*` that avoids the backtracking cannot read a syllable
+ * with a bracket in it. Reading the span keeps both.
+ */
 function parseWords(src: string): ParsedWord[] {
 	const words: ParsedWord[] = [];
+	let textStart = 0;
 
-	// Lazily capture the text before the parenthesis, then the two numbers inside it
-	for (const match of src.matchAll(WORD_REGEX)) {
+	for (const match of src.matchAll(TIMING_TOKEN_REGEX)) {
 		words.push({
-			text: match[1],
-			time: Number.parseInt(match[2], 10),
-			duration: Number.parseInt(match[3], 10),
+			text: src.slice(textStart, match.index),
+			time: Number.parseInt(match[1], 10),
+			duration: Number.parseInt(match[2], 10),
 		});
+		textStart = match.index + match[0].length;
 	}
 
 	return words;

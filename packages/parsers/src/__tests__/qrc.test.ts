@@ -56,6 +56,32 @@ describe("QRCParser", () => {
 		it("handles empty input", () => {
 			expect(QRCParser.parse("")).toEqual([]);
 		});
+
+		it("keeps a literal ( inside a syllable", () => {
+			// The syllable text is whatever sits between two timing tokens, brackets included. A scan
+			// that stopped at the first "(" would read this line as "world)".
+			const result = QRCParser.parse("[0,2000]Hello (world)(0,1000)", 10000);
+			const sung = result.filter((l) => !l.isInstrumental);
+
+			expect(sung).toHaveLength(1);
+			expect(sung[0].words).toBe("Hello (world)");
+			expect(sung[0].parts).toHaveLength(1);
+			expect(sung[0].parts![0].words).toBe("Hello (world)");
+		});
+
+		it("parses a long line of unmatched brackets without stalling", () => {
+			// A user dropped file can be anything, and a line of "(" with no timing token after it made
+			// the old lazy scan backtrack over the whole line from every position. The bound is loose on
+			// purpose: this took roughly two seconds before, and takes a few milliseconds now.
+			const line = `[0,5000]${"(".repeat(100000)}`;
+
+			const started = performance.now();
+			const result = QRCParser.parse(line, 10000);
+			const elapsed = performance.now() - started;
+
+			expect(elapsed).toBeLessThan(500);
+			expect(result.every((l) => Array.isArray(l.parts) || l.parts === undefined)).toBe(true);
+		});
 	});
 
 	describe("QrcInfos envelope", () => {
