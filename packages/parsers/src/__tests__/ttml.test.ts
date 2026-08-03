@@ -169,6 +169,36 @@ describe("TTMLParser", () => {
 			expect(lines[1].timedRomanization).toHaveLength(2);
 		});
 
+		it("skips a transliteration item that carries no text", () => {
+			// A <transliteration> child that is not a <text> still carries a `for`, so the item is
+			// reached and its text is absent. Reading it as a paragraph used to throw a TypeError, and
+			// one such child took the whole document with it.
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="ja">
+  <head>
+    <metadata>
+      <transliterations>
+        <transliteration xml:lang="ja-Latn">
+          <notext for="l1"/>
+          <text for="l2"><span begin="5s" end="7s">sayou</span><span begin="7s" end="10s">nara</span></text>
+        </transliteration>
+      </transliterations>
+    </metadata>
+  </head>
+  <body dur="10s">
+    <div>
+      <p begin="0s" end="5s" key="l1">こんにちは</p>
+      <p begin="5s" end="10s" key="l2">さようなら</p>
+    </div>
+  </body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines).toHaveLength(2);
+			expect(lines[0].romanization).toBeUndefined();
+			expect(lines[1].romanization).toBe("sayounara");
+		});
+
 		it("handles empty body", () => {
 			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
   <head><metadata></metadata></head>

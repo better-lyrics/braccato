@@ -140,7 +140,8 @@ export interface TranslationContainer {
  * Represents a single <transliteration> item.
  */
 export interface TransliterationItem {
-	text: ParagraphElementOrBackground[];
+	/** Absent whenever the `<transliteration>` child carrying the `for` is not a `<text>` element. */
+	text?: ParagraphElementOrBackground[];
 	":@"?: {
 		"@_for"?: string;
 	};

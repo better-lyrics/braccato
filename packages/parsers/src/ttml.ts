@@ -359,10 +359,13 @@ export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): P
 		for (const container of containers) {
 			for (const item of container.transliteration ?? []) {
 				const forKey = item[":@"]?.["@_for"];
-				if (!forKey) continue;
+				// A `for` also reaches this loop on a child that is not a `<text>`, and that child has no
+				// paragraph to read, so the item is passed over rather than parsed.
+				const paragraph = item.text;
+				if (!forKey || !paragraph) continue;
 
 				forEachLineWithKey(forKey, (line) => {
-					const parseResult = parseLyricPart(item.text, line.startTimeMs);
+					const parseResult = parseLyricPart(paragraph, line.startTimeMs);
 					line.romanization = parseResult.text;
 					if (parseResult.parts.length > 0) line.timedRomanization = parseResult.parts;
 				});
