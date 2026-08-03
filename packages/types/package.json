@@ -1,0 +1,35 @@
+{
+	"name": "@braccato/types",
+	"version": "1.0.0",
+	"description": "Shared lyric data shapes for @braccato/core and @braccato/parsers",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/better-lyrics/braccato",
+		"directory": "packages/types"
+	},
+	"homepage": "https://braccato.boidu.dev",
+	"keywords": ["lyrics", "types", "typescript"],
+	"sideEffects": false,
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": ["dist"],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"dev": "tsc -p tsconfig.json --watch",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf dist"
+	},
+	"devDependencies": {
+		"typescript": "^5.7.3"
+	}
+}
