@@ -6,31 +6,32 @@
 
 <p align="center">
   Synchronized lyrics rendering as a web component.<br>
-  Parsers, providers and tooling for <a href="https://www.npmjs.com/package/@braccato/core"><code>@braccato/core</code></a>, the word-by-word lyrics renderer from <a href="https://better-lyrics.boidu.dev">Better Lyrics</a>.
+  <a href="https://www.npmjs.com/package/@braccato/core"><code>@braccato/core</code></a>, the word-by-word lyrics renderer from <a href="https://better-lyrics.boidu.dev">Better Lyrics</a>, with the parsers, providers and tooling around it.
 </p>
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
+| `@braccato/core` | The `<braccato-lyrics>` element: synchronized lyrics, word by word |
 | `@braccato/parsers` | Format parsers: TTML, LRC, SRT, QRC, Plain |
 | `@braccato/provider-blyrics` | Lyrics provider chain with priority and validation |
 | `@braccato/rics` | RICS CSS preprocessor |
+| `@braccato/types` | The lyric shapes core and parsers share |
 
-`@braccato/core`, the `<braccato-lyrics>` element itself, is published from the
-[Better Lyrics repository](https://github.com/better-lyrics/better-lyrics/tree/master/src/renderer),
-where the rendering engine actually lives. Its
-[README](https://github.com/better-lyrics/better-lyrics/blob/master/src/renderer/README.md) is the
-reference for properties, attributes, events, theming and class names.
+`@braccato/core`, the `<braccato-lyrics>` element itself, is [`packages/core`](packages/core). It
+moved here from the [Better Lyrics repository](https://github.com/better-lyrics/better-lyrics), where
+the rendering engine still runs as part of the extension. Its
+[README](packages/core/README.md) is the reference for properties, attributes, events, theming and
+class names.
 
 **Upgrading from `@braccato/core` 0.1.x?** Version 1.0.0 is a rewrite, not a bump. See
 [MIGRATION.md](MIGRATION.md).
 
 **Looking for the playground?** `playground/` has been retired. The page it served,
-[braccato.boidu.dev](https://braccato.boidu.dev), now lives in
-[`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo) beside the renderer it
-demonstrates, and is built there with `npm run site`. [DEPLOY.md](DEPLOY.md) records what serving it
-takes.
+[braccato.boidu.dev](https://braccato.boidu.dev), is now [`demo/`](demo), beside the renderer it
+demonstrates. Run `pnpm demo` and open `http://127.0.0.1:4319/demo/`, or build it with `pnpm site`.
+[DEPLOY.md](DEPLOY.md) records what serving it takes.
 
 ## Quick Start
 
@@ -247,13 +248,18 @@ const lyrics = parser.parse(inputText, durationMs);
 
 ### Core Types
 
+Declared in `@braccato/types`, which both `@braccato/core` and `@braccato/parsers` depend on and
+re-export, so importing `Lyric` from either goes on working.
+
 ```typescript
 interface Lyric {
   startTimeMs: number;
   words: string;
   durationMs: number;
+  key?: string;
   parts?: LyricPart[];
   agent?: string;
+  translations?: { [lang: string]: string };
   translation?: { text: string; lang: string };
   romanization?: string;
   timedRomanization?: LyricPart[];
@@ -265,6 +271,7 @@ interface LyricPart {
   words: string;
   durationMs: number;
   isBackground?: boolean;
+  explicit?: boolean;
 }
 ```
 
@@ -326,29 +333,35 @@ pnpm install
 pnpm dev              # Watch all packages
 pnpm build            # Build all packages
 pnpm test             # Run tests
+pnpm selfcheck        # Run the renderer's self-checks
 pnpm lint             # Biome linting
 pnpm lint:fix         # Auto-fix
 pnpm typecheck        # TypeScript checks
+
+pnpm package          # Emit the @braccato/core artifact to packages/core/dist/package
+pnpm demo             # Serve the page at http://127.0.0.1:4319/demo/
+pnpm site             # Build the page to dist/site
 ```
 
-`pnpm-lock.yaml` still describes the layout from before `packages/core` and `playground` were
-removed. Nothing here depends on `@braccato/core`, so a plain `pnpm install` resolves and rewrites
-it.
+`pnpm demo` and `pnpm site` both emit the package first, bundle the parsers for a page that has no
+build step, and synthesize the demo audio, which is generated rather than committed.
 
 ## Project Structure
 
 ```
 braccato/
   packages/
+    core/              # The <braccato-lyrics> element and the renderer behind it
     parsers/           # TTML, LRC, SRT, QRC, Plain parsers
     provider-blyrics/  # Provider chain + built-in providers
     rics/              # RICS CSS preprocessor
+    types/             # The lyric shapes core and parsers share
+  demo/                # The page behind braccato.boidu.dev
+  tooling/             # Package emit, site build, demo server, audio generator, self-checks
 ```
 
-`@braccato/core` is not here. It is published from
-[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics/tree/master/src/renderer),
-and the demo page is built from [`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo)
-in the same repository.
+`@braccato/core` publishes from `packages/core/dist/package`, the artifact `tooling/build-package.ts`
+emits, rather than from `packages/core` itself: the manifest that goes to npm is generated with it.
 
 ## Acknowledgments
 
