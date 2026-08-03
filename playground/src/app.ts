@@ -1,5 +1,9 @@
-import "@braccato/core";
-import type { BraccatoElement } from "@braccato/core";
+import "@braccato/core/element";
+import "@braccato/core/styles/variables.css";
+import "@braccato/core/styles/lyrics.css";
+import "@braccato/core/styles/instrumental.css";
+import { resumeAllAutoscroll } from "@braccato/core";
+import type { BraccatoLyricsElement } from "@braccato/core/element";
 import { detectParser } from "@braccato/parsers";
 import {
 	ProviderChain,
@@ -9,7 +13,7 @@ import {
 	createLegatoProvider,
 } from "@braccato/provider-blyrics";
 
-const braccato = document.getElementById("lyrics") as BraccatoElement;
+const braccato = document.getElementById("lyrics") as BraccatoLyricsElement;
 const audio = document.getElementById("audio") as HTMLAudioElement;
 const playBtn = document.getElementById("play-btn") as HTMLButtonElement;
 const scrubber = document.getElementById("scrubber") as HTMLInputElement;
@@ -31,9 +35,20 @@ const searchResult = document.getElementById("search-result") as HTMLDivElement;
 const audioUrl = document.getElementById("audio-url") as HTMLInputElement;
 let isManualScrubbing = false;
 let currentLyricsText = "";
-let customStyleEl: HTMLStyleElement | null = null;
+let debugLogging = false;
 
-const defaultCustomCSS = `braccato-lyrics {\n\t--braccato-font-family: "Satoshi", system-ui, sans-serif;\n\t--braccato-font-weight: 500;\n}`;
+const defaultCustomCSS = `.blyrics-container {\n\t--blyrics-font-family: "Satoshi", system-ui, sans-serif;\n\t--blyrics-font-weight: 500;\n}`;
+
+// The engine has no debug flag of its own; the host decides where diagnostics go and whether they
+// go anywhere. Written once, because writing host while connected rebuilds the view.
+braccato.host = {
+	log: (...args: unknown[]) => {
+		if (debugLogging) console.log("[braccato]", ...args);
+	},
+};
+
+// Autoscroll pauses when a reader scrolls away, and the element does not watch for that itself.
+braccato.addEventListener("scroll", () => braccato.renderer?.noteUserScroll(), { passive: true });
 
 function setDropLabel(label: HTMLLabelElement, iconClass: string, text: string) {
 	for (const node of [...label.childNodes]) {
@@ -87,7 +102,7 @@ audio.addEventListener("pause", () => {
 scrubber.addEventListener("input", () => {
 	isManualScrubbing = true;
 	const t = Number(scrubber.value);
-	braccato.currentTime = t;
+	braccato.currentTime = t / 1000;
 	updateTimeDisplay(t / 1000, audio.duration || 0);
 	updateScrubberFill();
 });
@@ -114,9 +129,8 @@ function updateScrubberFill() {
 
 function animLoop() {
 	if (!isManualScrubbing && !audio.paused) {
-		const ms = audio.currentTime * 1000;
-		braccato.currentTime = ms;
-		scrubber.value = String(ms);
+		braccato.currentTime = audio.currentTime;
+		scrubber.value = String(audio.currentTime * 1000);
 		updateTimeDisplay(audio.currentTime, audio.duration || 0);
 		updateScrubberFill();
 	}
@@ -206,18 +220,25 @@ function logEvent(name: string, detail: Record<string, unknown>) {
 }
 
 braccato.addEventListener("braccato:line-click", ((e: CustomEvent) => {
-	audio.currentTime = e.detail.time / 1000;
-	braccato.currentTime = e.detail.time;
-	braccato.resumeAutoscroll();
+	audio.currentTime = e.detail.timeS;
+	braccato.currentTime = e.detail.timeS;
+	resumeAllAutoscroll();
 	if (audio.paused) audio.play();
 	logEvent("line-click", e.detail);
 }) as EventListener);
 
-braccato.addEventListener("braccato:word-click", ((e: CustomEvent) => {
-	audio.currentTime = e.detail.time / 1000;
-	braccato.currentTime = e.detail.time;
-	logEvent("word-click", e.detail);
-}) as EventListener);
+// There is no braccato:word-click any more. The DOM is light and the class names are published, so
+// a word seek is a click listener, and it runs after the line handler on the child element.
+braccato.addEventListener("click", (e) => {
+	if (!e.altKey) return;
+	const word = (e.target as HTMLElement).closest(".blyrics--word") as HTMLElement | null;
+	if (!word) return;
+	const timeS = Number(word.dataset.time);
+	if (!Number.isFinite(timeS)) return;
+	audio.currentTime = timeS;
+	braccato.currentTime = timeS;
+	logEvent("word-click", { timeS, words: word.dataset.content });
+});
 
 braccato.addEventListener("braccato:lyrics-loaded", ((e: CustomEvent) => {
 	logEvent("lyrics-loaded", e.detail);
@@ -229,49 +250,48 @@ braccato.addEventListener("braccato:scroll-state", ((e: CustomEvent) => {
 	logEvent("scroll-state", e.detail);
 }) as EventListener);
 
-// -- Properties --------------------------
+// -- Theme --------------------------
 
-document.getElementById("scroll-mode")!.addEventListener("change", (e) => {
-	braccato.scrollMode = (e.target as HTMLSelectElement).value as "internal" | "external";
-});
+// What used to be three attributes is three settings the engine reads out of the stylesheet's
+// comments, so the property controls and the CSS editor now write the same thing.
+const themeSettings: Record<string, string> = {
+	"blyrics-disable-richsync": "false",
+	"blyrics-line-synced-animation-delay": "50",
+	"blyrics-long-word-threshold": "1500",
+};
 
-document.getElementById("dir")!.addEventListener("change", (e) => {
-	braccato.dir = (e.target as HTMLSelectElement).value as "auto" | "ltr" | "rtl";
-});
+function applyTheme() {
+	const declarations = Object.entries(themeSettings)
+		.map(([key, value]) => `/* ${key} = ${value}; */`)
+		.join("\n");
+	braccato.theme = `${declarations}\n${cssEditor.value}`;
+}
 
 document.getElementById("disable-richsync")!.addEventListener("change", (e) => {
-	braccato.disableRichsync = (e.target as HTMLInputElement).checked;
-	reparseIfNeeded();
+	themeSettings["blyrics-disable-richsync"] = String((e.target as HTMLInputElement).checked);
+	applyTheme();
 });
 
 const lineSyncedDelay = document.getElementById("line-synced-delay") as HTMLInputElement;
 const lineSyncedDelayVal = document.getElementById("line-synced-delay-val") as HTMLSpanElement;
 lineSyncedDelay.addEventListener("input", () => {
-	braccato.lineSyncedDelay = Number(lineSyncedDelay.value);
+	themeSettings["blyrics-line-synced-animation-delay"] = lineSyncedDelay.value;
 	lineSyncedDelayVal.textContent = lineSyncedDelay.value;
+	applyTheme();
 });
 
 const longWord = document.getElementById("long-word-threshold") as HTMLInputElement;
 const longWordVal = document.getElementById("long-word-threshold-val") as HTMLSpanElement;
 longWord.addEventListener("input", () => {
-	braccato.longWordThreshold = Number(longWord.value);
+	themeSettings["blyrics-long-word-threshold"] = longWord.value;
 	longWordVal.textContent = longWord.value;
+	applyTheme();
 });
 
-// -- Custom CSS --------------------------
-
-function applyCustomCSS() {
-	if (!customStyleEl) {
-		customStyleEl = document.createElement("style");
-		document.head.appendChild(customStyleEl);
-	}
-	customStyleEl.textContent = cssEditor.value;
-}
-
 cssEditor.value = defaultCustomCSS;
-applyCustomCSS();
+applyTheme();
 
-cssEditor.addEventListener("input", applyCustomCSS);
+cssEditor.addEventListener("input", applyTheme);
 
 cssEditor.addEventListener("keydown", (e) => {
 	if (e.key === "Tab") {
@@ -280,7 +300,7 @@ cssEditor.addEventListener("keydown", (e) => {
 		const end = cssEditor.selectionEnd;
 		cssEditor.value = `${cssEditor.value.substring(0, start)}\t${cssEditor.value.substring(end)}`;
 		cssEditor.selectionStart = cssEditor.selectionEnd = start + 1;
-		applyCustomCSS();
+		applyTheme();
 	}
 });
 
@@ -298,19 +318,19 @@ document.addEventListener("keydown", (e) => {
 		case "ArrowLeft":
 			e.preventDefault();
 			audio.currentTime = Math.max(0, audio.currentTime - (e.shiftKey ? 1 : 5));
-			braccato.currentTime = audio.currentTime * 1000;
+			braccato.currentTime = audio.currentTime;
 			break;
 		case "ArrowRight":
 			e.preventDefault();
 			audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + (e.shiftKey ? 1 : 5));
-			braccato.currentTime = audio.currentTime * 1000;
+			braccato.currentTime = audio.currentTime;
 			break;
 		case "KeyR":
-			braccato.resumeAutoscroll();
+			resumeAllAutoscroll();
 			break;
 		case "KeyD":
-			braccato.debug = !braccato.debug;
-			logEvent("debug", { enabled: braccato.debug });
+			debugLogging = !debugLogging;
+			logEvent("debug", { enabled: debugLogging });
 			break;
 	}
 });

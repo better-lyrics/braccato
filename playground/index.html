@@ -161,12 +161,21 @@
         overflow: hidden;
       }
 
+      /* The element has no display of its own, and overflow-y is what makes it the scroller the
+         engine walks up to and writes scrollTop on. */
       braccato-lyrics {
+        display: block;
         width: 100%;
         max-width: 800px;
         margin: 0 auto;
         height: 100%;
         overflow-y: auto;
+      }
+
+      /* The engine measures the room the first line needs to reach the target scroll position and
+         writes it here, but lyrics.css only spends the bottom one. */
+      .blyrics-container {
+        padding-top: var(--blyrics-padding-top, 2rem);
       }
 
       .sync-badge {
@@ -622,21 +631,6 @@
           <i class="mgc_settings_3_line"></i> Properties
         </div>
         <div class="prop-row">
-          <label>scroll</label>
-          <select id="scroll-mode">
-            <option value="internal">internal</option>
-            <option value="external">external</option>
-          </select>
-        </div>
-        <div class="prop-row">
-          <label>direction</label>
-          <select id="dir">
-            <option value="auto">auto</option>
-            <option value="ltr">ltr</option>
-            <option value="rtl">rtl</option>
-          </select>
-        </div>
-        <div class="prop-row">
           <label>richsync</label>
           <input type="checkbox" id="disable-richsync" />
           <label for="disable-richsync" style="color: #a1a1aa">disable</label>
@@ -673,7 +667,7 @@
           class="css-editor"
           id="css-editor"
           spellcheck="false"
-          placeholder="braccato-lyrics {&#10;  --braccato-font-size: 4rem;&#10;}"
+          placeholder=".blyrics-container {&#10;  --blyrics-font-size: 4rem;&#10;}"
         ></textarea>
       </div>
 
