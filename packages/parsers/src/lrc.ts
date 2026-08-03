@@ -89,7 +89,9 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 					fragment = trimmed === "" && fragment.length > 0 ? " " : trimmed;
 				}
 				plainText += fragment;
-				if (parts.length > 0 && parts[parts.length - 1].startTimeMs) {
+				// Every fragment but the one before the first timestamp belongs to the part that the
+				// preceding timestamp opened, whatever time that timestamp states.
+				if (parts.length > 0) {
 					parts[parts.length - 1].words += fragment;
 				}
 			} else {

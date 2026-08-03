@@ -105,6 +105,16 @@ describe("LRCParser", () => {
 			expect(LRCParser.parse(lrc, 0)).toEqual([]);
 		});
 
+		it("keeps the words of a part that starts at zero", () => {
+			// The text after a timestamp is appended to the part that timestamp opened. Testing that
+			// part for truthiness instead of existence dropped the words of anything starting at 0.
+			const result = LRCParser.parse("[00:00.00]<00:00.00>Hello <00:00.50>World", 5000);
+
+			expect(result[0].words).toBe("Hello World");
+			expect(result[0].parts!.map((p) => p.words)).toEqual(["Hello ", "World"]);
+			expect(result[0].parts![0].startTimeMs).toBe(0);
+		});
+
 		it("survives a line carrying more time tags than a call can take arguments", () => {
 			// Reducing the tags to a start and an end by spreading them into Math.min blew the stack at
 			// roughly 125,000 of them, which a dropped file reaches long before a real lyric does.
