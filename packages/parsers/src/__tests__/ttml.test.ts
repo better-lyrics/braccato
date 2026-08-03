@@ -262,6 +262,80 @@ describe("TTMLParser", () => {
 		});
 	});
 
+	// A file a reader drops onto a page can be anything at all, so the contract for anything the
+	// parser cannot use is that nothing comes out of it and nothing is thrown. Pinned rather than
+	// assumed: two of the cases below used to throw.
+	describe("malformed input", () => {
+		const deeplyNested = `<tt><body><div><p begin="0s" end="5s">${"<span>".repeat(600)}x${"</span>".repeat(600)}</p></div></body></tt>`;
+
+		const unreadable = [
+			{ label: "an empty string", input: "" },
+			{ label: "whitespace only", input: "   \n\t  " },
+			{ label: "text that is not TTML", input: "just some prose, nothing timed about it" },
+			{ label: "another lyrics format entirely", input: "[00:12.50]Hello world" },
+			{ label: "a mismatched closing tag", input: "<tt><body></head></tt>" },
+			{ label: "tags nested deeper than the reader accepts", input: deeplyNested },
+			{ label: "a document with no body", input: "<tt></tt>" },
+			{ label: "a body with no lines", input: "<tt><body></body></tt>" },
+			{ label: "lines with no timing attributes", input: "<tt><body><div><p>Hi</p></div></body></tt>" },
+			{
+				label: "timing attributes that are present but empty",
+				input: '<tt xml:lang=""><body dur=""><div><p begin="" end="" key="">Hi</p></div></body></tt>',
+			},
+		];
+
+		it.each(unreadable)("returns nothing for $label", ({ input }) => {
+			expect(() => TTMLParser.parse(input)).not.toThrow();
+			expect(TTMLParser.parse(input)).toEqual([]);
+			expect(parseTTMLContent(input).lyrics).toEqual([]);
+		});
+
+		it("keeps no words from a document that stops mid line", () => {
+			const truncated = '<tt><body><div><p begin="0s" end="5s">Hello';
+
+			const result = TTMLParser.parse(truncated);
+
+			expect(result.every((l) => l.words === "")).toBe(true);
+		});
+
+		it("still reads a document whose tags are left open at the end", () => {
+			// Leniency, not junk: everything the document states is there, only the closing tags are
+			// missing, and a reader that dropped the line would be throwing away a readable file.
+			const result = TTMLParser.parse('<tt><body><div><p begin="0s" end="5s" key="k">Hi</p></div></body>');
+
+			expect(result.filter((l) => !l.isInstrumental).map((l) => l.words)).toEqual(["Hi"]);
+		});
+
+		it("reads the lines of a document whose metadata is malformed", () => {
+			// Well formed XML that is not the shape the reader expects: a translation with no text and a
+			// transliteration child that is not a <text>. None of it reaches the lines, and none of it
+			// stops them being read. The second one used to throw and take the document with it.
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
+  <head><metadata>
+    <translations lang="en"><translation for="k"/></translations>
+    <transliterations><transliteration><notext for="k"/></transliteration></transliterations>
+  </metadata></head>
+  <body dur="10s"><div><p begin="0s" end="5s" key="k">Hi</p></div></body>
+</tt>`;
+
+			expect(() => TTMLParser.parse(ttml)).not.toThrow();
+
+			const lines = TTMLParser.parse(ttml).filter((l) => !l.isInstrumental);
+			expect(lines.map((l) => l.words)).toEqual(["Hi"]);
+			expect(lines[0].translation).toBeUndefined();
+			expect(lines[0].romanization).toBeUndefined();
+		});
+
+		it("does not throw on timing attributes that are not times", () => {
+			// The line survives carrying times that are not numbers rather than being dropped. Pinned as
+			// it stands, since this is inherited behaviour and tightening it is the owner's call.
+			const ttml = '<tt><body dur="banana"><div><p begin="banana" end="pear" key="k">Hi</p></div></body></tt>';
+
+			expect(() => TTMLParser.parse(ttml)).not.toThrow();
+			expect(TTMLParser.parse(ttml).map((l) => Number.isNaN(l.startTimeMs))).toEqual([true]);
+		});
+	});
+
 	describe("agents", () => {
 		const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
               xmlns:ttm="http://www.w3.org/ns/ttml#metadata"

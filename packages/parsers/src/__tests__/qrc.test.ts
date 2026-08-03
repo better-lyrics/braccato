@@ -131,6 +131,43 @@ describe("QRCParser", () => {
 		});
 	});
 
+	// The same contract the other parsers hold to: a file that is not this format, or is this format
+	// broken, comes back empty rather than thrown.
+	describe("malformed input", () => {
+		const unreadable = [
+			{ label: "an empty string", input: "" },
+			{ label: "whitespace only", input: "   \n\t  " },
+			{ label: "text that is not QRC", input: "just some prose, nothing timed about it" },
+			{ label: "another lyrics format entirely", input: "<tt><body></body></tt>" },
+			{ label: "deeply nested tags", input: `${"<a>".repeat(600)}x${"</a>".repeat(600)}` },
+			{ label: "line timings that are not numbers", input: "[abc,def]Hello(xy,zw)" },
+			{ label: "a line bracket that never closes", input: "[0,1000Hello(0,100)" },
+			{ label: "a line time with no comma in it", input: "[01000]Hello(0,100)" },
+			{ label: "empty brackets", input: "[]Hello()" },
+			{ label: "an envelope whose LyricContent is empty", input: '<QrcInfos><Lyric_1 LyricContent=""/></QrcInfos>' },
+			{ label: "an envelope that stops mid attribute", input: '<QrcInfos><Lyric_1 LyricContent="[0,1000]Hi(0,100)' },
+			{
+				label: "an envelope carrying no LyricContent at all",
+				input: "<QrcInfos><LyricInfo><Lyric_1/></LyricInfo></QrcInfos>",
+			},
+			{ label: "nothing but the bracketed metadata tags", input: "[ti:Song]\n[ar:Artist]" },
+		];
+
+		it.each(unreadable)("returns nothing for $label", ({ input }) => {
+			expect(() => QRCParser.parse(input, 20000)).not.toThrow();
+			expect(QRCParser.parse(input, 20000)).toEqual([]);
+			expect(parseQRC(input, 20000, { title: "Song", artist: "Artist" })).toEqual([]);
+		});
+
+		it("reads timings that carry no text without inventing any", () => {
+			const result = parseQRC("[0,1000](0,500)(500,500)", 20000).filter((l) => !l.isInstrumental);
+
+			expect(result).toHaveLength(1);
+			expect(result[0].words).toBe("");
+			expect(result[0].parts!.map((p) => p.words)).toEqual(["", ""]);
+		});
+	});
+
 	describe("singers", () => {
 		it("lifts a leading Name: into an agent and strips it from the text", () => {
 			const body = "[1000,2000]Alice:(1000,100)Hello (1100,900)there(2000,1000)";
