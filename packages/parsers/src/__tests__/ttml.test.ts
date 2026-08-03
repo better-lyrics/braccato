@@ -178,5 +178,199 @@ describe("TTMLParser", () => {
 			const result = TTMLParser.parse(ttml);
 			expect(result).toEqual([]);
 		});
+
+		it("ignores the duration argument", () => {
+			// `@braccato/provider-blyrics` calls `TTMLParser.parse(ttml)` with no second argument, so a
+			// version that started honouring the parameter would silently hand that call site a 0 and
+			// change its instrumental breaks. The song duration travels through `parseTTMLContent`.
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
+  <body><div><p begin="0s" end="5s" itunes:key="L1">Only line</p></div></body>
+</tt>`;
+
+			expect(TTMLParser.parse(ttml, 600000)).toEqual(TTMLParser.parse(ttml));
+			expect(TTMLParser.parse(ttml, 600000).filter((l) => l.isInstrumental)).toHaveLength(0);
+
+			const viaOption = parseTTMLContent(ttml, { songDurationMs: 600000 });
+			expect(viaOption.lyrics.filter((l) => l.isInstrumental)).toHaveLength(1);
+		});
+	});
+
+	describe("agents", () => {
+		const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="en">
+  <head><metadata>
+    <ttm:agent type="person" xml:id="singer1"><ttm:name type="full">First</ttm:name></ttm:agent>
+    <ttm:agent type="person" xml:id="singer2"/>
+    <ttm:agent type="group" xml:id="chorus"/>
+  </metadata></head>
+  <body dur="20s"><div>
+    <p begin="0s" end="5s" ttm:agent="singer1" itunes:key="L1">One</p>
+    <p begin="5s" end="10s" ttm:agent="singer2" itunes:key="L2">Two</p>
+    <p begin="10s" end="15s" ttm:agent="chorus" itunes:key="L3">Three</p>
+    <p begin="15s" end="20s" ttm:agent="singer1" itunes:key="L4">Four</p>
+  </div></body>
+</tt>`;
+
+		it("maps each person agent to a stable vocalist slot", () => {
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+			expect(lines.map((l) => l.agent)).toEqual(["v1", "v2", "v1000", "v1"]);
+		});
+
+		it("buckets a non-person agent into the group slot", () => {
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+			expect(lines[2].agent).toBe("v1000");
+		});
+
+		it("passes an agent through untouched when no metadata declares it", () => {
+			const undeclared = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
+  <body dur="10s"><div><p begin="0s" end="5s" ttm:agent="v7" itunes:key="L1">One</p></div></body>
+</tt>`;
+			const lines = parseTTMLContent(undeclared).lyrics.filter((l) => !l.isInstrumental);
+			expect(lines[0].agent).toBe("v7");
+		});
+	});
+
+	describe("background vocals", () => {
+		it("marks the parts inside a ttm:role=x-bg span as background", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="en">
+  <body dur="10s"><div><p begin="0s" end="6s" itunes:key="L1"><span begin="0s" end="2s">Hello</span><span ttm:role="x-bg"><span begin="2s" end="4s">(echo)</span><span begin="4s" end="6s">(echo)</span></span></p></div></body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines[0].parts).toHaveLength(3);
+			expect(lines[0].parts!.map((p) => p.isBackground)).toEqual([false, true, true]);
+			expect(lines[0].words).toBe("Hello(echo)(echo)");
+		});
+	});
+
+	describe("explicit content", () => {
+		const build = (attr: string) => `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal"
+              xmlns:amll="http://www.example.com/ns/amll" xml:lang="en">
+  <body dur="10s"><div><p begin="0s" end="4s" itunes:key="L1"><span begin="0s" end="2s" ${attr}>Damn</span><span begin="2s" end="4s">it</span></p></div></body>
+</tt>`;
+
+		it("reads explicit=true", () => {
+			const lines = parseTTMLContent(build('explicit="true"')).lyrics.filter((l) => !l.isInstrumental);
+			expect(lines[0].parts!.map((p) => p.explicit)).toEqual([true, false]);
+		});
+
+		it("reads AMLL's obscene=true", () => {
+			const lines = parseTTMLContent(build('amll:obscene="true"')).lyrics.filter((l) => !l.isInstrumental);
+			expect(lines[0].parts!.map((p) => p.explicit)).toEqual([true, false]);
+		});
+	});
+
+	describe("itunes metadata", () => {
+		it("keeps every line that repeats an itunes:key", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="en">
+  <body dur="30s"><div>
+    <p begin="0s" end="5s" itunes:key="L1">Chorus line</p>
+    <p begin="5s" end="10s" itunes:key="L2">Verse line</p>
+    <p begin="10s" end="15s" itunes:key="L1">Chorus line</p>
+  </div></body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines).toHaveLength(3);
+			expect(lines.map((l) => l.startTimeMs)).toEqual([0, 5000, 10000]);
+			expect(lines.map((l) => l.key)).toEqual(["L1", "L2", "L1"]);
+		});
+
+		it("tolerates itunes:songPart on the div", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="en">
+  <body dur="20s">
+    <div begin="0s" end="10s" itunes:songPart="Verse"><p begin="0s" end="5s" itunes:key="L1">Verse line</p></div>
+    <div begin="10s" end="20s" itunes:songPart="Chorus"><p begin="10s" end="15s" itunes:key="L2">Chorus line</p></div>
+  </body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines.map((l) => l.words)).toEqual(["Verse line", "Chorus line"]);
+		});
+	});
+
+	describe("namespaces", () => {
+		it("parses a document whose prefixes are never declared", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
+  <body dur="10s"><div><p begin="0s" end="5s" itunes:key="L1" ttm:agent="v1">Unbound</p></div></body>
+</tt>`;
+
+			const result = parseTTMLContent(ttml);
+			const lines = result.lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines).toHaveLength(1);
+			expect(lines[0].words).toBe("Unbound");
+			expect(lines[0].key).toBe("L1");
+			expect(lines[0].agent).toBe("v1");
+		});
+	});
+
+	describe("offset times", () => {
+		it("reads begin and end given in offset-time units", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="en">
+  <body dur="5m"><div><p begin="60000ms" end="1.5m" itunes:key="L1"><span begin="60.5s" end="61s">Late</span></p></div></body>
+</tt>`;
+
+			const result = parseTTMLContent(ttml);
+			const lines = result.lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines[0].startTimeMs).toBe(60000);
+			expect(lines[0].durationMs).toBe(30000);
+			expect(lines[0].parts![0].startTimeMs).toBe(60500);
+			expect(lines[0].parts![0].durationMs).toBe(500);
+			// dur="5m" is the only source of the outro, so it has to have been read as 300000
+			const outro = result.lyrics.filter((l) => l.isInstrumental).at(-1)!;
+			expect(outro.startTimeMs + outro.durationMs).toBe(300000);
+		});
+	});
+
+	describe("Apple dialect translations", () => {
+		it("reads a translation attached to an inner text element", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="ja">
+  <head><metadata>
+    <translations>
+      <translation type="subtitle" xml:lang="en"><text for="L1">Hello world</text></translation>
+      <translation type="subtitle" xml:lang="fr"><text for="L1">Bonjour</text></translation>
+    </translations>
+  </metadata></head>
+  <body dur="10s"><div><p begin="0s" end="5s" itunes:key="L1">Konnichiwa</p></div></body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines[0].translations).toEqual({ en: "Hello world", fr: "Bonjour" });
+			expect(lines[0].translation).toEqual({ text: "Hello world", lang: "en" });
+		});
+
+		it("carries a translation onto every line sharing an itunes:key", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"
+              xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xml:lang="ja">
+  <head><metadata>
+    <translations>
+      <translation type="subtitle" xml:lang="en"><text for="L1">Hello world</text></translation>
+    </translations>
+  </metadata></head>
+  <body dur="20s"><div>
+    <p begin="0s" end="5s" itunes:key="L1">Konnichiwa</p>
+    <p begin="5s" end="10s" itunes:key="L1">Konnichiwa</p>
+  </div></body>
+</tt>`;
+
+			const lines = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental);
+
+			expect(lines).toHaveLength(2);
+			expect(lines.map((l) => l.translations?.en)).toEqual(["Hello world", "Hello world"]);
+		});
 	});
 });

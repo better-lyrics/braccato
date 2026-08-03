@@ -1,6 +1,18 @@
+import { type X2jOptions, XMLParser } from "fast-xml-parser";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
+import type {
+	MetadataElement,
+	ParagraphElementOrBackground,
+	SpanElement,
+	TranslationContainer,
+	TransliterationContainer,
+	TtmlRoot,
+} from "./ttmlTypes.js";
 import type { Lyric, LyricParser, LyricPart } from "./types.js";
 
+/**
+ * Parse time in hh:mm:ss.xx or offset-time with unit indicators "h", "m", "s", "ms" (e.g 432.25s)
+ */
 function parseTime(timeStr: string | number | undefined): number {
 	if (!timeStr) return 0;
 	if (typeof timeStr === "number") return timeStr;
@@ -9,26 +21,31 @@ function parseTime(timeStr: string | number | undefined): number {
 	if (offsetTimeMatch) {
 		const value = Number.parseFloat(offsetTimeMatch[1]);
 		const unit = offsetTimeMatch[2];
-		if (unit === "h") return Math.round(value * 3600000);
-		if (unit === "m") return Math.round(value * 60000);
+		if (unit === "h") return Math.round(value * 60 * 60 * 1000);
+		if (unit === "m") return Math.round(value * 60 * 1000);
 		if (unit === "s") return Math.round(value * 1000);
 		if (unit === "ms") return Math.round(value);
 	}
 
+	// removes any non-numerical character except dots
 	const parts = timeStr.split(":").map((val) => val.replace(/[^0-9.]/g, ""));
 	let totalMs = 0;
 
 	try {
 		if (parts.length === 1) {
+			// Format: ss.mmm
 			totalMs = Number.parseFloat(parts[0]) * 1000;
 		} else if (parts.length === 2) {
-			totalMs = Number.parseInt(parts[0], 10) * 60000 + Number.parseFloat(parts[1]) * 1000;
+			// Format: mm:ss.mmm
+			totalMs = Number.parseInt(parts[0], 10) * 60 * 1000 + Number.parseFloat(parts[1]) * 1000;
 		} else if (parts.length === 3) {
+			// Format: hh:mm:ss.mmm
 			totalMs =
-				Number.parseInt(parts[0], 10) * 3600000 +
-				Number.parseInt(parts[1], 10) * 60000 +
+				Number.parseInt(parts[0], 10) * 3600 * 1000 +
+				Number.parseInt(parts[1], 10) * 60 * 1000 +
 				Number.parseFloat(parts[2]) * 1000;
 		}
+
 		return Math.round(totalMs);
 	} catch {
 		return 0;
@@ -37,235 +54,335 @@ function parseTime(timeStr: string | number | undefined): number {
 
 export { parseTime as parseTTMLTime };
 
-// Namespace-agnostic attribute lookup — matches by localName regardless of
-// prefix (ttm:agent → "agent", itunes:key → "key", xml:id → "id")
-function getAttr(el: Element, localName: string): string | null {
-	const val = el.getAttribute(localName);
-	if (val !== null) return val;
-	for (const attr of el.attributes) {
-		if (attr.localName === localName) return attr.value;
-	}
-	return null;
-}
+// -- Agents --------------------------------------------
 
-interface ParsedSpan {
-	text: string;
-	begin?: number;
-	end?: number;
-	role?: string;
-	children: ParsedSpan[];
-}
+function extractAgentMapping(metadataElements: MetadataElement[]): Map<string, string> {
+	const mapping = new Map<string, string>();
+	if (!metadataElements || metadataElements.length === 0) return mapping;
 
-function domToSpan(el: Element): ParsedSpan {
-	const span: ParsedSpan = {
-		text: "",
-		begin: getAttr(el, "begin") ? parseTime(getAttr(el, "begin")!) : undefined,
-		end: getAttr(el, "end") ? parseTime(getAttr(el, "end")!) : undefined,
-		role: getAttr(el, "role") ?? undefined,
-		children: [],
-	};
+	const agentElements = metadataElements.filter((e) => "agent" in e && e[":@"]);
 
-	for (const node of el.childNodes) {
-		if (node.nodeType === 3) {
-			const text = node.textContent ?? "";
-			span.text += text;
-			// Interleave text nodes as children to preserve spaces between
-			// element nodes (critical for spaces between background vocal words)
-			span.children.push({ text, children: [] });
-		} else if (node.nodeType === 1) {
-			span.children.push(domToSpan(node as Element));
+	let voiceIndex = 0;
+	for (const agent of agentElements) {
+		const originalId = agent[":@"]?.["@_id"];
+		const agentType = agent[":@"]?.["@_type"];
+		if (!originalId) continue;
+
+		if (agentType === "person" || agentType === "character") {
+			voiceIndex++;
+			mapping.set(originalId, `v${voiceIndex}`);
+		} else {
+			mapping.set(originalId, "v1000");
 		}
 	}
-
-	return span;
+	return mapping;
 }
 
-function extractParts(
-	spans: ParsedSpan[],
+// -- Spans --------------------------------------------
+
+interface NestedSpan {
+	"#text"?: string;
+	span?: NestedSpan[];
+}
+
+/**
+ * The text of a timed span. Apple and AMLL both put the word straight inside the timed span, but a
+ * document that wraps it in a further untimed span is still readable, so the whole subtree counts.
+ */
+function collectSpanText(children: NestedSpan[] | undefined): string {
+	if (!children) return "";
+	let text = "";
+	for (const child of children) {
+		if (typeof child["#text"] === "string") text += child["#text"];
+		else if (child.span) text += collectSpanText(child.span);
+	}
+	return text;
+}
+
+function parseLyricPart(
+	paragraph: ParagraphElementOrBackground[],
 	beginTime: number,
-	parentIsBackground = false,
 ): { parts: LyricPart[]; text: string; isWordSynced: boolean } {
 	let text = "";
-	const parts: LyricPart[] = [];
+	let parts: LyricPart[] = [];
 	let isWordSynced = false;
 
-	for (const span of spans) {
-		const isBackground = parentIsBackground || span.role === "x-bg";
+	for (const element of paragraph) {
+		let isBackground = false;
+		let localP: SpanElement[] = [element];
 
-		if (span.children.length > 0) {
-			if (isBackground && !parentIsBackground) {
-				const sub = extractParts(span.children, beginTime, true);
-				text += sub.text;
-				parts.push(...sub.parts);
-				if (sub.isWordSynced) isWordSynced = true;
-			} else if (span.begin !== undefined && span.end !== undefined) {
-				const innerText = span.children.map((c) => c.text).join("") || span.text;
-				parts.push({
-					startTimeMs: span.begin,
-					durationMs: span.end - span.begin,
-					words: innerText,
-					isBackground: isBackground || undefined,
-				});
-				text += innerText;
-				isWordSynced = true;
-			} else {
-				const sub = extractParts(span.children, beginTime, isBackground);
-				text += sub.text;
-				parts.push(...sub.parts);
-				if (sub.isWordSynced) isWordSynced = true;
-			}
-		} else if (span.text) {
-			text += span.text;
-			if (span.begin !== undefined && span.end !== undefined) {
-				parts.push({
-					startTimeMs: span.begin,
-					durationMs: span.end - span.begin,
-					words: span.text,
-					isBackground: isBackground || undefined,
-				});
-				isWordSynced = true;
-			} else {
+		if (element[":@"]?.["@_role"] === "x-bg") {
+			// traverse one span in. This is a bg lyric
+			isBackground = true;
+			localP = element.span ?? [];
+		}
+
+		for (const subPart of localP) {
+			if (subPart["#text"]) {
+				text += subPart["#text"];
 				const lastPart = parts[parts.length - 1];
+
 				parts.push({
 					startTimeMs: lastPart ? lastPart.startTimeMs + lastPart.durationMs : beginTime,
 					durationMs: 0,
-					words: span.text,
-					isBackground: isBackground || undefined,
+					words: subPart["#text"],
+					isBackground,
 				});
+			} else if (subPart.span) {
+				const spanText = collectSpanText(subPart.span);
+				if (!spanText) continue;
+
+				const startTimeMs = parseTime(subPart[":@"]?.["@_begin"]);
+				const endTimeMs = parseTime(subPart[":@"]?.["@_end"]);
+				const explicit = subPart[":@"]?.["@_explicit"] === "true" || subPart[":@"]?.["@_obscene"] === "true";
+
+				parts.push({
+					startTimeMs,
+					durationMs: endTimeMs - startTimeMs,
+					isBackground,
+					words: spanText,
+					explicit,
+				});
+				text += spanText;
+
+				isWordSynced = true;
 			}
 		}
 	}
 
 	if (!isWordSynced) {
-		return { parts: [], text, isWordSynced: false };
+		parts = [];
 	}
 
 	return { parts, text, isWordSynced };
 }
 
-function parseTTMLContent(
-	xml: string,
-	options: { instrumentalGapMs?: number } = {},
-): { lyrics: Lyric[]; isWordSynced: boolean; language?: string } {
-	const cleanedXml = xml.replace(/\\"/g, '"');
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(cleanedXml, "text/xml");
+// -- AMLL TTML Namespace Recovery --------------------------------------------
+// Some exporters (AMLL, etc.) use prefixes without declaring them; inject synthetic xmlns to keep parsers happy.
 
-	const ttEl = doc.querySelector("tt");
-	const lang = (ttEl ? getAttr(ttEl, "lang") : null) ?? undefined;
+const ELEMENT_PREFIX_REGEX = /<\/?([A-Za-z][\w.-]*):/g;
+const ATTRIBUTE_PREFIX_REGEX = /\s([A-Za-z][\w.-]*):[\w.-]+\s*=/g;
+const DECLARED_PREFIX_REGEX = /xmlns:([A-Za-z][\w.-]*)\s*=/g;
+const ROOT_TT_TAG_REGEX = /<tt\b[^>]*>/;
 
-	const body = doc.querySelector("body");
-	if (!body) return { lyrics: [], isWordSynced: false, language: lang };
+function declareMissingNamespaces(content: string): string {
+	const rootMatch = content.match(ROOT_TT_TAG_REGEX);
+	if (!rootMatch) return content;
 
-	const bodyDurAttr = body.getAttribute("dur");
-	const songDurationMs = bodyDurAttr ? parseTime(bodyDurAttr) : 0;
-
-	const pElements = body.querySelectorAll("p");
-	const lyrics = new Map<string, Lyric>();
-	let isWordSynced = false;
-
-	// -- Agent mapping --
-	const agentMapping = new Map<string, string>();
-	const agentEls = [
-		...doc.querySelectorAll("agent"),
-		...doc.getElementsByTagNameNS("http://www.w3.org/ns/ttml#metadata", "agent"),
-	];
-	let voiceIndex = 0;
-	for (const agentEl of agentEls) {
-		const id = getAttr(agentEl, "id");
-		const type = getAttr(agentEl, "type");
-		if (!id) continue;
-		if (agentMapping.has(id)) continue;
-		if (type === "person" || type === "character") {
-			voiceIndex++;
-			agentMapping.set(id, `v${voiceIndex}`);
-		} else {
-			agentMapping.set(id, "v1000");
-		}
+	const rootTag = rootMatch[0];
+	const declared = new Set<string>(["xml", "xmlns"]);
+	for (const match of rootTag.matchAll(DECLARED_PREFIX_REGEX)) {
+		declared.add(match[1]);
 	}
 
-	for (const p of pElements) {
-		const beginTimeMs = parseTime(getAttr(p, "begin") ?? undefined);
-		const endTimeMs = parseTime(getAttr(p, "end") ?? undefined);
-		const key = getAttr(p, "key") ?? String(lyrics.size);
-		const rawAgent = getAttr(p, "agent") ?? undefined;
+	const used = new Set<string>();
+	for (const match of content.matchAll(ELEMENT_PREFIX_REGEX)) {
+		used.add(match[1]);
+	}
+	for (const match of content.matchAll(ATTRIBUTE_PREFIX_REGEX)) {
+		used.add(match[1]);
+	}
+
+	const missing = [...used].filter((prefix) => !declared.has(prefix));
+	if (missing.length === 0) return content;
+
+	const additions = missing.map((prefix) => ` xmlns:${prefix}="urn:braccato:unbound:${prefix}"`).join("");
+	const patchedRootTag = rootTag.replace(/>$/, `${additions}>`);
+	return content.replace(rootTag, patchedRootTag);
+}
+
+// -- Parser --------------------------------------------
+
+const PARSER_OPTIONS: X2jOptions = {
+	ignoreAttributes: false,
+	attributeNamePrefix: "@_",
+	attributesGroupName: false,
+	textNodeName: "#text",
+	trimValues: false,
+	removeNSPrefix: true,
+	preserveOrder: true,
+	allowBooleanAttributes: true,
+	parseAttributeValue: false,
+	parseTagValue: false,
+};
+
+export interface ParseTTMLOptions {
+	/** Silence longer than this becomes an instrumental line. Defaults to 5000. */
+	instrumentalGapMs?: number;
+	/** Used for the outro instrumental when the document's `<body>` carries no `dur`. */
+	songDurationMs?: number;
+}
+
+export interface ParsedTTML {
+	lyrics: Lyric[];
+	isWordSynced: boolean;
+	language?: string;
+}
+
+/**
+ * Find the `<metadata>` child that holds `key`, either directly or nested one container deep, and
+ * return the whole element so both its own attributes and its children are reachable.
+ */
+function findInMetadata(
+	metadataArray: MetadataElement[],
+	key: "translations" | "transliterations",
+): MetadataElement | null {
+	const direct = metadataArray.find((e) => key in e);
+	if (direct?.[key]) return direct;
+
+	for (const element of metadataArray) {
+		for (const value of Object.values(element)) {
+			if (Array.isArray(value)) {
+				const nested = value.find((e): e is MetadataElement => typeof e === "object" && e !== null && key in e);
+				if (nested?.[key]) return nested;
+			}
+		}
+	}
+	return null;
+}
+
+export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): ParsedTTML {
+	const parser = new XMLParser(PARSER_OPTIONS);
+
+	// A TTML document that arrived inside a JSON string keeps its escaped quotes.
+	const cleanedXml = xml.replace(/\\"/g, '"');
+	const rawObj = parser.parse(declareMissingNamespaces(cleanedXml)) as TtmlRoot;
+
+	const ttContainer = Array.isArray(rawObj) ? rawObj.find((e) => "tt" in e) : undefined;
+	const tt = ttContainer?.tt;
+	if (!tt) return { lyrics: [], isWordSynced: false };
+
+	const ttHead = tt.find((e) => e.head)?.head;
+	const ttBodyContainer = tt.find((e) => e.body);
+	const ttBody = ttBodyContainer?.body;
+	const ttMeta = ttBodyContainer?.[":@"];
+
+	const language = ttContainer?.[":@"]?.["@_lang"] || ttMeta?.["@_lang"];
+
+	if (!ttBody) return { lyrics: [], isWordSynced: false, language };
+
+	const lyrics = new Map<string, Lyric>();
+	const lyricIds: Record<string, string[]> = {};
+
+	const metadataElements = ttHead?.find((e) => "metadata" in e)?.metadata ?? [];
+	const agentMapping = extractAgentMapping(metadataElements);
+
+	const lines = ttBody.flatMap((e) => e.div ?? []).filter((e) => e != null && "p" in e);
+
+	const hasTimingData = lines.length > 0 && lines[0][":@"] !== undefined;
+	if (!hasTimingData) {
+		return { lyrics: [], isWordSynced: false, language };
+	}
+
+	let isWordSynced = false;
+
+	for (const line of lines) {
+		const meta = line[":@"];
+		if (!meta?.["@_begin"]) continue;
+
+		const beginTimeMs = parseTime(meta["@_begin"]);
+		const endTimeMs = parseTime(meta["@_end"]);
+
+		const partParse = parseLyricPart(line.p, beginTimeMs);
+		if (partParse.isWordSynced) isWordSynced = true;
+
+		const rawAgent = meta["@_agent"];
 		const normalizedAgent = rawAgent ? (agentMapping.get(rawAgent) ?? rawAgent) : undefined;
 
-		const spans = Array.from(p.childNodes)
-			.filter((n) => n.nodeType === 1 || n.nodeType === 3)
-			.map((n) =>
-				n.nodeType === 1 ? domToSpan(n as Element) : { text: n.textContent ?? "", children: [] as ParsedSpan[] },
-			) as ParsedSpan[];
+		// A key repeated across lines (a chorus, say) has to stay one entry per line, so each occurrence
+		// gets a suffixed id and the key keeps its list of them for translations to fan back out over.
+		const rawKey = meta["@_key"];
+		let id: string;
+		if (rawKey) {
+			const seen = lyricIds[rawKey];
+			if (seen) seen.push(`${rawKey}_${seen.length + 1}`);
+			else lyricIds[rawKey] = [`${rawKey}_1`];
+			const ids = lyricIds[rawKey];
+			id = ids[ids.length - 1];
+		} else {
+			id = String(lyrics.size);
+		}
 
-		const parsed = extractParts(spans, beginTimeMs);
-		if (parsed.isWordSynced) isWordSynced = true;
-
-		lyrics.set(key, {
+		lyrics.set(id, {
 			agent: normalizedAgent,
 			durationMs: endTimeMs - beginTimeMs,
-			parts: parsed.parts,
+			parts: partParse.parts,
 			startTimeMs: beginTimeMs,
-			words: parsed.text,
-			key,
+			words: partParse.text,
+			key: rawKey ?? id,
 		});
 	}
 
-	// -- Translations --
-	const translationContainers = doc.querySelectorAll("translations");
-	for (const tc of translationContainers) {
-		const lang = tc.getAttribute("lang");
-		if (!lang) continue;
-		const translations = tc.querySelectorAll("translation");
-		for (const t of translations) {
-			const forKey = t.getAttribute("for");
-			const textEl = t.querySelector("text");
-			const text = textEl?.textContent;
-			if (forKey && text) {
-				const line = lyrics.get(forKey);
-				if (line) line.translation = { text, lang };
+	const forEachLineWithKey = (forKey: string, apply: (line: Lyric) => void) => {
+		const ids = lyricIds[forKey];
+		if (!ids) return;
+		for (const id of ids) {
+			const line = lyrics.get(id);
+			if (line) apply(line);
+		}
+	};
+
+	// -- Translations --------------------------------------------
+	// Two dialects reach this parser. Apple hangs the language off each `<translation>` and the line
+	// key off the `<text>` inside it; the dialect this package shipped first hangs the language off
+	// `<translations>` and the line key off `<translation>`. Both are read.
+	const translationsElement = findInMetadata(metadataElements, "translations");
+	if (translationsElement) {
+		const outerLang = translationsElement[":@"]?.["@_lang"];
+		const containers = (translationsElement.translations ?? []) as TranslationContainer[];
+
+		for (const container of containers) {
+			const lang = container[":@"]?.["@_lang"] ?? outerLang;
+			const containerFor = container[":@"]?.["@_for"];
+
+			for (const item of container.translation ?? []) {
+				const forKey = item[":@"]?.["@_for"] ?? containerFor;
+				const text = item.text?.[0]?.["#text"];
+				if (!lang || !text || !forKey) continue;
+
+				forEachLineWithKey(forKey, (line) => {
+					if (!line.translations) line.translations = {};
+					line.translations[lang] = text;
+					// `translation` predates `translations` in this package's published shape. The first
+					// language wins so a consumer reading it keeps getting one stable answer.
+					if (!line.translation) line.translation = { text, lang };
+				});
 			}
 		}
 	}
 
-	// -- Transliterations --
-	const translitContainers = doc.querySelectorAll("transliterations");
-	for (const tc of translitContainers) {
-		const translits = tc.querySelectorAll("transliteration");
-		for (const t of translits) {
-			const textEls = t.querySelectorAll("text");
-			for (const textEl of textEls) {
-				const forKey = textEl.getAttribute("for");
+	// -- Transliterations --------------------------------------------
+	const transliterationsElement = findInMetadata(metadataElements, "transliterations");
+	if (transliterationsElement) {
+		const containers = (transliterationsElement.transliterations ?? []) as TransliterationContainer[];
+
+		for (const container of containers) {
+			for (const item of container.transliteration ?? []) {
+				const forKey = item[":@"]?.["@_for"];
 				if (!forKey) continue;
-				const line = lyrics.get(forKey);
-				if (!line) continue;
 
-				const spans = Array.from(textEl.childNodes)
-					.filter((n) => n.nodeType === 1 || n.nodeType === 3)
-					.map((n) =>
-						n.nodeType === 1 ? domToSpan(n as Element) : { text: n.textContent ?? "", children: [] as ParsedSpan[] },
-					) as ParsedSpan[];
-
-				const parsed = extractParts(spans, line.startTimeMs);
-				line.romanization = parsed.text;
-				if (parsed.parts.length > 0) line.timedRomanization = parsed.parts;
+				forEachLineWithKey(forKey, (line) => {
+					const parseResult = parseLyricPart(item.text, line.startTimeMs);
+					line.romanization = parseResult.text;
+					if (parseResult.parts.length > 0) line.timedRomanization = parseResult.parts;
+				});
 			}
 		}
 	}
 
-	let lyricArray = Array.from(lyrics.values());
-	lyricArray = insertInstrumentalBreaks(lyricArray, songDurationMs, options.instrumentalGapMs);
+	const songDurationMs = ttMeta?.["@_dur"] ? parseTime(ttMeta["@_dur"]) : (options.songDurationMs ?? 0);
+	const lyricArray = insertInstrumentalBreaks(Array.from(lyrics.values()), songDurationMs, options.instrumentalGapMs);
 
-	return { lyrics: lyricArray, isWordSynced, language: lang };
+	return { lyrics: lyricArray, isWordSynced, language };
 }
 
 export const TTMLParser: LyricParser = {
 	detect(input: string): boolean {
 		return input.includes("<tt") && input.includes("</tt>");
 	},
+	// The duration is deliberately unused. `@braccato/provider-blyrics` calls this with one argument,
+	// and a version that honoured the parameter would hand that call site a 0 song duration.
 	parse(input: string, _duration = 0): Lyric[] {
-		const result = parseTTMLContent(input);
-		return result.lyrics;
+		return parseTTMLContent(input).lyrics;
 	},
 };
-
-export { parseTTMLContent };
