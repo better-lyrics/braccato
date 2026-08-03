@@ -1,15 +1,20 @@
 // Turning a lyrics file into the `Lyric[]` the element takes.
 //
 // @braccato/core parses nothing, on purpose: the array is the interface, and a package that also
-// owned five file formats would be two packages. @braccato/parsers is the other half, and this page
-// loads it the way a page with no build step has to, straight off a CDN at a pinned version. That is
-// also the honest demonstration, because pairing the two is what a consumer with a .lrc file
-// actually does.
+// owned five file formats would be two packages. @braccato/parsers is the other half, and pairing
+// the two is what a consumer with a .lrc file actually does, so the page does it too.
 //
-// The CDN is somebody else's server, so nothing here assumes it answered. `loadParsers` resolves to
-// null on failure and the import controls say so; every other control on the page is untouched.
+// It loads the copy built from this repository rather than a published one, because the two packages
+// now live side by side and a page demonstrating last month's parsers against this morning's
+// renderer would be demonstrating something nobody can install. The file is a bundle of its own,
+// built into demo/generated/ by `pnpm demo` and `pnpm site`: the published build leaves
+// `fast-xml-parser` as a bare specifier, which is right for a consumer with a bundler and
+// unresolvable in a page that has neither a bundler nor an import map.
+//
+// Nothing here assumes the file is there. `loadParsers` resolves to null on failure and the import
+// controls say so; every other control on the page is untouched.
 
-const PARSERS_URL = "https://cdn.jsdelivr.net/npm/@braccato/parsers@0.1.2/+esm";
+const PARSERS_URL = "./generated/parsers.js";
 
 // The package detects a format by returning the parser that claimed it, and a parser has no name to
 // print. So the names live here, keyed by the object identity the module hands back.
@@ -28,9 +33,9 @@ const ASSUMED_DURATION_MS = 300000;
 let loading = null;
 
 /**
- * The parsers module, or null if it could not be fetched. Loaded once and shared: a reader who drops
- * three files in a row waits for the network on the first one only, and a reader who is offline is
- * told once rather than after every drop.
+ * The parsers module, or null if it could not be loaded. Loaded once and shared: a reader who drops
+ * three files in a row pays for the fetch on the first one only, and a reader whose copy is missing
+ * is told once rather than after every drop.
  */
 export function loadParsers() {
   loading ??= import(PARSERS_URL)
@@ -43,11 +48,11 @@ export function loadParsers() {
 }
 
 /**
- * Where the import came from, for the page to show rather than bury. A version somebody can read is
- * a version somebody can pin.
+ * What the page names the other half as, for a reader to install rather than guess at. No version:
+ * this is built from source beside the renderer, so a number here would be a claim about a release
+ * the page is not running.
  */
-export const PARSERS_SPECIFIER = "@braccato/parsers@0.1.2";
-export const PARSERS_HREF = PARSERS_URL;
+export const PARSERS_SPECIFIER = "@braccato/parsers";
 
 /**
  * The lines in `text`, and the format they were recognised as. `durationMs` is what an LRC file

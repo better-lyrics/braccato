@@ -831,7 +831,7 @@ function renderReference() {
   document.getElementById("package-version").textContent = PACKAGE.version;
   document.getElementById("npm-link").href = PACKAGE.npmHref;
   document.getElementById("repo-link").href = PACKAGE.repoHref;
-  parsersNote.textContent = `Parsing is ${PARSERS_SPECIFIER}, fetched from jsDelivr when the first file arrives.`;
+  parsersNote.textContent = `Parsing is ${PARSERS_SPECIFIER}, loaded when the first file arrives.`;
 
   renderTerms(
     document.getElementById("properties-list"),

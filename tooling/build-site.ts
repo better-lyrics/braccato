@@ -32,6 +32,13 @@ const REWRITES: [string, string][] = [
 
 const REWRITTEN_EXTENSIONS = [".css", ".html", ".js"];
 
+// Where the build writes its own output: the synthesized audio and the parsers bundle. Scanned for
+// nothing, because a bundle is not page source. Its relative-looking strings are whatever its
+// dependencies happened to write, and the two the parsers bundle carries are JSDoc `@type` imports
+// inside comments a minifier left behind. Nothing in here is a path the page asks a server for: the
+// bundle is built with no externals, so every module it needs is already inside it.
+const GENERATED_DIR = "generated";
+
 // -- Reference checking --------------------------------------------
 
 // Every local path the browser will ask for, by the three syntaxes this page uses to write one.
@@ -74,6 +81,8 @@ function checkReferences(): number {
 
   for (const path of walk(outDir).filter(name => REWRITTEN_EXTENSIONS.some(ext => name.endsWith(ext)))) {
     const where = relative(outDir, path);
+    if (where.startsWith(`${GENERATED_DIR}${sep}`)) continue;
+
     for (const reference of referencesIn(readFileSync(path, "utf8"), path)) {
       if (EXTERNAL_SCHEME.test(reference)) continue;
       checked++;
@@ -99,7 +108,7 @@ function checkReferences(): number {
   for (const song of SONGS) {
     checked++;
     try {
-      statSync(join(outDir, "generated", `${song.id}.wav`));
+      statSync(join(outDir, GENERATED_DIR, `${song.id}.wav`));
     } catch {
       failures.push(`generated/${song.id}.wav is missing from the output. Run the audio generator first.`);
     }
