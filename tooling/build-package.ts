@@ -1,4 +1,4 @@
-// Emits the npm artifact for src/renderer/.
+// Emits the npm artifact for packages/core/.
 //
 // The renderer imports nothing outside its own directory, so there is nothing to bundle and no
 // bundler here: tsc produces both the JavaScript and the types. The one thing it cannot do is write
@@ -14,8 +14,9 @@ import { checkApiDocs } from "./check-api-docs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
-const outDir = join(root, "dist", "package");
-const rendererDir = join(root, "src", "renderer");
+const packageDir = join(root, "packages", "core");
+const outDir = join(packageDir, "dist", "package");
+const rendererDir = join(packageDir, "src");
 
 // The package's own line, not the extension's. Breaking against @braccato/core 0.1.x: light DOM
 // instead of shadow DOM, seconds instead of milliseconds, and three attributes that are now theme
@@ -101,8 +102,8 @@ for (const name of stylesheets) {
 // README.md is the npm package page and is written for a consumer, so it is the one document that
 // travels with the artifact. Everything a contributor to this repository needs instead lives in the
 // module's own file headers, which the emit carries along with the code they annotate.
-cpSync(join(rendererDir, "README.md"), join(outDir, "README.md"));
-cpSync(join(rendererDir, "LICENSE"), join(outDir, "LICENSE"));
+cpSync(join(packageDir, "README.md"), join(outDir, "README.md"));
+cpSync(join(packageDir, "LICENSE"), join(outDir, "LICENSE"));
 
 writeFileSync(
   join(outDir, "package.json"),
@@ -113,17 +114,20 @@ writeFileSync(
       description: "Synchronized lyrics renderer with word-by-word animations",
       type: "module",
       license: "MIT",
-      // The sources live here now rather than in braccato, whose packages/core this replaces.
+      // The sources live here now rather than in the better-lyrics extension they were carved out of.
       repository: {
         type: "git",
-        url: "git+https://github.com/better-lyrics/better-lyrics.git",
-        directory: "src/renderer",
+        url: "git+https://github.com/better-lyrics/braccato.git",
+        directory: "packages/core",
       },
       homepage: "https://braccato.boidu.dev",
       keywords: ["lyrics", "sync", "web-component", "music", "karaoke", "ttml"],
       // Only the element has one, and naming it lets a bundler drop the rest of the package from a
       // build that never reaches it.
       sideEffects: ["./element.js"],
+      // The only one, and types-only: nothing it declares survives compilation, so an installed
+      // consumer's bundle is the same size with it as without.
+      dependencies: { "@braccato/types": "^1.0.0" },
       exports: EXPORTS,
       // A scoped package publishes as private without this, and npm rejects that with E402.
       publishConfig: { access: "public" },
@@ -141,5 +145,5 @@ writeFileSync(
 checkApiDocs(outDir);
 
 console.log(
-  `Emitted @braccato/core ${VERSION} to dist/package: ${emitted.length} files, ${stylesheets.length} stylesheets`
+  `Emitted @braccato/core ${VERSION} to packages/core/dist/package: ${emitted.length} files, ${stylesheets.length} stylesheets`
 );

@@ -45,8 +45,7 @@ import type { Node, SourceFile } from "typescript";
 // -- Boundary rules --------------------------------------------
 
 const RENDERER_DIR = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(RENDERER_DIR, "..", "..");
-const SOURCE_ROOT = resolve(REPO_ROOT, "src");
+const REPO_ROOT = resolve(RENDERER_DIR, "..", "..", "..");
 const STYLES_DIR = resolve(RENDERER_DIR, "styles");
 
 const EXTENSION_IMPORT_PREFIXES = ["@core/", "@modules/", "@constants", "@utils", "@options", "@/"];
@@ -84,21 +83,26 @@ const MODULE_FILE_EXTENSIONS = [".ts", ".js"];
 // true after the lift. The module's shipping code keeps no runtime dependencies at all.
 const SELF_CHECK_PACKAGES = ["typescript"];
 
+// The one package the shipping code may name, and only in a type-only import. `@braccato/types`
+// declares the lyric shapes this package and `@braccato/parsers` hand each other, and a type-only
+// import is erased at compile time, so it contributes nothing to a bundle. A value import of the
+// same package is a runtime dependency and is still reported.
+const TYPE_ONLY_PACKAGES = ["@braccato/types"];
+
 // Concatenated so this file does not match its own raw text scan.
 const EXTENSION_GLOBAL = "chrome" + ".";
 
 // The DOM the module builds and the CSS that styles it are one artifact, so the stylesheets under
-// styles/ answer to the same boundary as the code. What stayed in public/css/blyrics/ is the CSS
-// that styles the host rather than the lyrics, and the `@import` list in index.css there is where
-// the two halves are stitched back together: both injection sites load that one file, so a
-// stylesheet added or renamed on either side is a change to it.
+// styles/ answer to the same boundary as the code. What stayed in the better-lyrics extension is
+// the CSS that styles the host rather than the lyrics, and the `@import` list there is where the two
+// halves are stitched back together: both injection sites load that one file, so a stylesheet added
+// or renamed on either side is a change to it.
 //
 // Below are the names YouTube Music's own markup goes by, and the attributes the extension sets on
 // that markup: a rule that reaches for one of them is styling the page around the lyrics, which is
 // the extension's business, not this module's.
-// Drawn from public/css/ytmusic/, which is where the extension does that styling, so the list is as
-// wide as the surface the extension is known to reach for. Lower case, because the scan lower cases
-// what it reads.
+// Drawn from where the extension does that styling, so the list is as wide as the surface the
+// extension is known to reach for. Lower case, because the scan lower cases what it reads.
 const HOST_SELECTORS = [
   // Element names. `ytmusic` covers the page's --ytmusic-* custom properties as well.
   "ytmusic",
@@ -147,6 +151,8 @@ interface ModuleReference {
   specifier: string | null;
   line: number;
   form: string;
+  /** Whether the whole declaration is type only, and so erased before anything is bundled. */
+  typeOnly: boolean;
 }
 
 function parseSource(absolutePath: string, source: string): SourceFile {
@@ -159,15 +165,16 @@ function parseSource(absolutePath: string, source: string): SourceFile {
 function extractModuleReferences(sourceFile: SourceFile): ModuleReference[] {
   const references: ModuleReference[] = [];
 
-  const record = (node: Node, specifier: string | null, form: string): void => {
+  const record = (node: Node, specifier: string | null, form: string, typeOnly = false): void => {
     const { line } = getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-    references.push({ specifier, line: line + 1, form });
+    references.push({ specifier, line: line + 1, form, typeOnly });
   };
 
   const visit = (node: Node): void => {
     if ((isImportDeclaration(node) || isExportDeclaration(node)) && node.moduleSpecifier) {
       if (isStringLiteral(node.moduleSpecifier)) {
-        record(node, node.moduleSpecifier.text, "import");
+        const typeOnly = isImportDeclaration(node) ? node.importClause?.isTypeOnly === true : node.isTypeOnly;
+        record(node, node.moduleSpecifier.text, "import", typeOnly);
       }
     } else if (isImportEqualsDeclaration(node) && isExternalModuleReference(node.moduleReference)) {
       const { expression } = node.moduleReference;
@@ -208,7 +215,7 @@ function collectViolations(displayPath: string, absolutePath: string, source: st
     violations.push({ file: displayPath, line, rule, detail });
   };
 
-  for (const { specifier, line, form } of extractModuleReferences(sourceFile)) {
+  for (const { specifier, line, form, typeOnly } of extractModuleReferences(sourceFile)) {
     if (specifier === null) {
       report(line, "no-computed-imports", `${form} has no literal specifier, so the boundary cannot be checked`);
       continue;
@@ -246,6 +253,10 @@ function collectViolations(displayPath: string, absolutePath: string, source: st
     }
 
     if (isSelfCheck && SELF_CHECK_PACKAGES.includes(specifier)) {
+      continue;
+    }
+
+    if (typeOnly && TYPE_ONLY_PACKAGES.includes(specifier)) {
       continue;
     }
 
@@ -371,7 +382,7 @@ function collectStylesheetViolations(displayPath: string, source: string): Bound
           file: displayPath,
           line: index + 1,
           rule: "no-host-selectors",
-          detail: `names "${selector}", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
+          detail: `names "${selector}", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
         });
       }
     });
@@ -529,7 +540,20 @@ assert.deepEqual(
   "Given a self-check file, When it imports a node builtin or typescript, Then the import is allowed"
 );
 
-const OUTSIDE_FILE = join(SOURCE_ROOT, "modules", "ui", "fixture.ts");
+assert.deepEqual(
+  collectViolations(
+    "fixture.ts",
+    NESTED_FILE,
+    [`import type { Lyric } from "@braccato/types";`, `import { toMs } from "@braccato/types";`].join("\n")
+  ).map(violation => `${violation.line} ${violation.rule}`),
+  ["2 no-runtime-dependencies"],
+  "Given the shared type package, When it is imported for a type and then for a value, Then only the value import is reported"
+);
+
+// A file outside the module, standing in for a consumer reaching into it. Nothing is read off disk,
+// but where it sits is what the relative specifiers below are spelled against, so the two move
+// together: in the extension it is a file under src/, and here it is a file in a sibling package.
+const OUTSIDE_FILE = join(REPO_ROOT, "packages", "consumer", "src", "fixture.ts");
 
 assert.deepEqual(
   collectEntryPointViolations(
@@ -545,11 +569,11 @@ assert.deepEqual(
       `import "@renderer/element.js";`,
       // The same four routes in again, spelled relatively. The alias is a convenience, not a gate:
       // a rule that only reads it is one a relative path walks straight past.
-      `import { relayout } from "../../renderer/engine";`,
-      `import { setLyrics } from "../../renderer/view.js";`,
-      `const alsoLazy = await import("../../renderer/inject");`,
-      `import "../../renderer/element";`,
-      `import { CUSTOM_THEME_STYLE_ID } from "../../renderer/constants";`,
+      `import { relayout } from "../../core/src/engine";`,
+      `import { setLyrics } from "../../core/src/view.js";`,
+      `const alsoLazy = await import("../../core/src/inject");`,
+      `import "../../core/src/element";`,
+      `import { CUSTOM_THEME_STYLE_ID } from "../../core/src/constants";`,
       `import { measure } from "../layout/measure";`,
     ].join("\n")
   ).map(violation => `${violation.line} ${violation.rule}`),
@@ -604,15 +628,15 @@ assert.deepEqual(
     violation => `${violation.line} ${violation.detail}`
   ),
   [
-    `1 names "ytmusic", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `1 names "player-fullscreened", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `2 names "#tab-renderer", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `3 names "#layout", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `3 names "blyrics-dfs", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `4 names "#side-panel", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `5 names "slot", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `6 names "#player", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
-    `6 names "is-mweb-modernization-enabled", which belongs to the page around the lyrics; style it from public/css/blyrics/ instead`,
+    `1 names "ytmusic", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `1 names "player-fullscreened", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `2 names "#tab-renderer", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `3 names "#layout", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `3 names "blyrics-dfs", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `4 names "#side-panel", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `5 names "slot", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `6 names "#player", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
+    `6 names "is-mweb-modernization-enabled", which belongs to the page around the lyrics; style it from the better-lyrics extension instead`,
   ],
   "Given host names spelled in upper case, behind identifier escapes, or reached for past the six the check started with, When they are scanned, Then each one is still named"
 );
@@ -729,29 +753,16 @@ assert.equal(
   `The renderer module's stylesheets break the boundary in ${stylesheetViolations.length} place(s):\n${stylesheetViolations.join("\n")}\n`
 );
 
-// -- Extension scan --------------------------------------------
+// -- Consumer scan --------------------------------------------
 
-const extensionFiles = readdirSync(SOURCE_ROOT, { recursive: true, encoding: "utf8" })
-  .filter(entry => entry.endsWith(".ts"))
-  .map(entry => join(SOURCE_ROOT, entry))
-  .filter(file => !file.startsWith(RENDERER_DIR + sep))
-  .sort();
-
-assert.ok(
-  extensionFiles.length > 0,
-  "Given the extension outside the module, When it is walked, Then it holds at least one file"
-);
-
-const entryPointViolations = extensionFiles
-  .flatMap(file => collectEntryPointViolations(relative(REPO_ROOT, file), file, readFileSync(file, "utf8")))
-  .map(violation => `${violation.file}:${violation.line} [${violation.rule}] ${violation.detail}`);
-
-assert.equal(
-  entryPointViolations.length,
-  0,
-  `${entryPointViolations.length} import(s) reach past the renderer's entry point:\n${entryPointViolations.join("\n")}\n`
-);
+// There is no consumer scan here, because nothing in this repository imports the module: the
+// entry point rule is enforced against a live consumer in the better-lyrics repository, which holds
+// its own copy of this file and walks its `src/` with it. That has to stay enforced there when the
+// extension switches to consuming the published package, because that is the only place a file can
+// reach past `@braccato/core`'s entry points at all. What stays here is the rule itself, tested
+// above against fixtures, and `RENDERER_ENTRY_POINTS`, which the published surface check compares
+// against the package's exports map.
 
 console.log(
-  `Renderer boundary self-check passed across ${rendererFiles.length} module file(s), ${rendererStylesheets.length} module stylesheet(s) and ${extensionFiles.length} extension file(s)`
+  `Renderer boundary self-check passed across ${rendererFiles.length} module file(s) and ${rendererStylesheets.length} module stylesheet(s)`
 );

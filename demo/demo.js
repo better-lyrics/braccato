@@ -31,7 +31,7 @@ import { THEMES } from "./themes.js";
 // Where the emitted package sits beside this page. It is the only line on the page that names that
 // path, so `npm run site` rewrites this one string when it copies the page out to a directory a
 // static host can serve, and the imports and the failure message both follow it.
-const PACKAGE_BASE = "../dist/package";
+const PACKAGE_BASE = "../packages/core/dist/package";
 
 const TAG_NAME = "braccato-lyrics";
 const LOG_LIMIT = 24;

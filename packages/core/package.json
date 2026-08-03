@@ -1,0 +1,17 @@
+{
+  "name": "@braccato/core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Synchronized lyrics renderer with word-by-word animations",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsx ../../tooling/build-package.ts",
+    "typecheck": "tsc --noEmit",
+    "selfcheck": "tsx ../../tooling/run-selfchecks.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@braccato/types": "workspace:^"
+  }
+}

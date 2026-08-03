@@ -1,7 +1,7 @@
-// Serves the repository root over localhost so demo/index.html can load dist/package with a relative
-// specifier. ES modules are blocked over file://, and the whole point of the demo is that the emitted
-// artifact loads from a bare <script type="module"> with no bundler in front of it, so the one thing
-// standing between the two has to be an ordinary static file server.
+// Serves the repository root over localhost so demo/index.html can load packages/core/dist/package
+// with a relative specifier. ES modules are blocked over file://, and the whole point of the demo is
+// that the emitted artifact loads from a bare <script type="module"> with no bundler in front of it,
+// so the one thing standing between the two has to be an ordinary static file server.
 //
 // Rooted at the repository rather than at demo/, because the relative path from the page to the
 // package is what a consumer's own node_modules would look like, and rewriting it for the server

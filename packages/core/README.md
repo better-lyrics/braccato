@@ -1,8 +1,8 @@
 # @braccato/core
 
 A custom element that renders synchronized lyrics and lights each syllable up as it is sung. No
-dependencies. The lines go into light DOM rather than a shadow root, so the CSS already on your page
-reaches them.
+runtime dependencies, only a types-only one on `@braccato/types`. The lines go into light DOM rather
+than a shadow root, so the CSS already on your page reaches them.
 
 Extracted from the [Better Lyrics](https://better-lyrics.boidu.dev) rendering engine, which is still
 where it runs.
@@ -289,9 +289,9 @@ blank view with a reason is worse than a themed one with a warning.
 
 Full documentation is at [braccato.boidu.dev](https://braccato.boidu.dev).
 
-The demo page lives at [`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo) in
-the repository and runs against the emitted package, with a control for most of what is above. Clone
-the repository and run `npm run demo`, then open `http://127.0.0.1:4319/demo/`.
+The demo page lives at [`demo/`](https://github.com/better-lyrics/braccato/tree/master/demo) in the
+repository and runs against the emitted package, with a control for most of what is above. Clone the
+repository and run `pnpm demo`, then open `http://127.0.0.1:4319/demo/`.
 
 ## Licence
 

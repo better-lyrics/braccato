@@ -34,10 +34,32 @@
 	"overrides": [
 		{
 			"include": ["packages/core/**", "demo/**", "tooling/**"],
+			"organizeImports": { "enabled": false },
+			"linter": {
+				"rules": {
+					"recommended": false,
+					"correctness": { "noUnusedVariables": "error" },
+					"style": { "useConst": "off" }
+				}
+			},
 			"formatter": {
 				"indentStyle": "space",
 				"indentWidth": 2
+			},
+			"javascript": {
+				"formatter": {
+					"trailingCommas": "es5",
+					"arrowParentheses": "asNeeded"
+				}
 			}
+		},
+		{
+			"include": ["packages/core/**/*.css", "demo/**/*.css"],
+			"formatter": { "enabled": false }
+		},
+		{
+			"include": ["tooling/tsconfig.package.json"],
+			"json": { "parser": { "allowComments": true } }
 		}
 	]
 }

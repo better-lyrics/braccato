@@ -1,15 +1,16 @@
 import { spawnSync } from "child_process";
 import { readdirSync } from "fs";
-import { dirname, join, relative } from "path";
+import { dirname, join, relative, sep } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
-const srcDir = join(repoRoot, "src");
+const packagesDir = join(repoRoot, "packages");
 
-const files = readdirSync(srcDir, { recursive: true, encoding: "utf8" })
+const files = readdirSync(packagesDir, { recursive: true, encoding: "utf8" })
   .filter(entry => entry.endsWith(".selfcheck.ts"))
-  .map(entry => join(srcDir, entry))
+  .filter(entry => !entry.split(sep).some(segment => segment === "node_modules" || segment === "dist"))
+  .map(entry => join(packagesDir, entry))
   .sort();
 
 if (files.length === 0) {
