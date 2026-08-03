@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LRCParser, lrcFixers } from "../lrc.js";
+import { LRCParser, lrcFixers, parseLRC } from "../lrc.js";
 import type { Lyric } from "../types.js";
 
 describe("LRCParser", () => {
@@ -147,6 +147,63 @@ describe("LRCParser", () => {
 
 			// After fudging, durations should be recalculated
 			expect(lyrics[0].parts![0].durationMs).toBeGreaterThan(10);
+		});
+	});
+
+	describe("Musixmatch paired timestamps", () => {
+		// Musixmatch closes every word with a second timestamp, so the whitespace between words lands
+		// in its own fragment. Trimming those fragments the way canonical LRC needs would swallow the
+		// space and run the words together.
+		const paired = "[00:10.00]<00:10.00>Hello<00:10.40> <00:10.44>world<00:10.90> ";
+
+		it("keeps the space between two paired words", () => {
+			const result = LRCParser.parse(paired, 20000);
+
+			expect(result).toHaveLength(1);
+			expect(result[0].words).toBe("Hello world");
+			// The trailing part is empty because the line is trimmed before the fragments are split.
+			expect(result[0].parts!.map((p) => p.words)).toEqual(["Hello", " ", "world", ""]);
+		});
+
+		it("keeps the separating spaces in canonical enhanced LRC too", () => {
+			const result = LRCParser.parse("[00:10.00]<00:10.00>Hello <00:10.50>world <00:11.00>today", 20000);
+
+			expect(result[0].words).toBe("Hello world today");
+			expect(result[0].parts!.map((p) => p.words)).toEqual(["Hello ", "world ", "today"]);
+		});
+	});
+
+	describe("parseLRC", () => {
+		// The extension applies `lrcFixers` to Musixmatch word-by-word lyrics only, so the raw parse
+		// has to be reachable on its own.
+		const paired = "[00:10.00]<00:10.00>Hello<00:10.40> <00:10.44>world<00:10.90> ";
+
+		it("returns the timings the document states, with no fixers applied", () => {
+			const result = parseLRC(paired, 20000);
+
+			expect(result[0].parts![0].durationMs).toBe(400);
+			expect(result[0].parts![1].startTimeMs).toBe(10400);
+			expect(result[0].parts![1].durationMs).toBe(40);
+		});
+
+		it("differs from LRCParser.parse, which runs the fixers", () => {
+			const fixed = LRCParser.parse(paired, 20000);
+
+			expect(fixed[0].parts![0].durationMs).toBe(440);
+			expect(fixed[0].parts![1].startTimeMs).toBe(10440);
+			expect(fixed[0].parts![1].durationMs).toBe(0);
+		});
+
+		it("applies an offset ID tag", () => {
+			const result = parseLRC("[offset:0.5]\n[00:10.00]Line with offset", 20000);
+
+			expect(result[0].startTimeMs).toBe(9500);
+		});
+
+		it("ignores an unparseable offset instead of shifting every line to NaN", () => {
+			const result = parseLRC("[offset:banana]\n[00:10.00]Line", 20000);
+
+			expect(result[0].startTimeMs).toBe(10000);
 		});
 	});
 });
