@@ -1,7 +1,7 @@
 {
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
-		"ignore": [".turbo/**", "**/dist/**"]
+		"ignore": [".turbo/**", "**/dist/**", ".claude/**"]
 	},
 	"organizeImports": { "enabled": true },
 	"linter": {
@@ -30,5 +30,14 @@
 			"quoteStyle": "double",
 			"semicolons": "always"
 		}
-	}
+	},
+	"overrides": [
+		{
+			"include": ["packages/core/**", "demo/**", "tooling/**"],
+			"formatter": {
+				"indentStyle": "space",
+				"indentWidth": 2
+			}
+		}
+	]
 }
