@@ -1,36 +1,17 @@
 // The renderer's own contract composes the rest of the module's, so this file reaches back into it.
 // Every one of those imports is type only, so nothing here is part of any bundle's dependency graph.
+import type { Lyric, LyricPart, LyricSyncType } from "@braccato/types";
 import type { AnimationTickStatus } from "./engine";
 import type { LineData } from "./inject";
 import type { SetLyricsOptions } from "./view";
 
 // -- Lyric data --------------------------------------------
 
-export interface LyricPart {
-  startTimeMs: number;
-  words: string;
-  durationMs: number;
-  isBackground?: boolean;
-  explicit?: boolean;
-}
-
-export interface Lyric {
-  startTimeMs: number;
-  words: string;
-  durationMs: number;
-  key?: string;
-  parts?: LyricPart[];
-  agent?: string;
-  translations?: { [lang: string]: string };
-  translation?: { text: string; lang: string }; // old property
-  romanization?: string;
-  timedRomanization?: LyricPart[];
-  isInstrumental?: boolean;
-}
-
-// Not SyncType: @constants already exports that name for provider sync quality
-// ("syllable" | "word" | "line" | "unsynced"), which is a different axis.
-export type LyricSyncType = "richsync" | "synced" | "none";
+// Declared in `@braccato/types`, which is the one owner of these shapes across the packages that
+// pass them to each other: `@braccato/parsers` produces them and this package renders them, so a
+// copy on each side is a copy that can drift. Re-exported here because this is the file the rest of
+// the module, and every consumer, has always read them from.
+export type { Lyric, LyricPart, LyricSyncType };
 
 // -- Ticking --------------------------------------------
 
