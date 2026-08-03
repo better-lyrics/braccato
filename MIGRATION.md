@@ -1,20 +1,24 @@
 # Migrating to `@braccato/core` 1.0.0
 
-`@braccato/core` 0.1.x was a Lit component published from this repository, at `packages/core`. That
-package is gone. Version 1.0.0 is the Better Lyrics rendering engine itself, published from
-[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics/tree/master/src/renderer),
-and it is not a drop-in replacement. This is the list of what changed and the edit you make for each.
+`@braccato/core` 0.1.x was a Lit component published from `packages/core` in this repository. That
+package is gone, and `packages/core` now holds something else: version 1.0.0 is the Better Lyrics
+rendering engine itself, moved here from `src/renderer/` in
+[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics). It is not a drop-in
+replacement. This is the list of what changed and the edit you make for each.
 
 The tag name is still `braccato-lyrics`, and `better-lyrics` is registered as an alias. `Lyric` and
-`LyricPart` still have the same shape, so lyrics you already parse still load.
+`LyricPart` still have the same shape, so lyrics you already parse still load. They are declared in
+`@braccato/types` now, which both packages depend on and re-export, so your imports do not move.
 
-**`@braccato/parsers`, `@braccato/rics` and `@braccato/provider-blyrics` are unchanged** and stay in
-this repository. Parsing moved *to* `@braccato/parsers`, not away from it.
+**`@braccato/rics` and `@braccato/provider-blyrics` are unchanged.** `@braccato/parsers` is not: it
+is `0.2.0`, with new TTML, LRC and QRC implementations taken from the same engine. Parsing moved *to*
+`@braccato/parsers`, not away from it. See [What changed in `@braccato/parsers`](#what-changed-in-braccatoparsers)
+before you upgrade both at once.
 
 ## Before you start
 
-1.0.0 is not on npm yet. `pnpm add @braccato/core@^1.0.0` will not resolve until the Better Lyrics
-repository publishes it. Until then, see [Developing before 1.0.0 is published](#developing-before-100-is-published).
+1.0.0 is not on npm yet. `pnpm add @braccato/core@^1.0.0` will not resolve until it is published.
+Until then, see [Developing before 1.0.0 is published](#developing-before-100-is-published).
 
 ## The short version
 
@@ -399,19 +403,50 @@ themes both dispatch `braccato:error` with `phase: "conflict"` and both report
 
 Two views handed the **same** theme are fine.
 
+## What changed in `@braccato/parsers`
+
+`0.2.0` replaces the TTML, LRC and QRC parsers with the implementations from the same engine 1.0.0
+came out of, so both halves of a pairing now read a file the same way. `SRTParser` and `PlainParser`
+are untouched, `detectParser` still tries TTML, LRC, SRT, QRC and then plain text, and every existing
+import resolves.
+
+**QRC is the one to check.** It now reads the `<QrcInfos>` envelope QQ Music actually returns. 0.1.x
+handled only a bare timestamped body, and it claimed the envelope anyway: a response carrying the
+whole body in one `LyricContent` attribute parsed to no lines at all, and a multi-line one lost its
+first line to the XML wrapped around it. If you were feeding QRC straight from QQ Music and unwrapping
+it yourself, you can stop. `parseQRC` also takes the song's title and artist so the opening lines that
+only echo them can be dropped, turns `Name:` prefixes into agents, and drops credit lines.
+
+**TTML is parsed with `fast-xml-parser` rather than the global `DOMParser`.** The package no longer
+needs an ambient DOM, so it runs in bare Node as well as a browser, and `fast-xml-parser` is a
+dependency you install with it. It is left external rather than bundled, so a consumer with a bundler
+ends up with one copy. The parser also reads `ttm:agent` vocalists, `ttm:role="x-bg"` background
+vocals, Apple's translations and transliterations, explicit flags and `itunes:key`, and recovers
+namespace prefixes a document uses without declaring.
+
+**LRC keeps the spacing between words** that Musixmatch word-by-word lyrics carry. `LRCParser.parse`
+still runs the timing fixers those lyrics need. `parseLRC` is published beside it for a source whose
+timings are already clean, and returns the document exactly as stated.
+
+The [package README](packages/parsers/README.md) covers the entry points each of these added.
+
 ## Developing before 1.0.0 is published
 
 `@braccato/core@1.0.0` is not on npm yet, so `pnpm add @braccato/core@^1.0.0` cannot resolve. Until
-it lands, build the artifact from a Better Lyrics checkout and symlink it into your project. Keep
-that a local step: a `file:` or `link:` dependency in a manifest outlives the reason for it.
+it lands, build the artifact from a checkout of this repository and symlink it into your project.
+Keep that a local step: a `file:` or `link:` dependency in a manifest outlives the reason for it.
 
 ```bash
-# In your better-lyrics checkout
-npm run package   # emits dist/package/
+# In your braccato checkout
+pnpm package   # emits packages/core/dist/package/
 
 # In your project. node_modules is not tracked, so this touches nothing committed.
-ln -sfn /path/to/better-lyrics/dist/package node_modules/@braccato/core
+ln -sfn /path/to/braccato/packages/core/dist/package node_modules/@braccato/core
 ```
+
+That directory is the whole package: `tooling/build-package.ts` writes the manifest along with the
+code, which is why the symlink points there and not at `packages/core`, whose own `package.json` is
+private and exists only to make the directory a workspace member.
 
 Remove the symlink and install normally once 1.0.0 is on the registry.
 
@@ -419,16 +454,13 @@ Do not reach for `pnpm link` for this. On pnpm 9.15.4 it leaves `package.json` a
 an `overrides:` entry and a `link:` specifier carrying an absolute path into `pnpm-lock.yaml`, and
 `pnpm unlink` reports "Nothing to unlink" and leaves both behind.
 
-None of this is needed to work on this repository. Nothing here consumes `@braccato/core` any more,
-now that `packages/core` and `playground` are both gone. `pnpm-lock.yaml` still describes the layout
-from before they were removed, and a plain `pnpm install` rewrites it.
+None of this is needed to work on this repository, where the demo page loads the emitted artifact
+over a relative path. `pnpm demo` builds it and serves it.
 
 ## Reference
 
-- The package's own [README](https://github.com/better-lyrics/better-lyrics/blob/master/src/renderer/README.md)
-  is the API documentation. It is the owner of that surface; this file only covers what changed.
-- [NOTES.md](https://github.com/better-lyrics/better-lyrics/blob/master/src/renderer/NOTES.md) is the
-  design record behind these decisions.
+- The package's own [README](packages/core/README.md) is the API documentation. It is the owner of
+  that surface; this file only covers what changed.
 - [braccato.boidu.dev](https://braccato.boidu.dev) is the demo and documentation page, built from
-  [`demo/`](https://github.com/better-lyrics/better-lyrics/tree/master/demo) in the same repository.
-  It is the place to try 1.0.0 against your own audio and lyrics files.
+  [`demo/`](demo) here. It is the place to try 1.0.0 against your own audio and lyrics files, and
+  `pnpm demo` runs the same page locally.
