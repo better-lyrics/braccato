@@ -1,6 +1,6 @@
 # @braccato/parsers
 
-Lyrics format parsers for TTML, LRC, SRT, QRC, and plain text. Used by [`@braccato/core`](https://braccato.boidu.dev) for automatic format detection.
+Lyrics format parsers for TTML, LRC, SRT, QRC, and plain text, with automatic format detection. Produces the `Lyric[]` array that [`@braccato/core`](https://www.npmjs.com/package/@braccato/core) renders.
 
 ## Install
 
