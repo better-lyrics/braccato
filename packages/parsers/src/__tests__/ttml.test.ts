@@ -199,6 +199,16 @@ describe("TTMLParser", () => {
 			expect(lines[1].romanization).toBe("sayounara");
 		});
 
+		it("returns an empty result for a document the XML parser rejects", () => {
+			// fast-xml-parser caps how deep a document may nest and throws past it. The throw used to
+			// escape, which every caller reads as "this parser does not throw" would not survive.
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="0s" end="5s">${"<span>".repeat(600)}Deep${"</span>".repeat(600)}</p></div></body></tt>`;
+
+			expect(() => parseTTMLContent(ttml)).not.toThrow();
+			expect(parseTTMLContent(ttml)).toEqual({ lyrics: [], isWordSynced: false });
+			expect(TTMLParser.parse(ttml)).toEqual([]);
+		});
+
 		it("handles empty body", () => {
 			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
   <head><metadata></metadata></head>

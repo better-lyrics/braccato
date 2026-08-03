@@ -104,6 +104,15 @@ describe("LRCParser", () => {
 [ar:Artist]`;
 			expect(LRCParser.parse(lrc, 0)).toEqual([]);
 		});
+
+		it("survives a line carrying more time tags than a call can take arguments", () => {
+			// Reducing the tags to a start and an end by spreading them into Math.min blew the stack at
+			// roughly 125,000 of them, which a dropped file reaches long before a real lyric does.
+			const lrc = `${"[00:00.00]".repeat(200000)}Hello`;
+
+			expect(() => LRCParser.parse(lrc, 10000)).not.toThrow();
+			expect(LRCParser.parse(lrc, 10000)[0].words).toBe("Hello");
+		});
 	});
 
 	describe("lrcFixers", () => {

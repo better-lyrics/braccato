@@ -246,7 +246,16 @@ export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): P
 
 	// A TTML document that arrived inside a JSON string keeps its escaped quotes.
 	const cleanedXml = xml.replace(/\\"/g, '"');
-	const rawObj = parser.parse(declareMissingNamespaces(cleanedXml)) as TtmlRoot;
+
+	// `parse` throws on a document it will not read at all, nesting past its own depth cap among
+	// them. The empty result is the only thing this function says about input it cannot use, so a
+	// throw says it the same way rather than reaching a caller that has no channel for it.
+	let rawObj: TtmlRoot;
+	try {
+		rawObj = parser.parse(declareMissingNamespaces(cleanedXml)) as TtmlRoot;
+	} catch {
+		return { lyrics: [], isWordSynced: false };
+	}
 
 	const ttContainer = Array.isArray(rawObj) ? rawObj.find((e) => "tt" in e) : undefined;
 	const tt = ttContainer?.tt;

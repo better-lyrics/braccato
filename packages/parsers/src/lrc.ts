@@ -53,12 +53,19 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 			continue;
 		}
 
-		const timeTags: number[] = [];
+		// Tracked as the tags are read rather than spread into Math.min afterwards, which a line with
+		// enough of them turns into a call with more arguments than the stack holds.
+		let lineStartTime = Number.POSITIVE_INFINITY;
+		let lineEndTime = Number.NEGATIVE_INFINITY;
+		let timeTagCount = 0;
 		for (const match of line.matchAll(TIME_TAG_REGEX)) {
-			timeTags.push(parseTime(match[1]));
+			const time = parseTime(match[1]);
+			if (time < lineStartTime) lineStartTime = time;
+			if (time > lineEndTime) lineEndTime = time;
+			timeTagCount++;
 		}
 
-		if (timeTags.length === 0) continue;
+		if (timeTagCount === 0) continue;
 
 		const lyricPart = line.replace(TIME_TAG_REGEX, "").trim();
 
@@ -95,12 +102,10 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 			}
 		});
 
-		const startTime = Math.min(...timeTags);
-		const endTime = Math.max(...timeTags);
-		const duration = endTime - startTime;
+		const duration = lineEndTime - lineStartTime;
 
 		result.push({
-			startTimeMs: startTime,
+			startTimeMs: lineStartTime,
 			words: plainText.trim(),
 			durationMs: duration,
 			parts: parts.length > 0 ? parts : undefined,
