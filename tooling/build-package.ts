@@ -15,29 +15,22 @@ import { checkApiDocs } from "./check-api-docs.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 const packageDir = join(root, "packages", "core");
-const outDir = join(packageDir, "dist", "package");
+const outDir = join(packageDir, "dist");
 const rendererDir = join(packageDir, "src");
 
-// The package's own line, not the extension's. Breaking against @braccato/core 0.1.x: light DOM
-// instead of shadow DOM, seconds instead of milliseconds, and three attributes that are now theme
-// settings read from CSS.
-const VERSION = "1.0.0";
+// The manifest is `packages/core/package.json`, hand written and published from where it sits like
+// every other package here. What this script owes it is the other half of the promise: every subpath
+// it names has to be a file this run emitted, checked below.
+interface PackageManifest {
+  version: string;
+  exports: Record<string, string | { types: string; import: string }>;
+}
 
-const entryPoint = (name: string) => ({ types: `./${name}.d.ts`, import: `./${name}.js` });
+const manifest: PackageManifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
 
-// `index` registers nothing and `element` registers two tag names on import, which is why the two
-// are entered separately. `boundary.selfcheck.ts` is what holds the four leaves beside them to
-// importing nothing, which is the whole reason they are published on their own.
-const EXPORTS = {
-  ".": entryPoint("index"),
-  "./element": entryPoint("element"),
-  "./constants": entryPoint("constants"),
-  "./text": entryPoint("text"),
-  "./themeSettings": entryPoint("themeSettings"),
-  "./util": entryPoint("util"),
-  "./styles/*.css": "./styles/*.css",
-  "./package.json": "./package.json",
-};
+// Where the exports map's targets sit relative to the manifest beside them, which is the one thing
+// the check below has to undo to compare them against what tsc wrote.
+const EMITTED_PREFIX = "./dist/";
 
 // -- Emit --------------------------------------------
 
@@ -79,16 +72,23 @@ for (const name of emitted) {
 
 // -- What the exports map promises --------------------------------------------
 
-for (const target of Object.values(EXPORTS)) {
+// A subpath whose target is a string is a file copied through rather than compiled, and the
+// stylesheet wildcard is the only one: it is answered by the copy below instead. Everything else is
+// an entry point, and an entry point the emit did not produce is a package that installs and then
+// fails to resolve, which nothing downstream of here would notice.
+for (const [subpath, target] of Object.entries(manifest.exports)) {
   if (typeof target === "string") continue;
   for (const file of [target.types, target.import]) {
-    if (!emitted.includes(file.slice("./".length))) {
+    if (!file.startsWith(EMITTED_PREFIX)) {
+      throw new Error(`"${subpath}" points at ${file}, which is outside what this emits`);
+    }
+    if (!emitted.includes(file.slice(EMITTED_PREFIX.length))) {
       throw new Error(`${file} is in the exports map but was not emitted`);
     }
   }
 }
 
-// -- Stylesheets, README, licence, manifest --------------------------------------------
+// -- Stylesheets, README, licence --------------------------------------------
 
 // Copied by whatever is there rather than by name, because the exports map publishes them under a
 // wildcard, so a sheet added under styles/ is published without touching this file.
@@ -99,51 +99,22 @@ for (const name of stylesheets) {
   cpSync(join(rendererDir, "styles", name), join(outDir, "styles", name));
 }
 
-// README.md is the npm package page and is written for a consumer, so it is the one document that
-// travels with the artifact. Everything a contributor to this repository needs instead lives in the
-// module's own file headers, which the emit carries along with the code they annotate.
+// README.md is the npm package page and is written for a consumer. It is the package root's, so npm
+// picks it up from there, and the copy here is what puts it beside the code it describes for anyone
+// reading the artifact rather than the registry. Everything a contributor to this repository needs
+// instead lives in the module's own file headers, which the emit carries along with the code they
+// annotate.
 cpSync(join(packageDir, "README.md"), join(outDir, "README.md"));
 cpSync(join(packageDir, "LICENSE"), join(outDir, "LICENSE"));
-
-writeFileSync(
-  join(outDir, "package.json"),
-  `${JSON.stringify(
-    {
-      name: "@braccato/core",
-      version: VERSION,
-      description: "Synchronized lyrics renderer with word-by-word animations",
-      type: "module",
-      license: "MIT",
-      // The sources live here now rather than in the better-lyrics extension they were carved out of.
-      repository: {
-        type: "git",
-        url: "git+https://github.com/better-lyrics/braccato.git",
-        directory: "packages/core",
-      },
-      homepage: "https://braccato.boidu.dev",
-      keywords: ["lyrics", "sync", "web-component", "music", "karaoke", "ttml"],
-      // Only the element has one, and naming it lets a bundler drop the rest of the package from a
-      // build that never reaches it.
-      sideEffects: ["./element.js"],
-      // The only one, and types-only: nothing it declares survives compilation, so an installed
-      // consumer's bundle is the same size with it as without.
-      dependencies: { "@braccato/types": "^1.0.0" },
-      exports: EXPORTS,
-      // A scoped package publishes as private without this, and npm rejects that with E402.
-      publishConfig: { access: "public" },
-    },
-    null,
-    2
-  )}\n`
-);
 
 // -- What the docs promise --------------------------------------------
 
 // Same shape as the exports check above, one consumer further out: the page in demo/ and the README
 // copied in beside this artifact both document the API by name, so the emit is the moment to find
-// out whether they still describe it.
-checkApiDocs(outDir);
+// out whether they still describe it. The version travels with them, because it is the manifest's
+// now rather than something this emit writes.
+checkApiDocs(outDir, manifest.version);
 
 console.log(
-  `Emitted @braccato/core ${VERSION} to packages/core/dist/package: ${emitted.length} files, ${stylesheets.length} stylesheets`
+  `Emitted @braccato/core ${manifest.version} to packages/core/dist: ${emitted.length} files, ${stylesheets.length} stylesheets`
 );

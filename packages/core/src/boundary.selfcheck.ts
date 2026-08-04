@@ -31,10 +31,7 @@ import {
   isImportEqualsDeclaration,
   isImportTypeNode,
   isLiteralTypeNode,
-  isObjectLiteralExpression,
-  isPropertyAssignment,
   isStringLiteral,
-  isVariableDeclaration,
   ScriptKind,
   ScriptTarget,
   SyntaxKind,
@@ -64,13 +61,12 @@ const SIDE_EFFECT_ENTRY_POINT = "@renderer/element";
 
 const RENDERER_ENTRY_POINTS = new Set(["@renderer/index", SIDE_EFFECT_ENTRY_POINT, ...RENDERER_LEAVES]);
 
-// The package build writes the same set out again as an exports map, and neither file can import
-// the other to share one list: importing this one runs every assertion in it, and importing that
-// one runs the build. So the two are compared instead, below. Without that, a subpath published
-// there and forgotten here would ship as a leaf with nothing ever asserting that it imports
-// nothing, which is the only thing making a leaf safe to publish.
-const PACKAGE_BUILD = join(REPO_ROOT, "tooling", "build-package.ts");
-const PACKAGE_EXPORTS_BINDING = "EXPORTS";
+// The manifest beside this directory writes the same set out again as an exports map, which is what
+// a consumer resolves through and what npm publishes. The two are compared below rather than shared,
+// because one is data and the other is the rules that data has to obey. Without that, a subpath
+// published there and forgotten here would ship as a leaf with nothing ever asserting that it
+// imports nothing, which is the only thing making a leaf safe to publish.
+const PACKAGE_MANIFEST = join(REPO_ROOT, "packages", "core", "package.json");
 
 // What a specifier may end in and still name the same module. `@renderer/element`,
 // `@renderer/element.js` and `../renderer/element` are one import as far as these rules go, so they
@@ -431,33 +427,15 @@ function collectCustomPropertyViolations(
   return violations;
 }
 
-// The subpaths the package build publishes as modules, which is every key in its `EXPORTS` map that
-// resolves to an entry point rather than to a file it copies verbatim.
-function collectPublishedSubpaths(sourceFile: SourceFile): string[] {
-  const subpaths: string[] = [];
+// The subpaths the manifest publishes as modules, which is every key in its exports map whose target
+// is an entry point rather than a file served through verbatim. The stylesheet wildcard and the
+// manifest's own path are the verbatim ones, and both are written as a plain string.
+function collectPublishedSubpaths(source: string): string[] {
+  const exports = (JSON.parse(source) as { exports?: Record<string, unknown> }).exports ?? {};
 
-  const visit = (node: Node): void => {
-    if (
-      isVariableDeclaration(node) &&
-      node.name.getText() === PACKAGE_EXPORTS_BINDING &&
-      node.initializer &&
-      isObjectLiteralExpression(node.initializer)
-    ) {
-      for (const property of node.initializer.properties) {
-        if (
-          isPropertyAssignment(property) &&
-          isStringLiteral(property.name) &&
-          !isStringLiteral(property.initializer)
-        ) {
-          subpaths.push(property.name.text);
-        }
-      }
-    }
-    forEachChild(node, visit);
-  };
-
-  forEachChild(sourceFile, visit);
-  return subpaths;
+  return Object.entries(exports)
+    .filter(([, target]) => typeof target === "object" && target !== null)
+    .map(([subpath]) => subpath);
 }
 
 // -- Extraction self-test --------------------------------------------
@@ -663,13 +641,15 @@ assert.deepEqual(
 
 // -- Published surface --------------------------------------------
 
-const publishedSpecifiers = collectPublishedSubpaths(
-  parseSource(PACKAGE_BUILD, readFileSync(PACKAGE_BUILD, "utf8"))
-).map(subpath => (subpath === "." ? `${RENDERER_ALIAS}/index` : `${RENDERER_ALIAS}/${subpath.slice("./".length)}`));
+// An exports subpath spelled the way `RENDERER_ENTRY_POINTS` spells it, so the two lists are
+// compared as one vocabulary rather than two.
+const publishedSpecifiers = collectPublishedSubpaths(readFileSync(PACKAGE_MANIFEST, "utf8")).map(subpath =>
+  subpath === "." ? `${RENDERER_ALIAS}/index` : `${RENDERER_ALIAS}/${subpath.slice("./".length)}`
+);
 
 assert.ok(
   publishedSpecifiers.length > 0,
-  `Given ${relative(REPO_ROOT, PACKAGE_BUILD)}, When its ${PACKAGE_EXPORTS_BINDING} map is parsed, Then it publishes at least one module`
+  `Given ${relative(REPO_ROOT, PACKAGE_MANIFEST)}, When its exports map is read, Then it publishes at least one module`
 );
 
 assert.deepEqual(

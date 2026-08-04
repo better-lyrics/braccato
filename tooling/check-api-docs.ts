@@ -36,6 +36,7 @@ const SETTING_SOURCES = ["engine.js", "inject.js"];
 
 /** The artifact both documents are held against, read once because both ask it the same questions. */
 interface EmittedApi {
+  /** The manifest's, handed in: the emit writes code and stylesheets, not a version. */
   version: string;
   members: Set<string>;
   constants: Map<string, string>;
@@ -95,9 +96,9 @@ function readStylesheets(packageDir: string): Map<string, string> {
   return sheets;
 }
 
-function readEmittedApi(packageDir: string): EmittedApi {
+function readEmittedApi(packageDir: string, version: string): EmittedApi {
   return {
-    version: JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version,
+    version,
     members: readElementMembers(packageDir),
     constants: readClassNameConstants(packageDir),
     elementSource: readFileSync(join(packageDir, "element.js"), "utf8"),
@@ -301,8 +302,8 @@ function checkReadme(packageDir: string, emitted: EmittedApi): { failures: strin
 
 // -- Both documents --------------------------------------------
 
-export function checkApiDocs(packageDir: string): void {
-  const emitted = readEmittedApi(packageDir);
+export function checkApiDocs(packageDir: string, version: string): void {
+  const emitted = readEmittedApi(packageDir, version);
   const demoPage = checkDemoPage(emitted);
   const readme = checkReadme(packageDir, emitted);
 
@@ -316,6 +317,6 @@ export function checkApiDocs(packageDir: string): void {
   }
 
   console.log(
-    `The API docs check out: ${demoPage.checked} names from demo/api.js and ${readme.checked} from README.md found in dist/package`
+    `The API docs check out: ${demoPage.checked} names from demo/api.js and ${readme.checked} from README.md found in dist`
   );
 }

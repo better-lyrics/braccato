@@ -1,10 +1,49 @@
 {
   "name": "@braccato/core",
   "version": "1.0.0",
-  "private": true,
   "description": "Synchronized lyrics renderer with word-by-word animations",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/better-lyrics/braccato.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://braccato.boidu.dev",
+  "keywords": ["lyrics", "sync", "web-component", "music", "karaoke", "ttml"],
+  "sideEffects": ["./dist/element.js"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "import": "./dist/element.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.js"
+    },
+    "./text": {
+      "types": "./dist/text.d.ts",
+      "import": "./dist/text.js"
+    },
+    "./themeSettings": {
+      "types": "./dist/themeSettings.d.ts",
+      "import": "./dist/themeSettings.js"
+    },
+    "./util": {
+      "types": "./dist/util.d.ts",
+      "import": "./dist/util.js"
+    },
+    "./styles/*.css": "./dist/styles/*.css",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsx ../../tooling/build-package.ts",
     "typecheck": "tsc --noEmit",
