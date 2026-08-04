@@ -438,15 +438,15 @@ Keep that a local step: a `file:` or `link:` dependency in a manifest outlives t
 
 ```bash
 # In your braccato checkout
-pnpm package   # emits packages/core/dist/package/
+pnpm package   # emits packages/core/dist/
 
 # In your project. node_modules is not tracked, so this touches nothing committed.
-ln -sfn /path/to/braccato/packages/core/dist/package node_modules/@braccato/core
+ln -sfn /path/to/braccato/packages/core node_modules/@braccato/core
 ```
 
-That directory is the whole package: `tooling/build-package.ts` writes the manifest along with the
-code, which is why the symlink points there and not at `packages/core`, whose own `package.json` is
-private and exists only to make the directory a workspace member.
+The symlink points at the package directory rather than at the emit, because the manifest lives
+there and its exports map is what turns `@braccato/core/element` and the stylesheets into files
+under `dist/`. Run `pnpm package` again after pulling, or the symlink serves stale code.
 
 Remove the symlink and install normally once 1.0.0 is on the registry.
 
@@ -454,8 +454,8 @@ Do not reach for `pnpm link` for this. On pnpm 9.15.4 it leaves `package.json` a
 an `overrides:` entry and a `link:` specifier carrying an absolute path into `pnpm-lock.yaml`, and
 `pnpm unlink` reports "Nothing to unlink" and leaves both behind.
 
-None of this is needed to work on this repository, where the demo page loads the emitted artifact
-over a relative path. `pnpm demo` builds it and serves it.
+None of this is needed to work on this repository, where the demo page resolves the package through
+the workspace. `pnpm -C demo dev` builds it and serves it.
 
 ## Reference
 
@@ -463,4 +463,4 @@ over a relative path. `pnpm demo` builds it and serves it.
   that surface; this file only covers what changed.
 - [braccato.boidu.dev](https://braccato.boidu.dev) is the demo and documentation page, built from
   [`demo/`](demo) here. It is the place to try 1.0.0 against your own audio and lyrics files, and
-  `pnpm demo` runs the same page locally.
+  `pnpm -C demo dev` runs the same page locally.

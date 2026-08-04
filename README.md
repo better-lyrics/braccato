@@ -30,8 +30,8 @@ class names.
 
 **Looking for the playground?** `playground/` has been retired. The page it served,
 [braccato.boidu.dev](https://braccato.boidu.dev), is now [`demo/`](demo), beside the renderer it
-demonstrates. Run `pnpm demo` and open `http://127.0.0.1:4319/demo/`, or build it with `pnpm site`.
-[DEPLOY.md](DEPLOY.md) records what serving it takes.
+demonstrates. Run `pnpm -C demo dev` and open `http://localhost:5173/`, or build it with
+`pnpm -C demo build`. [DEPLOY.md](DEPLOY.md) records what serving it takes.
 
 ## Quick Start
 
@@ -338,13 +338,13 @@ pnpm lint             # Biome linting
 pnpm lint:fix         # Auto-fix
 pnpm typecheck        # TypeScript checks
 
-pnpm package          # Emit the @braccato/core artifact to packages/core/dist/package
-pnpm demo             # Serve the page at http://127.0.0.1:4319/demo/
-pnpm site             # Build the page to dist/site
+pnpm package          # Emit the @braccato/core artifact to packages/core/dist
+pnpm -C demo dev      # Serve the page at http://localhost:5173/
+pnpm -C demo build    # Build the page to demo/dist
 ```
 
-`pnpm demo` and `pnpm site` both emit the package first, bundle the parsers for a page that has no
-build step, and synthesize the demo audio, which is generated rather than committed.
+The demo is a workspace member, so `pnpm dev` and `pnpm build` reach it too. Either way its own
+`predev` and `prebuild` synthesize the demo audio first, which is generated rather than committed.
 
 ## Project Structure
 
@@ -356,12 +356,13 @@ braccato/
     provider-blyrics/  # Provider chain + built-in providers
     rics/              # RICS CSS preprocessor
     types/             # The lyric shapes core and parsers share
-  demo/                # The page behind braccato.boidu.dev
-  tooling/             # Package emit, site build, demo server, audio generator, self-checks
+  demo/                # The page behind braccato.boidu.dev, a workspace Vite app
+  tooling/             # Package emit, API doc check, audio generator, self-checks
 ```
 
-`@braccato/core` publishes from `packages/core/dist/package`, the artifact `tooling/build-package.ts`
-emits, rather than from `packages/core` itself: the manifest that goes to npm is generated with it.
+`@braccato/core` is built rather than bundled: `tooling/build-package.ts` emits `packages/core/dist`
+with tsc, and the manifest beside it names those files. The emit fails if a subpath the manifest
+promises is not a file it produced.
 
 ## Acknowledgments
 
