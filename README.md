@@ -31,7 +31,8 @@ class names.
 **Looking for the playground?** `playground/` has been retired. The page it served,
 [braccato.boidu.dev](https://braccato.boidu.dev), is now [`demo/`](demo), beside the renderer it
 demonstrates. Run `pnpm -C demo dev` and open `http://localhost:5173/`, or build it with
-`pnpm -C demo build`. [DEPLOY.md](DEPLOY.md) records what serving it takes.
+`pnpm -C demo build`. It deploys from Cloudflare Pages, which builds `pnpm build` at the repository
+root and serves `demo/dist`.
 
 ## Quick Start
 
