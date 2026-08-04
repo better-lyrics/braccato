@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "strict": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "useDefineForClassFields": true,
+    "noEmit": false,
+    "declaration": true,
+    "rootDir": "../packages/core/src",
+    // Drops the ambient `chrome` and `node` types the extension compiles against, so this emit stops
+    // compiling the day the renderer stops being standalone rather than shipping a package that
+    // needs them.
+    "types": []
+  },
+  // The self-checks are repo infrastructure and the only files here allowed to import `node:*` and
+  // `typescript`, so they are the one thing the package must not carry.
+  "include": ["../packages/core/src/**/*.ts"],
+  "exclude": ["../packages/core/src/**/*.selfcheck.ts", "../packages/core/src/selfcheck/**"]
+}

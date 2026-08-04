@@ -24,6 +24,11 @@ describe("detectParser", () => {
 		expect(detectParser("[1000,3000]Hello(1000,500)")).toBe(QRCParser);
 	});
 
+	it("routes a QQ Music envelope to the QRC parser", () => {
+		const envelope = `<QrcInfos><LyricInfo><Lyric_1 LyricContent="[1000,2000]Hello world"/></LyricInfo></QrcInfos>`;
+		expect(detectParser(envelope)).toBe(QRCParser);
+	});
+
 	it("falls back to PlainParser", () => {
 		expect(detectParser("Just some text\nAnother line")).toBe(PlainParser);
 	});

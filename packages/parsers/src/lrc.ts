@@ -2,6 +2,10 @@ import type { Lyric, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];
 
+const TIME_TAG_REGEX = /\[(\d+:\d+\.\d+)\]/g;
+const ENHANCED_WORD_REGEX = /<(\d+:\d+\.\d+)>/g;
+const ID_TAG_REGEX = /^\[(\w+):(.*)\]$/;
+
 function parseTime(timeStr: string | number | undefined): number {
 	if (!timeStr) return 0;
 	if (typeof timeStr === "number") return timeStr;
@@ -28,7 +32,14 @@ function parseTime(timeStr: string | number | undefined): number {
 	}
 }
 
-function parseLRCContent(lrcText: string, songDuration: number): Lyric[] {
+/**
+ * Parse an LRC document, plain or enhanced, into lines with optional word level parts.
+ *
+ * The result is returned exactly as the document states it. `LRCParser.parse` runs `lrcFixers` over
+ * it afterwards, which is right for Musixmatch word-by-word lyrics and wrong for sources whose
+ * timings are already clean, so callers that know their source can stay on this function.
+ */
+export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 	const lines = lrcText.split("\n");
 	const result: Lyric[] = [];
 	const idTags: Record<string, string> = {};
@@ -36,39 +47,51 @@ function parseLRCContent(lrcText: string, songDuration: number): Lyric[] {
 	for (const rawLine of lines) {
 		const line = rawLine.trim();
 
-		const idTagMatch = line.match(/^\[(\w+):(.*)\]$/);
+		const idTagMatch = line.match(ID_TAG_REGEX);
 		if (idTagMatch && POSSIBLE_ID_TAGS.includes(idTagMatch[1])) {
 			idTags[idTagMatch[1]] = idTagMatch[2];
 			continue;
 		}
 
-		const timeTagRegex = /\[(\d+:\d+\.\d+)\]/g;
-		const enhancedWordRegex = /<(\d+:\d+\.\d+)>/g;
-
-		const timeTags: number[] = [];
-		for (const match of line.matchAll(timeTagRegex)) {
-			timeTags.push(parseTime(match[1]));
+		// Tracked as the tags are read rather than spread into Math.min afterwards, which a line with
+		// enough of them turns into a call with more arguments than the stack holds.
+		let lineStartTime = Number.POSITIVE_INFINITY;
+		let lineEndTime = Number.NEGATIVE_INFINITY;
+		let timeTagCount = 0;
+		for (const match of line.matchAll(TIME_TAG_REGEX)) {
+			const time = parseTime(match[1]);
+			if (time < lineStartTime) lineStartTime = time;
+			if (time > lineEndTime) lineEndTime = time;
+			timeTagCount++;
 		}
 
-		if (timeTags.length === 0) continue;
+		if (timeTagCount === 0) continue;
 
-		const lyricPart = line.replace(timeTagRegex, "").trim();
+		const lyricPart = line.replace(TIME_TAG_REGEX, "").trim();
 
 		const parts: LyricPart[] = [];
 		let lastTime: number | null = null;
 		let plainText = "";
 
-		lyricPart.split(enhancedWordRegex).forEach((rawFragment, index) => {
+		const fragments = lyricPart.split(ENHANCED_WORD_REGEX);
+
+		// Musixmatch wraps each word with paired <ts>, separated by whitespace-only "gap" fragments;
+		// canonical LRC has none.
+		const isMusixmatchStyle = fragments.some(
+			(f, i) => i % 2 === 0 && i > 0 && i < fragments.length - 1 && f.length > 0 && f.trim() === "",
+		);
+
+		fragments.forEach((rawFragment, index) => {
 			if (index % 2 === 0) {
 				let fragment = rawFragment;
-				if (fragment.length > 0 && fragment[0] === " ") {
-					fragment = fragment.substring(1);
-				}
-				if (fragment.length > 0 && fragment[fragment.length - 1] === " ") {
-					fragment = fragment.substring(0, fragment.length - 1);
+				if (isMusixmatchStyle) {
+					const trimmed = fragment.trim();
+					fragment = trimmed === "" && fragment.length > 0 ? " " : trimmed;
 				}
 				plainText += fragment;
-				if (parts.length > 0 && parts[parts.length - 1].startTimeMs) {
+				// Every fragment but the one before the first timestamp belongs to the part that the
+				// preceding timestamp opened, whatever time that timestamp states.
+				if (parts.length > 0) {
 					parts[parts.length - 1].words += fragment;
 				}
 			} else {
@@ -81,12 +104,10 @@ function parseLRCContent(lrcText: string, songDuration: number): Lyric[] {
 			}
 		});
 
-		const startTime = Math.min(...timeTags);
-		const endTime = Math.max(...timeTags);
-		const duration = endTime - startTime;
+		const duration = lineEndTime - lineStartTime;
 
 		result.push({
-			startTimeMs: startTime,
+			startTimeMs: lineStartTime,
 			words: plainText.trim(),
 			durationMs: duration,
 			parts: parts.length > 0 ? parts : undefined,
@@ -110,12 +131,17 @@ function parseLRCContent(lrcText: string, songDuration: number): Lyric[] {
 				lyric.durationMs = Math.max(latestStart - lyric.startTimeMs, 0);
 			}
 		} else {
-			if (lyric.durationMs === 0) {
-				lyric.durationMs = songDuration - lyric.startTimeMs;
+			// The song duration is what the last line ends against, and a caller that passed none left
+			// it at 0. Everything it would produce there runs backwards, so the lengths already on the
+			// line are kept instead.
+			const lineTail = songDurationMs - lyric.startTimeMs;
+			if (lyric.durationMs === 0 && lineTail > 0) {
+				lyric.durationMs = lineTail;
 			}
 			if (lyric.parts && lyric.parts.length > 0) {
 				const lastPart = lyric.parts[lyric.parts.length - 1];
-				lastPart.durationMs = songDuration - lastPart.startTimeMs;
+				const partTail = songDurationMs - lastPart.startTimeMs;
+				if (partTail > 0) lastPart.durationMs = partTail;
 			}
 		}
 	}
@@ -203,7 +229,7 @@ export const LRCParser: LyricParser = {
 		return /\[\d+:\d+\.\d+\]/.test(input);
 	},
 	parse(input: string, duration = 0): Lyric[] {
-		const lyrics = parseLRCContent(input, duration);
+		const lyrics = parseLRC(input, duration);
 		lrcFixers(lyrics);
 		return lyrics;
 	},

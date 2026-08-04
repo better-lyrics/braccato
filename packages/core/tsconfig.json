@@ -1,8 +1,23 @@
 {
-	"extends": "../../tsconfig.json",
-	"compilerOptions": {
-		"outDir": "dist",
-		"rootDir": "src"
-	},
-	"include": ["src"]
+  // Self-contained rather than extending the repository's tsconfig, for the same reason
+  // tooling/tsconfig.package.json is: the emit and the typecheck have to agree on the options the
+  // sources were written against, and `useDefineForClassFields` alone changes what element.ts does.
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "strict": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "useDefineForClassFields": true,
+    "noEmit": true,
+    // Wider than the package emit, which compiles with none: this pass covers the self-checks too,
+    // and they are the files allowed to import `node:*` builtins and `typescript`.
+    "types": ["node"]
+  },
+  "include": ["src"]
 }

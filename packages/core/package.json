@@ -1,45 +1,56 @@
 {
-	"name": "@braccato/core",
-	"version": "0.1.7",
-	"description": "Synchronized lyrics web component with word-by-word animations",
-	"type": "module",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/better-lyrics/braccato",
-		"directory": "packages/core"
-	},
-	"homepage": "https://braccato.boidu.dev",
-	"keywords": ["lyrics", "sync", "web-component", "lit", "music", "karaoke", "ttml"],
-	"sideEffects": true,
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
-		}
-	},
-	"files": ["dist"],
-	"publishConfig": {
-		"access": "public"
-	},
-	"scripts": {
-		"build": "vite build",
-		"dev": "vite build --watch",
-		"typecheck": "tsc --noEmit",
-		"test": "vitest run",
-		"test:watch": "vitest"
-	},
-	"dependencies": {
-		"@braccato/parsers": "workspace:^",
-		"lit": "^3.2.1"
-	},
-	"devDependencies": {
-		"jsdom": "^28.1.0",
-		"typescript": "^5.7.3",
-		"vite": "^6.0.7",
-		"vite-plugin-dts": "^4.3.0",
-		"vitest": "^3.0.4"
-	}
+  "name": "@braccato/core",
+  "version": "1.0.0",
+  "description": "Synchronized lyrics renderer with word-by-word animations",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/better-lyrics/braccato.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://braccato.boidu.dev",
+  "keywords": ["lyrics", "sync", "web-component", "music", "karaoke", "ttml"],
+  "sideEffects": ["./dist/element.js", "./dist/styles/*.css"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "import": "./dist/element.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.js"
+    },
+    "./text": {
+      "types": "./dist/text.d.ts",
+      "import": "./dist/text.js"
+    },
+    "./themeSettings": {
+      "types": "./dist/themeSettings.d.ts",
+      "import": "./dist/themeSettings.js"
+    },
+    "./util": {
+      "types": "./dist/util.d.ts",
+      "import": "./dist/util.js"
+    },
+    "./styles/*.css": "./dist/styles/*.css",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsx ../../tooling/build-package.ts",
+    "typecheck": "tsc --noEmit",
+    "selfcheck": "tsx ../../tooling/run-selfchecks.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@braccato/types": "workspace:^"
+  }
 }

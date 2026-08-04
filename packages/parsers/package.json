@@ -1,6 +1,6 @@
 {
 	"name": "@braccato/parsers",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"description": "Lyrics format parsers: TTML, LRC, SRT, QRC, Plain",
 	"type": "module",
 	"license": "MIT",
@@ -31,8 +31,11 @@
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},
+	"dependencies": {
+		"@braccato/types": "workspace:^",
+		"fast-xml-parser": "^5.10.1"
+	},
 	"devDependencies": {
-		"jsdom": "^28.1.0",
 		"typescript": "^5.7.3",
 		"vite": "^6.0.7",
 		"vite-plugin-dts": "^4.3.0",

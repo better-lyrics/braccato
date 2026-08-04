@@ -1,7 +1,10 @@
 node_modules
 dist
+demo/public/generated
 .turbo
 *.tsbuildinfo
 test-data/
 .env.local
 .env
+# Deployment settings are environment specific and not tracked.
+DEPLOY.md

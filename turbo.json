@@ -6,6 +6,12 @@
 			"outputs": ["dist/**"]
 		},
 		"dev": {
+			"dependsOn": ["^build", "build"],
+			"cache": false,
+			"persistent": true
+		},
+		"@braccato/demo#dev": {
+			"dependsOn": ["^build"],
 			"cache": false,
 			"persistent": true
 		},
@@ -16,6 +22,7 @@
 			"dependsOn": ["^build"]
 		},
 		"test:watch": {
+			"dependsOn": ["^build"],
 			"cache": false,
 			"persistent": true
 		},

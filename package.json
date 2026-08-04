@@ -4,7 +4,6 @@
 	"packageManager": "pnpm@9.15.4",
 	"scripts": {
 		"dev": "turbo dev",
-		"dev:playground": "pnpm -C playground dev",
 		"build": "turbo build",
 		"build:packages": "turbo build --filter='./packages/*'",
 		"lint": "biome check .",
@@ -14,10 +13,14 @@
 		"test:watch": "turbo test:watch",
 		"clean": "turbo clean && rm -rf node_modules",
 		"format": "biome format --write .",
-		"release": "bash scripts/release.sh"
+		"release": "bash scripts/release.sh",
+		"package": "tsx tooling/build-package.ts",
+		"selfcheck": "tsx tooling/run-selfchecks.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
+		"@types/node": "^22.10.2",
+		"tsx": "^4.23.1",
 		"turbo": "^2.3.3",
 		"typescript": "^5.7.3"
 	}
