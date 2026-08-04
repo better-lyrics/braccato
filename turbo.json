@@ -2,34 +2,27 @@
 	"$schema": "https://turbo.build/schema.json",
 	"tasks": {
 		"build": {
-			"dependsOn": [
-				"^build"
-			],
-			"outputs": [
-				"dist/**"
-			]
+			"dependsOn": ["^build"],
+			"outputs": ["dist/**"]
 		},
 		"dev": {
-			"dependsOn": [
-				"^build"
-			],
+			"dependsOn": ["^build", "build"],
+			"cache": false,
+			"persistent": true
+		},
+		"@braccato/demo#dev": {
+			"dependsOn": ["^build"],
 			"cache": false,
 			"persistent": true
 		},
 		"typecheck": {
-			"dependsOn": [
-				"^build"
-			]
+			"dependsOn": ["^build"]
 		},
 		"test": {
-			"dependsOn": [
-				"^build"
-			]
+			"dependsOn": ["^build"]
 		},
 		"test:watch": {
-			"dependsOn": [
-				"^build"
-			],
+			"dependsOn": ["^build"],
 			"cache": false,
 			"persistent": true
 		},
