@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://api.iconify.design/mingcute:music-3-line.svg?color=%23e8815c&height=48" alt="Braccato" />
+  <img src="demo/public/icons/icon-512.png" alt="Braccato" height="48" />
 </p>
 
 <h1 align="center">Braccato</h1>
