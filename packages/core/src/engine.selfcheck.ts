@@ -595,6 +595,28 @@ const placeholderEngine = createAnimationEngineInstance(
 const placeholderMount = placeholderDocument.createElement("div");
 const passiveTickOptions: TickOptions = { ...newTickOptions(), passiveScrollEnabled: true };
 
+// -- The rate a tick was taken at --------------------------------------------
+
+assert.equal(
+  resolveTickOptions(newTickOptions()).playbackRate,
+  1,
+  "Given a tick that says nothing about rate, When it is resolved, Then the song is taken to be playing at 1x"
+);
+
+assert.deepEqual(
+  [-1, 0, Number.NaN, Number.POSITIVE_INFINITY].map(
+    rate => resolveTickOptions({ ...newTickOptions(), playbackRate: rate }).playbackRate
+  ),
+  [1, 1, 1, 1],
+  "Given a rate no song can be played at, When it is resolved, Then it reads as 1x rather than freezing everything the song owns"
+);
+
+assert.equal(
+  resolveTickOptions({ ...newTickOptions(), playbackRate: 0.25 }).playbackRate,
+  0.25,
+  "Given a rate a song can be played at, When it is resolved, Then it is passed through"
+);
+
 setLyrics(placeholderEngine, asElement<HTMLElement>(placeholderMount), UNSYNCED_LYRICS, {
   loaderVisible: false,
   noLyrics: false,

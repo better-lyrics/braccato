@@ -42,6 +42,14 @@ export interface TickOptions {
    * false.
    */
   passiveScrollEnabled?: boolean;
+
+  /**
+   * How fast the song moves through its own timeline, as a multiple of real time. Defaults to 1, and
+   * zero or less reads as 1 because `isPlaying` is what says a song is stopped. Scales the animations
+   * that follow the song; a line's exit, a word's fade and the scroll between lines are the
+   * interface's own gestures and keep the timing the theme asked for at every rate.
+   */
+  playbackRate?: number;
 }
 
 /**
