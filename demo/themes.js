@@ -4,6 +4,12 @@
 //
 // The page hands whichever is selected to `view.theme` verbatim, so what is here is exactly what a
 // consumer would ship.
+//
+// Sustain is the exception in one respect: it is a real published theme rather than one written for
+// this page, and it is long enough that inlining it here would bury the other two. It lives beside
+// this file and arrives as a string, which is the same thing the other two are.
+
+import sustain from "./theme-sustain.css?raw";
 
 export const THEMES = [
   {
@@ -29,30 +35,10 @@ export const THEMES = [
 `,
   },
   {
-    id: "centre",
-    title: "Centre",
-    summary: "Bigger and centred, and the glow reaches shorter words.",
-    css: `/* Half way down the view rather than the default 0.37. */
-/* blyrics-target-scroll-pos-ratio = 0.5; */
-/* Words held past this many milliseconds get the glow. */
-/* blyrics-long-word-threshold = 900; */
-
-.blyrics-container {
-	--blyrics-font-size: clamp(2rem, 5.2vw, 4rem);
-	--blyrics-line-height: 1.08;
-	--blyrics-padding: 1.1rem;
-	--blyrics-lyric-active-color: oklch(0.97 0.02 250);
-	--blyrics-lyric-inactive-color: oklch(0.97 0.02 250 / 0.2);
-	--blyrics-glow-color: oklch(0.82 0.14 250 / 0.6);
-	text-align: center;
-}
-
-/* Lines scale from their leading edge by default, which reads as a lurch once they are
-   centred. */
-.blyrics-container > div {
-	transform-origin: center center;
-}
-`,
+    id: "sustain",
+    title: "Sustain",
+    summary: "Depth by distance, and lines that sit where the singer puts them.",
+    css: sustain,
   },
   {
     id: "spotlight",

@@ -59,11 +59,18 @@ export const CHORD_VOICINGS = {
 //
 // `echo` is a background vocal. Its beat offset is measured from the start of the bar, so it can
 // overlap the line it answers the way a real one does.
+//
+// `agent` is who sings the bar, in the vocabulary TTML uses and the renderer passes through to
+// `data-agent` on the line: `v1` and `v2` are people, `v1000` is everybody. A bar that names none
+// inherits from its neighbours. Kettle is a duet so that a theme has something to align against,
+// which is the honest place for that decision: who is singing is a property of the song, not of the
+// stylesheet.
 
 const KETTLE = [
   { chord: "Am", instrumental: true },
   {
     chord: "Am",
+    agent: "v1",
     syllables: [
       ["The ", A3, 0.5],
       ["ket", C4, 0.5],
@@ -75,6 +82,7 @@ const KETTLE = [
   },
   {
     chord: "F",
+    agent: "v1",
     syllables: [
       ["and ", C4, 0.5],
       ["the ", D4, 0.5],
@@ -87,6 +95,7 @@ const KETTLE = [
   },
   {
     chord: "C",
+    agent: "v2",
     syllables: [
       ["I ", E4, 0.5],
       ["count ", G4, 0.5],
@@ -98,6 +107,7 @@ const KETTLE = [
   },
   {
     chord: "G",
+    agent: "v2",
     syllables: [
       ["to ", D4, 0.5],
       ["a ", E4, 0.5],
@@ -110,6 +120,7 @@ const KETTLE = [
   },
   {
     chord: "Am",
+    agent: "v1000",
     syllables: [
       ["So ", A4, 0.5],
       ["play ", C5, 1],
@@ -120,6 +131,7 @@ const KETTLE = [
   },
   {
     chord: "F",
+    agent: "v1000",
     syllables: [
       ["let ", G4, 0.5],
       ["the ", A4, 0.5],
@@ -138,6 +150,7 @@ const KETTLE = [
   },
   {
     chord: "C",
+    agent: "v1",
     syllables: [
       ["I’ve ", C5, 0.5],
       ["got ", A4, 0.5],
@@ -147,6 +160,7 @@ const KETTLE = [
   },
   {
     chord: "G",
+    agent: "v1",
     syllables: [
       ["and ", G4, 0.5],
       ["the ", E4, 0.5],
@@ -159,6 +173,7 @@ const KETTLE = [
   { chord: "Am", instrumental: true },
   {
     chord: "Am",
+    agent: "v1",
     syllables: [
       ["The ", A3, 0.5],
       ["tape ", C4, 0.5],
@@ -170,6 +185,7 @@ const KETTLE = [
   },
   {
     chord: "F",
+    agent: "v1",
     syllables: [
       ["and ", C4, 0.25],
       ["I ", D4, 0.25],
@@ -183,6 +199,7 @@ const KETTLE = [
   },
   {
     chord: "C",
+    agent: "v2",
     syllables: [
       ["There’s ", E4, 0.5],
       ["dust ", G4, 0.5],
@@ -195,6 +212,7 @@ const KETTLE = [
   },
   {
     chord: "G",
+    agent: "v2",
     syllables: [
       ["but ", D4, 0.5],
       ["it ", E4, 0.5],
@@ -468,7 +486,7 @@ export const SONGS = [
   {
     id: "kettle",
     title: "Kettle",
-    summary: "Syllable timing, with a background vocal over the fifth line.",
+    summary: "Syllable timing, two voices trading lines, and a background vocal over the fifth line.",
     beatMs: 750,
     bars: KETTLE,
   },
@@ -557,6 +575,9 @@ export function buildScore(songId) {
         .join("")
         .trimEnd(),
       parts,
+      // Left off a bar that does not name one, rather than defaulted, because the renderer fills a
+      // line's agent in from its neighbours and a default here would overwrite that.
+      ...(bar.agent === undefined ? {} : { agent: bar.agent }),
     });
 
     barStartMs += barMs;
