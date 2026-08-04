@@ -1,7 +1,7 @@
 {
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
 	"files": {
-		"ignore": [".turbo/**", "**/dist/**", ".claude/**", "demo/generated/**"]
+		"ignore": [".turbo/**", "**/dist/**", ".claude/**", "demo/public/generated/**"]
 	},
 	"organizeImports": {
 		"enabled": true

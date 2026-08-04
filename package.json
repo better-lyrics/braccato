@@ -15,8 +15,6 @@
 		"format": "biome format --write .",
 		"release": "bash scripts/release.sh",
 		"package": "tsx tooling/build-package.ts",
-		"demo": "pnpm package && pnpm -C packages/parsers build:demo && tsx tooling/generate-demo-audio.ts && tsx tooling/serve-demo.ts",
-		"site": "pnpm package && pnpm -C packages/parsers build:demo && tsx tooling/generate-demo-audio.ts && tsx tooling/build-site.ts",
 		"selfcheck": "tsx tooling/run-selfchecks.ts"
 	},
 	"devDependencies": {
