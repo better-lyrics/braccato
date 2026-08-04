@@ -291,7 +291,7 @@ Full documentation is at [braccato.boidu.dev](https://braccato.boidu.dev).
 
 The demo page lives at [`demo/`](https://github.com/better-lyrics/braccato/tree/master/demo) in the
 repository and runs against the emitted package, with a control for most of what is above. Clone the
-repository and run `pnpm demo`, then open `http://127.0.0.1:4319/demo/`.
+repository and run `pnpm -C demo dev`, then open `http://localhost:5173/`.
 
 ## Licence
 
