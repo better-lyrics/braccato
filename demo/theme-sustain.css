@@ -10,6 +10,8 @@
 /* blyrics-target-scroll-pos-ratio = 0.5; */
 
 .blyrics-container {
+  /* DM Sans is drawn tight enough already, so this theme opts out of the page's default tracking. */
+  --demo-lyric-tracking: 0;
   --blyrics-font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --blyrics-font-size: clamp(1.8rem, 4.4vw, 3rem);
   --blyrics-font-weight: 600;

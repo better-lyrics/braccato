@@ -1625,10 +1625,11 @@ braccato-lyrics {
 	padding-top: var(--blyrics-padding-top, 2rem);
 }
 
-/* Stated rather than left to the font, and stated once for every theme: tracking is the page's call
-   here, not something each theme should be tightening to its own taste. */
+/* The page's default tracking, tightened a little because the lyric type is large enough to want it.
+   A theme that disagrees sets `--demo-lyric-tracking` rather than fighting this rule's specificity,
+   which is what Sustain does: its own font is tight already. */
 [data-page-rules="on"] .blyrics-container {
-	letter-spacing: 0;
+	letter-spacing: var(--demo-lyric-tracking, -1px);
 }
 
 /* `--blyrics-glow-color` is documented as the bloom a word earns by being held, but the package
