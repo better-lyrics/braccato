@@ -11,7 +11,7 @@
   },
   "homepage": "https://braccato.boidu.dev",
   "keywords": ["lyrics", "sync", "web-component", "music", "karaoke", "ttml"],
-  "sideEffects": ["./dist/element.js"],
+  "sideEffects": ["./dist/element.js", "./dist/styles/*.css"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
