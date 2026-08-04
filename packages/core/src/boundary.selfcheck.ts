@@ -663,6 +663,28 @@ assert.deepEqual(
   "Given the package exports map and the public specifiers declared above, When they are compared, Then neither names a module the other does not"
 );
 
+// Every stylesheet the manifest publishes has to be listed in `sideEffects`, because importing one
+// is the only reason to reach for it and a bundler that believes otherwise deletes it.
+//
+// This is not hypothetical. With `sideEffects: ["./dist/element.js"]`, rspack 1.7.5, which is what
+// the Better Lyrics extension builds with, emitted no CSS asset at all from a bundle importing all
+// three sheets, and the renderer came up unstyled with no error. Vite keeps them regardless, so the
+// demo in this repository cannot catch it and did not.
+const manifest = JSON.parse(readFileSync(PACKAGE_MANIFEST, "utf8"));
+const stylesheetSubpaths = Object.keys(manifest.exports).filter(subpath => subpath.endsWith(".css"));
+const sideEffects: string[] = Array.isArray(manifest.sideEffects) ? manifest.sideEffects : [];
+
+assert.ok(
+  stylesheetSubpaths.length > 0,
+  `Given ${relative(REPO_ROOT, PACKAGE_MANIFEST)}, When its exports map is read, Then it publishes at least one stylesheet`
+);
+
+assert.deepEqual(
+  stylesheetSubpaths.filter(subpath => !sideEffects.includes(manifest.exports[subpath])),
+  [],
+  "Given every stylesheet the manifest publishes, When sideEffects is read, Then each one is declared to have them"
+);
+
 // A leaf is only safe to publish while it stays a leaf: the moment one of them imports something
 // else in the module, importing it pulls that in too, which is the bundle growth this avoids.
 for (const leaf of RENDERER_LEAVES) {
