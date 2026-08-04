@@ -4,17 +4,17 @@
 // owned five file formats would be two packages. @braccato/parsers is the other half, and pairing
 // the two is what a consumer with a .lrc file actually does, so the page does it too.
 //
-// It loads the copy built from this repository rather than a published one, because the two packages
-// now live side by side and a page demonstrating last month's parsers against this morning's
-// renderer would be demonstrating something nobody can install. The file is a bundle of its own,
-// built into demo/generated/ by `pnpm demo` and `pnpm site`: the published build leaves
-// `fast-xml-parser` as a bare specifier, which is right for a consumer with a bundler and
-// unresolvable in a page that has neither a bundler nor an import map.
+// It resolves to the copy in this workspace rather than a published one, because the two packages
+// live side by side and a page demonstrating last month's parsers against this morning's renderer
+// would be demonstrating something nobody can install.
 //
-// Nothing here assumes the file is there. `loadParsers` resolves to null on failure and the import
+// The import stays dynamic now that there is a bundler in front of the page, because the reason for
+// it survived the move: this and `fast-xml-parser` under it are the largest thing the page can load,
+// and a reader who never opens a lyrics file never needs them. What was a fetch of a hand-built
+// bundle is a fetch of a chunk, and it still happens on the first file rather than on load.
+//
+// Nothing here assumes the chunk arrives. `loadParsers` resolves to null on failure and the import
 // controls say so; every other control on the page is untouched.
-
-const PARSERS_URL = "./generated/parsers.js";
 
 // The package detects a format by returning the parser that claimed it, and a parser has no name to
 // print. So the names live here, keyed by the object identity the module hands back.
@@ -38,7 +38,7 @@ let loading = null;
  * is told once rather than after every drop.
  */
 export function loadParsers() {
-  loading ??= import(PARSERS_URL)
+  loading ??= import("@braccato/parsers")
     .then(module => ({
       detectParser: module.detectParser,
       names: new Map(FORMAT_NAMES.map(([exported, name]) => [module[exported], name])),

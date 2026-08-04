@@ -11,6 +11,17 @@
 //
 // The package is imported dynamically rather than at the top of this module so that the state before
 // it loaded can be read at all: a static import is hoisted above every statement in the file.
+//
+// The stylesheets are the exception, and they are static because CSS has nothing to observe: they
+// are imported here rather than linked from the document so that they are package subpaths, the way
+// a consumer with a bundler writes them. Order is the cascade, so it is the order below: the
+// package's variables first because the other two read from them, and this page's own sheet last
+// because it overrides all three.
+
+import "@braccato/core/styles/variables.css";
+import "@braccato/core/styles/lyrics.css";
+import "@braccato/core/styles/instrumental.css";
+import "./demo.css";
 
 import {
   ATTRIBUTES,
@@ -27,11 +38,6 @@ import {
 import { loadParsers, parseLyrics, PARSERS_SPECIFIER } from "./parsers.js";
 import { buildScore, SONGS } from "./song.js";
 import { THEMES } from "./themes.js";
-
-// Where the emitted package sits beside this page. It is the only line on the page that names that
-// path, so `pnpm site` rewrites this one string when it copies the page out to a directory a
-// static host can serve, and the imports and the failure message both follow it.
-const PACKAGE_BASE = "../packages/core/dist/package";
 
 const TAG_NAME = "braccato-lyrics";
 const LOG_LIMIT = 24;
@@ -530,7 +536,7 @@ function retick() {
 }
 
 function applyAudio() {
-  const url = state.audio?.url ?? `./generated/${state.songId}.wav`;
+  const url = state.audio?.url ?? `/generated/${state.songId}.wav`;
   if (url === applied.audioUrl) return;
 
   const wasPlaying = !player.paused;
@@ -1271,9 +1277,9 @@ function wireControls(lineClass, lyricsClass) {
 
 async function boot() {
   const [, { CUSTOM_THEME_STYLE_ID, LINE_CLASS, LYRICS_CLASS }, themeSettings] = await Promise.all([
-    import(`${PACKAGE_BASE}/element.js`),
-    import(`${PACKAGE_BASE}/constants.js`),
-    import(`${PACKAGE_BASE}/themeSettings.js`),
+    import("@braccato/core/element"),
+    import("@braccato/core/constants"),
+    import("@braccato/core/themeSettings"),
   ]);
   parseThemeConfig = themeSettings.parseThemeConfig;
 
@@ -1332,5 +1338,5 @@ async function boot() {
 boot().catch(error => {
   stageStatus.hidden = false;
   stageStatus.dataset.failed = "";
-  stageStatus.textContent = `Could not load @braccato/core from ${PACKAGE_BASE}.\n\n${error.message}`;
+  stageStatus.textContent = `Could not load @braccato/core.\n\n${error.message}`;
 });

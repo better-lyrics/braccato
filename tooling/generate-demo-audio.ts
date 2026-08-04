@@ -5,6 +5,10 @@
 //
 // A RIFF wave written by hand: it is the only audio container Node can produce without a dependency,
 // and the demo is served from disk over localhost, where the size costs nothing.
+//
+// It lands in `demo/public/`, which Vite serves at the root and copies into the build verbatim, so
+// the page asks for `/generated/<id>.wav` either way. Gitignored: the score is the source, and the
+// demo's own `dev` and `build` scripts run this before Vite so the files are there to serve.
 
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -12,7 +16,7 @@ import { fileURLToPath } from "url";
 import { buildScore, CHORD_VOICINGS, SONGS } from "../demo/song.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const outDir = join(__dirname, "..", "demo", "generated");
+const outDir = join(__dirname, "..", "demo", "public", "generated");
 
 // High enough that the third harmonic of the top note stays well under Nyquist, low enough that the
 // whole track is a couple of megabytes.
@@ -210,6 +214,6 @@ for (const song of SONGS) {
   const seconds = (durationMs / 1000).toFixed(1);
   const megabytes = (wave.length / 1024 / 1024).toFixed(2);
   console.log(
-    `Wrote demo/generated/${song.id}.wav: ${seconds}s, ${noteCount} notes, mono ${SAMPLE_RATE}Hz, ${megabytes} MB`
+    `Wrote demo/public/generated/${song.id}.wav: ${seconds}s, ${noteCount} notes, mono ${SAMPLE_RATE}Hz, ${megabytes} MB`
   );
 }

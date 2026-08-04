@@ -4,18 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>braccato: a custom element for synchronized lyrics</title>
-    <link rel="icon" href="../images/icons/icon-48.png" />
+    <link rel="icon" href="/icons/icon-48.png" />
     <meta
       name="description"
       content="The lyrics renderer behind Better Lyrics, published as one custom element with no runtime dependencies. Bring an audio file and a TTML, LRC, SRT or QRC file."
     />
 
-    <!-- The package's three stylesheets, loaded from the emitted artifact the way a consumer would
-         load any package's CSS. They come first so this page's own sheet can override them. -->
-    <link rel="stylesheet" href="../packages/core/dist/package/styles/variables.css" />
-    <link rel="stylesheet" href="../packages/core/dist/package/styles/lyrics.css" />
-    <link rel="stylesheet" href="../packages/core/dist/package/styles/instrumental.css" />
-    <link rel="stylesheet" href="./demo.css" />
+    <!-- Every stylesheet this page wears, the package's three and its own, is imported at the head of
+         demo.js. There is nothing to link here: they are package subpaths rather than paths, and the
+         order they load in is a line of that file rather than four lines of this one. -->
   </head>
 
   <body>
@@ -26,7 +23,7 @@
          `source` is resolved with querySelector when the element connects, so a media element the
          parser has not reached yet is not found. -->
     <div class="stage" id="stage">
-      <audio id="player" src="./generated/kettle.wav" preload="auto"></audio>
+      <audio id="player" src="/generated/kettle.wav" preload="auto"></audio>
       <div class="stage__frame" id="stage-frame">
         <braccato-lyrics
           id="view"
@@ -40,7 +37,7 @@
     <header class="topbar">
       <p class="topbar__mark">
         <span class="wordmark">
-          <img src="../images/icons/icon-512.png" alt="" width="22" height="22" decoding="async" />
+          <img src="/icons/icon-512.png" alt="" width="22" height="22" decoding="async" />
           <b>braccato</b>
         </span>
         <span class="topbar__version" id="package-version">0.0.0</span>
@@ -92,8 +89,8 @@
             on a line back to <code>currentTime</code>.
           </p>
           <p class="doc__aside">
-            Without a bundler the stylesheets are three <code>&lt;link&gt;</code> tags at whatever path you serve the
-            package from. That is what this page does.
+            Importing the stylesheets is the spelling for a bundler, and it is what this page does. Without one they
+            are three <code>&lt;link&gt;</code> tags at whatever path you serve the package from.
           </p>
           <div class="code" data-snippet="quickstart"></div>
           <p class="doc__aside">
@@ -267,7 +264,7 @@
       </p>
 
       <a class="ecosystem" href="https://better-lyrics.boidu.dev" target="_blank" rel="noopener noreferrer">
-        <img src="../images/icons/icon-512.png" alt="" width="20" height="20" loading="lazy" decoding="async" />
+        <img src="/icons/icon-512.png" alt="" width="20" height="20" loading="lazy" decoding="async" />
         <span>Part of the <strong>Better Lyrics</strong> ecosystem</span>
       </a>
     </footer>

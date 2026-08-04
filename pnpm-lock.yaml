@@ -24,6 +24,22 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  demo:
+    dependencies:
+      '@braccato/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@braccato/parsers':
+        specifier: workspace:*
+        version: link:../packages/parsers
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.1(@types/node@22.20.1)(tsx@4.23.5)
+
   packages/core:
     dependencies:
       '@braccato/types':

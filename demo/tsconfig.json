@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The page is plain ESM JavaScript rather than TypeScript, which is what it was written as and
+    // what a reader reading the deployed source sees. `allowJs` is what lets `tsc --noEmit` take it
+    // as input at all; `checkJs` stays off because inferring types across a document full of
+    // `getElementById` would be a rewrite rather than a check. What the pass is worth here is the
+    // config file below it and a parse of every module the page ships.
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["*.js", "vite.config.ts"]
+}
