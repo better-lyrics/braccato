@@ -70,6 +70,7 @@ const ANCHOR_FRAME_MS = 1200;
 const CARRIED_MS = 50;
 const STALLED_MS = 500;
 const DOUBLE_RATE = 2;
+const HALF_RATE = 0.5;
 // What element.ts will carry a reading no further than.
 const MAX_CLOCK_CARRY_MS = 100;
 // MEDIA_ERR_NETWORK, which a truncated stream leaves behind mid-song without touching `paused`.
@@ -338,6 +339,14 @@ function hasRenderer(element: BraccatoLyricsElement): boolean {
 
 function selectedLines(element: BraccatoLyricsElement): boolean[] {
   return (element.renderer?.lines ?? []).map(line => line.isSelected);
+}
+
+// The rates the word animations are running at. A line also holds animations the interface owns
+// rather than the song, so this reads the parts, where the song's own are.
+function songAnimationRates(element: BraccatoLyricsElement): number[] {
+  return (element.renderer?.lines ?? []).flatMap(line =>
+    line.parts.flatMap(part => part.animations.map(animation => animation.playbackRate))
+  );
 }
 
 // What the build recorded on the container it made, which is where the flags a consumer hands to
@@ -1071,6 +1080,13 @@ assert.equal(
   "Given a frame that ran while the clock was running, When it is done, Then it asked for the next one"
 );
 
+// The guarantee every consumer written before the rate existed relies on.
+assert.deepEqual(
+  new Set(songAnimationRates(boundElement)),
+  new Set([1]),
+  "Given a song nobody said a rate for, When its animations are read, Then they run at 1x"
+);
+
 // -- A song played at something other than 1x --------------------------------------------
 
 boundMedia.playbackRate = DOUBLE_RATE;
@@ -1092,6 +1108,37 @@ assert.equal(
   boundElement.currentTime,
   LATE_PLAYBACK_TIME_S + (MAX_CLOCK_CARRY_MS * DOUBLE_RATE) / 1000,
   "Given a media clock that stopped without saying so, When frames keep running, Then the reading is carried only so far rather than running away from the song"
+);
+
+assert.deepEqual(
+  new Set(songAnimationRates(boundElement)),
+  new Set([DOUBLE_RATE]),
+  "Given a media element playing at a rate of its own, When the animations that follow the song are read, Then they run at that rate rather than at 1x"
+);
+
+boundMedia.playbackRate = 1;
+boundMedia.dispatch("ratechange");
+runFrames(bound.fakeWindow, ANCHOR_FRAME_MS + STALLED_MS);
+
+assert.deepEqual(
+  new Set(songAnimationRates(boundElement)),
+  new Set([1]),
+  "Given a rate that changed mid-song, When the animations already running are read, Then they moved onto the new rate rather than keeping the old one"
+);
+
+boundMedia.playbackRate = HALF_RATE;
+boundMedia.dispatch("ratechange");
+runFrames(bound.fakeWindow, ANCHOR_FRAME_MS + STALLED_MS);
+// A line the view has not built yet, so what it builds is where the rate has to be read again
+// rather than carried over from the animations the change already reached.
+boundMedia.currentTime = PLAYBACK_TIME_S;
+boundMedia.dispatch("seeked");
+runFrames(bound.fakeWindow, ANCHOR_FRAME_MS + STALLED_MS * 2);
+
+assert.deepEqual(
+  new Set(songAnimationRates(boundElement)),
+  new Set([HALF_RATE]),
+  "Given a rate settled before a line was reached, When that line's animations are built, Then they start on the song's rate rather than on 1x"
 );
 
 // -- A clock that stopped --------------------------------------------

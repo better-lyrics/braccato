@@ -189,6 +189,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
    * from a tick, so it has no options object to read.
    */
   passiveScrollEnabled: boolean;
+  playbackRate: number;
   passiveRAFId: number | null;
   pendingLyricsUpdateFrame: number | null;
   learnedAnimationTimingOffsetMs: number;
@@ -262,6 +263,7 @@ export function createAnimationEngineInstance(
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
     passiveScrollEnabled: false,
+    playbackRate: 1,
     passiveRAFId: null,
     pendingLyricsUpdateFrame: null,
     learnedAnimationTimingOffsetMs: 0,
@@ -603,7 +605,27 @@ function trackLyricAnimationTiming(
     ...timing,
     appliedTimingOffsetMs: timing.appliedTimingOffsetMs ?? engine.learnedAnimationTimingOffsetMs,
   });
+  // Being tracked is what makes an animation the song's rather than the interface's, so it is also
+  // what decides which ones follow the song's rate.
+  animation.playbackRate = engine.playbackRate;
   return animation;
+}
+
+/**
+ * Puts the animations already running onto a new rate. Setting `playbackRate` keeps `currentTime`,
+ * so each one carries on from where the song left it rather than restarting.
+ */
+function applyPlaybackRateToRunningAnimations(engine: AnimationEngineInstance): void {
+  for (const line of engine.lines) {
+    for (const animation of line.animations) {
+      if (animationTimingTracks.has(animation)) animation.playbackRate = engine.playbackRate;
+    }
+    for (const part of line.parts) {
+      for (const animation of part.animations) {
+        if (animationTimingTracks.has(animation)) animation.playbackRate = engine.playbackRate;
+      }
+    }
+  }
 }
 
 function correctedAnimationTimeMs(targetTimeMs: number, appliedTimingOffsetMs: number, maxTimeMs?: number): number {
@@ -2310,7 +2332,14 @@ export function resolveTickOptions(options: TickOptions): ResolvedTickOptions {
     richsyncOffsetTrim: options.richsyncOffsetTrim ?? 0,
     lineOffsetTrim: options.lineOffsetTrim ?? 0,
     passiveScrollEnabled: options.passiveScrollEnabled ?? false,
+    playbackRate: resolvePlaybackRate(options.playbackRate),
   };
+}
+
+// A rate of zero or less would freeze every animation that follows the song, which is a second
+// answer to the question `isPlaying` already answers.
+function resolvePlaybackRate(rate: number | undefined): number {
+  return rate !== undefined && Number.isFinite(rate) && rate > 0 ? rate : 1;
 }
 
 /**
@@ -2323,6 +2352,11 @@ export function tickView(
 ): AnimationTickStatus {
   const { eventCreationTime, isPlaying, smoothScroll } = options;
   engine.passiveScrollEnabled = options.passiveScrollEnabled;
+
+  if (engine.playbackRate !== options.playbackRate) {
+    engine.playbackRate = options.playbackRate;
+    applyPlaybackRateToRunningAnimations(engine);
+  }
 
   const now = Date.now();
   if (currentTime === 0 && !isPlaying) {

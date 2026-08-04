@@ -89,10 +89,11 @@ class FakeStyle {
 // animation, and a fixture whose subject is not scrolling switches scroll animation off in its
 // theme for the same reason. Covering any of that needs an animation that reports a real
 // `playState` and a `currentTime` that moves, which is a fake of a different size.
-class FakeAnimation {
+export class FakeAnimation {
   currentTime: number | null = null;
   readonly playState = "idle";
   cancelled = false;
+  playbackRate = 1;
 
   cancel(): void {
     this.cancelled = true;
@@ -112,6 +113,7 @@ export class FakeNode {
   readonly childNodes: FakeNode[] = [];
   readonly clickListeners: ClickListener[] = [];
   readonly dispatchedEvents: unknown[] = [];
+  readonly animations: FakeAnimation[] = [];
   parentNode: FakeNode | null = null;
   dir = "";
   id = "";
@@ -189,7 +191,9 @@ export class FakeNode {
   }
 
   animate(): FakeAnimation {
-    return new FakeAnimation();
+    const animation = new FakeAnimation();
+    this.animations.push(animation);
+    return animation;
   }
 
   get textContent(): string {

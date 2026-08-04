@@ -528,8 +528,15 @@ export class BraccatoLyricsElement extends HTMLElement {
     // A view with nothing built reports a missing container to the host on every tick, and a
     // consumer whose clock runs before the lyrics arrive is the ordinary case rather than a fault.
     if (renderer === null || renderer.container === null) return;
+    // The rate a bound media element is playing at is the element's to report, the same way the
+    // clock is, so it overrides what the consumer wrote for exactly as long as the binding lasts.
+    const boundRate = this.#media === null ? undefined : this.#media.playbackRate;
     // The play state last, so a consumer writing plain JavaScript cannot answer that question twice.
-    renderer.tick(this.#currentTimeS, { ...this.#tickOptions, isPlaying: this.#playing });
+    renderer.tick(this.#currentTimeS, {
+      ...this.#tickOptions,
+      ...(boundRate === undefined ? {} : { playbackRate: boundRate }),
+      isPlaying: this.#playing,
+    });
   }
 
   #upgradeProperty<

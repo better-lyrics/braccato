@@ -81,7 +81,7 @@ connects, and everything it was handed by then is applied at once.
 | `mediaElement`  |                | `HTMLMediaElement \| null` (get)    | `null`   | What `source` resolved to. Null while disconnected, and null for a selector that missed.                                                   |
 | `currentTime`   | `current-time` | `number`                            | `0`      | Playback position in **seconds**. Writing it renders the view again, so whoever holds the clock drives the lyrics by writing this.        |
 | `playing`       | `playing`      | `boolean`                           | `false`  | A paused view animates differently from a playing one.                                                                                     |
-| `tickOptions`   |                | `ElementTickOptions`                | `{}`     | The rest of a tick: four offsets taken off the clock before it is matched, whether passive scrolling is on, and when the clock was sampled. |
+| `tickOptions`   |                | `ElementTickOptions`                | `{}`     | The rest of a tick: four offsets taken off the clock before it is matched, whether passive scrolling is on, when the clock was sampled, and the rate the song is playing at. |
 | `theme`         | `theme`        | `string`                            | `""`     | A compiled stylesheet. See Theming.                                                                                                        |
 | `host`          |                | `Partial<LyricsRendererHost>`       | `{}`     | Overrides for what the renderer asks of its surroundings. Every member has a default. Writing it while connected rebuilds the view.        |
 | `renderer`      |                | `LyricsRenderer \| null` (get)      | `null`   | The renderer underneath, for the day the tag runs out. A different one after every reconnection.                                            |
@@ -255,6 +255,12 @@ lyric line sets `currentTime` back on it. So `currentTime` and `playing` become 
 either is dropped and the getter keeps reporting what the binding last read. Dropped rather than
 reported, because a consumer who bound a source and left their own frame loop running would otherwise
 be told about it sixty times a second. Unbind and the clock goes back to whoever asked for it.
+
+The rate is read off the media element too, and passed on as `tickOptions.playbackRate`, so a song at
+half or double speed animates at half or double speed rather than sweeping at 1x and being corrected
+on the next tick. A consumer driving the clock itself sets that option instead. Only the animations
+that follow the song are scaled: a line's exit, a word's fade and the scroll between lines keep the
+timing the theme asked for at every rate.
 
 A reading the media element has not refreshed yet is carried forward at the playback rate it was
 taken at, capped at 100ms of frame time. That cap is what covers a stall: the view runs at most 100ms
