@@ -1080,6 +1080,13 @@ assert.equal(
   "Given a frame that ran while the clock was running, When it is done, Then it asked for the next one"
 );
 
+// The guarantee every consumer written before the rate existed relies on.
+assert.deepEqual(
+  new Set(songAnimationRates(boundElement)),
+  new Set([1]),
+  "Given a song nobody said a rate for, When its animations are read, Then they run at 1x"
+);
+
 // -- A song played at something other than 1x --------------------------------------------
 
 boundMedia.playbackRate = DOUBLE_RATE;
