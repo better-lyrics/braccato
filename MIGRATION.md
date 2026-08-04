@@ -10,15 +10,17 @@ The tag name is still `braccato-lyrics`, and `better-lyrics` is registered as an
 `LyricPart` still have the same shape, so lyrics you already parse still load. They are declared in
 `@braccato/types` now, which both packages depend on and re-export, so your imports do not move.
 
-**`@braccato/rics` and `@braccato/provider-blyrics` are unchanged.** `@braccato/parsers` is not: it
-is `0.2.0`, with new TTML, LRC and QRC implementations taken from the same engine. Parsing moved *to*
-`@braccato/parsers`, not away from it. See [What changed in `@braccato/parsers`](#what-changed-in-braccatoparsers)
-before you upgrade both at once.
+`@braccato/rics` is unchanged at `0.1.1`. `@braccato/parsers` is not: it is `0.2.0`, with new TTML,
+LRC and QRC implementations taken from the same engine. Parsing moved *to* `@braccato/parsers`, not
+away from it. `@braccato/provider-blyrics` is `0.2.0` for the same reason: its own API did not
+change, but its built-in providers run those parsers, so what they hand back changes with them. See
+[What changed in `@braccato/parsers`](#what-changed-in-braccatoparsers) before you upgrade.
 
 ## Before you start
 
-1.0.0 is not on npm yet. `pnpm add @braccato/core@^1.0.0` will not resolve until it is published.
-Until then, see [Developing before 1.0.0 is published](#developing-before-100-is-published).
+```bash
+pnpm add @braccato/core@^1.0.0 @braccato/parsers@^0.2.0
+```
 
 ## The short version
 
@@ -172,7 +174,7 @@ to the nearest ancestor whose `overflow-y` computes to `auto` or `scroll`, and f
 `document.scrollingElement` when nothing does. So an element with no scrollable ancestor treats the
 whole page as its view.
 
-**`scrollMode="internal"`** was the element scrolling itself. Reproduce it with CSS alone, because
+`scrollMode="internal"` was the element scrolling itself. Reproduce it with CSS alone, because
 the walk starts at the element:
 
 ```diff
@@ -187,7 +189,7 @@ braccato-lyrics {
 }
 ```
 
-**`scrollMode="external"`** was an explicit container. Say which one:
+`scrollMode="external"` was an explicit container. Say which one:
 
 ```diff
 -el.scrollMode = "external";
@@ -410,52 +412,25 @@ came out of, so both halves of a pairing now read a file the same way. `SRTParse
 are untouched, `detectParser` still tries TTML, LRC, SRT, QRC and then plain text, and every existing
 import resolves.
 
-**QRC is the one to check.** It now reads the `<QrcInfos>` envelope QQ Music actually returns. 0.1.x
+QRC is the one to check. It now reads the `<QrcInfos>` envelope QQ Music actually returns. 0.1.x
 handled only a bare timestamped body, and it claimed the envelope anyway: a response carrying the
 whole body in one `LyricContent` attribute parsed to no lines at all, and a multi-line one lost its
 first line to the XML wrapped around it. If you were feeding QRC straight from QQ Music and unwrapping
 it yourself, you can stop. `parseQRC` also takes the song's title and artist so the opening lines that
 only echo them can be dropped, turns `Name:` prefixes into agents, and drops credit lines.
 
-**TTML is parsed with `fast-xml-parser` rather than the global `DOMParser`.** The package no longer
+TTML is parsed with `fast-xml-parser` rather than the global `DOMParser`. The package no longer
 needs an ambient DOM, so it runs in bare Node as well as a browser, and `fast-xml-parser` is a
 dependency you install with it. It is left external rather than bundled, so a consumer with a bundler
 ends up with one copy. The parser also reads `ttm:agent` vocalists, `ttm:role="x-bg"` background
 vocals, Apple's translations and transliterations, explicit flags and `itunes:key`, and recovers
 namespace prefixes a document uses without declaring.
 
-**LRC keeps the spacing between words** that Musixmatch word-by-word lyrics carry. `LRCParser.parse`
+LRC keeps the spacing between words that Musixmatch word-by-word lyrics carry. `LRCParser.parse`
 still runs the timing fixers those lyrics need. `parseLRC` is published beside it for a source whose
 timings are already clean, and returns the document exactly as stated.
 
 The [package README](packages/parsers/README.md) covers the entry points each of these added.
-
-## Developing before 1.0.0 is published
-
-`@braccato/core@1.0.0` is not on npm yet, so `pnpm add @braccato/core@^1.0.0` cannot resolve. Until
-it lands, build the artifact from a checkout of this repository and symlink it into your project.
-Keep that a local step: a `file:` or `link:` dependency in a manifest outlives the reason for it.
-
-```bash
-# In your braccato checkout
-pnpm package   # emits packages/core/dist/
-
-# In your project. node_modules is not tracked, so this touches nothing committed.
-ln -sfn /path/to/braccato/packages/core node_modules/@braccato/core
-```
-
-The symlink points at the package directory rather than at the emit, because the manifest lives
-there and its exports map is what turns `@braccato/core/element` and the stylesheets into files
-under `dist/`. Run `pnpm package` again after pulling, or the symlink serves stale code.
-
-Remove the symlink and install normally once 1.0.0 is on the registry.
-
-Do not reach for `pnpm link` for this. On pnpm 9.15.4 it leaves `package.json` alone, but it writes
-an `overrides:` entry and a `link:` specifier carrying an absolute path into `pnpm-lock.yaml`, and
-`pnpm unlink` reports "Nothing to unlink" and leaves both behind.
-
-None of this is needed to work on this repository, where the demo page resolves the package through
-the workspace. `pnpm -C demo dev` builds it and serves it.
 
 ## Reference
 

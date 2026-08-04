@@ -9,6 +9,10 @@
   <a href="https://www.npmjs.com/package/@braccato/core"><code>@braccato/core</code></a>, the word-by-word lyrics renderer from <a href="https://better-lyrics.boidu.dev">Better Lyrics</a>, with the parsers, providers and tooling around it.
 </p>
 
+> [!IMPORTANT]
+> `@braccato/core` 1.0.0 is a rewrite, not a version bump. If you are on 0.1.x, read
+> [MIGRATION.md](MIGRATION.md) before upgrading.
+
 ## Packages
 
 | Package | Description |
@@ -25,16 +29,13 @@ the rendering engine still runs as part of the extension. Its
 [README](packages/core/README.md) is the reference for properties, attributes, events, theming and
 class names.
 
-**Upgrading from `@braccato/core` 0.1.x?** Version 1.0.0 is a rewrite, not a bump. See
-[MIGRATION.md](MIGRATION.md).
-
-**Looking for the playground?** `playground/` has been retired. The page it served,
+`playground/` has been retired. The page it served,
 [braccato.boidu.dev](https://braccato.boidu.dev), is now [`demo/`](demo), beside the renderer it
 demonstrates. Run `pnpm -C demo dev` and open `http://localhost:5173/`, or build it with
 `pnpm -C demo build`. It deploys from Cloudflare Pages, which builds `pnpm build` at the repository
 root and serves `demo/dist`.
 
-## Quick Start
+## Quick start
 
 ```html
 <audio id="player" src="song.mp3" controls></audio>
@@ -73,7 +74,7 @@ itself and seeks the player when a line is clicked. Without one, drive it by wri
 The element renders into light DOM, so your own stylesheet reaches the lines. Theming is a
 stylesheet you hand to `el.theme`.
 
-## Framework Examples
+## Framework examples
 
 `<braccato-lyrics>` is a plain custom element with no framework runtime behind it, so there is no
 wrapper to install anywhere. Two things are true in every framework:
@@ -247,7 +248,7 @@ const parser = detectParser(inputText);
 const lyrics = parser.parse(inputText, durationMs);
 ```
 
-### Core Types
+### Core types
 
 Declared in `@braccato/types`, which both `@braccato/core` and `@braccato/parsers` depend on and
 re-export, so importing `Lyric` from either goes on working.
@@ -276,7 +277,7 @@ interface LyricPart {
 }
 ```
 
-## Provider Chain
+## Provider chain
 
 Fetch lyrics from multiple sources with priority ordering and validation:
 
@@ -292,7 +293,7 @@ const result = await chain.fetchLyrics(
 );
 ```
 
-### Built-in Providers
+### Built-in providers
 
 ```typescript
 import {
@@ -314,7 +315,7 @@ const validate = createSimilarityValidator(referenceText, 0.5);
 const result = await chain.fetchLyrics(context, { validate });
 ```
 
-## RICS CSS Preprocessor
+## RICS CSS preprocessor
 
 Compile RICS source code to CSS:
 
@@ -347,7 +348,7 @@ pnpm -C demo build    # Build the page to demo/dist
 The demo is a workspace member, so `pnpm dev` and `pnpm build` reach it too. Either way its own
 `predev` and `prebuild` synthesize the demo audio first, which is generated rather than committed.
 
-## Project Structure
+## Project structure
 
 ```
 braccato/
