@@ -6,3 +6,5 @@ demo/public/generated
 test-data/
 .env.local
 .env
+# Deployment settings are environment specific and not tracked.
+DEPLOY.md
