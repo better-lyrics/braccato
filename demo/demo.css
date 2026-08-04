@@ -1625,8 +1625,10 @@ braccato-lyrics {
 	padding-top: var(--blyrics-padding-top, 2rem);
 }
 
+/* Stated rather than left to the font, and stated once for every theme: tracking is the page's call
+   here, not something each theme should be tightening to its own taste. */
 [data-page-rules="on"] .blyrics-container {
-	letter-spacing: -0.045em;
+	letter-spacing: 0;
 }
 
 /* `--blyrics-glow-color` is documented as the bloom a word earns by being held, but the package
