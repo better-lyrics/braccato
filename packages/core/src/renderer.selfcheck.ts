@@ -189,6 +189,9 @@ function newViewFixture(styleValues: Record<string, string> = SCROLL_ANIMATION_O
   const mount = fakeDocument.createElement("div");
 
   scrollContainer.offsetHeight = SCROLL_CONTAINER_HEIGHT_PX;
+  scrollContainer.clientHeight = SCROLL_CONTAINER_HEIGHT_PX;
+  // A song's worth of content under it, so the scroll ceiling is never what a check here is reading.
+  scrollContainer.scrollHeight = SCROLL_CONTAINER_HEIGHT_PX * 100;
   scrollContainer.appendChild(mount);
   fakeWindow.overflowByElement.set(scrollContainer, "auto");
 

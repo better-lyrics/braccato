@@ -2440,6 +2440,7 @@ export function tickView(
     }
     const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
     let scrollTop = tabRenderer.scrollTop;
+    const maxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
     if (animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
         engine,
@@ -2653,8 +2654,9 @@ export function tickView(
       // Make sure top of last active lyric is visible.
       scrollPos = Math.min(scrollPos, lastActiveLyric.position);
 
-      // Make sure we're not trying to scroll to negative values
-      scrollPos = Math.max(0, scrollPos);
+      // Past either end the browser clamps the write and reports nothing, leaving the view aiming
+      // at a position it never reached and re-aiming once per remaining line.
+      scrollPos = clamp(scrollPos, 0, maxScrollTop);
 
       if (ENABLE_DEBUG_RENDER.getBooleanValue()) {
         let transform = engine.window.getComputedStyle(lyricsElement).transform;
@@ -2920,6 +2922,9 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
 
   engine.document.documentElement.style.setProperty("--blyrics-padding-top", top + "px");
   engine.document.documentElement.style.setProperty("--blyrics-padding-bottom", bottom + "px");
+  // Inline, because a theme's own `.blyrics-container { padding }` is appended after the package's
+  // stylesheet at the same weight and would otherwise take this room away.
+  lyricsElement.style.setProperty("padding-bottom", bottom + "px");
 }
 
 /**

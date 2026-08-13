@@ -315,6 +315,7 @@ export class FakeDocument {
   // Where a stylesheet goes. Built directly rather than through the factories, so it stays out of
   // the factory call counts below.
   readonly head = new FakeNode(this, "element", "head");
+  readonly documentElement = new FakeNode(this, "element", "html");
   // What a document scrolls by when nothing between the mount and the root does. Left unset rather
   // than built here, so a self-check that never asks about it does not pay for an element in its
   // factory call counts.
