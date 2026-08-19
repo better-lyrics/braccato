@@ -179,6 +179,13 @@ The ones a theme reaches for first. `variables.css` declares the rest.
 `line-height`. Every word is given the glow, so a theme that wants it to mean something selects on
 `data-long-word`, which the module sets on any part held past `blyrics-long-word-threshold`.
 
+The instrumental ripple is the one place a property carries geometry rather than a value.
+`--blyrics-instrumental-wave-path-high` and `--blyrics-instrumental-wave-path-low` are the two shapes
+it morphs between, each a `path()`, and a theme redrawing them is how the wave changes amplitude or
+frequency. Both must use the same commands in the same order with the same number of arguments: a
+browser only interpolates two paths smoothly when their command sequences match, and a mismatched
+pair snaps at the halfway point instead of flowing.
+
 ### Class names
 
 These are published API rather than implementation. Renaming one costs a migration rather than a
