@@ -117,6 +117,8 @@
 	--blyrics-instrumental-wave-transform-from: scaleY(1.2);
 	--blyrics-instrumental-wave-transform-to: scaleY(0.0001);
 	--blyrics-instrumental-wave-easing: ease-in;
+	--blyrics-instrumental-wave-path-high: path("M -4 3 Q 1 2 5 3 Q 10 4 14 3 Q 18 2 22 3 Q 26 4 30 3 L 30 4 L -4 4 Z");
+	--blyrics-instrumental-wave-path-low: path("M -4 3 Q 1 4 5 3 Q 10 2 14 3 Q 18 4 22 3 Q 26 2 30 3 L 30 4 L -4 4 Z");
 	--blyrics-instrumental-wave-oscillation-duration: 1.25s;
 	--blyrics-instrumental-wave-oscillation-easing: ease-in-out;
 

@@ -26,6 +26,7 @@ import {
   USER_SCROLLING_CLASS,
 } from "./constants";
 import type { LineData, PartData } from "./inject";
+import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
 import { clamp, getRelativeLayoutBounds, positiveModulo, roundedMs, toMs } from "./util";
@@ -464,8 +465,8 @@ const WORD_HIGHLIGHT_SELECTOR = ".blyrics-word-highlight";
 const INSTRUMENTAL_FILL_SELECTOR = ".blyrics--instrumental-fill";
 const INSTRUMENTAL_WAVE_CLIP_SELECTOR = ".blyrics--wave-clip";
 const INSTRUMENTAL_WAVE_PATH_SELECTOR = ".blyrics--wave-path";
-const INSTRUMENTAL_WAVE_PATH_HIGH = 'path("M -4 3 Q 1 2 5 3 Q 10 4 14 3 Q 18 2 22 3 Q 26 4 30 3 L 30 4 L -4 4 Z")';
-const INSTRUMENTAL_WAVE_PATH_LOW = 'path("M -4 3 Q 1 4 5 3 Q 10 2 14 3 Q 18 4 22 3 Q 26 2 30 3 L 30 4 L -4 4 Z")';
+const INSTRUMENTAL_WAVE_PATH_HIGH_FALLBACK = `path("${INSTRUMENTAL_WAVE_PATH_HIGH}")`;
+const INSTRUMENTAL_WAVE_PATH_LOW_FALLBACK = `path("${INSTRUMENTAL_WAVE_PATH_LOW}")`;
 type LineScrollSide = "above" | "active" | "below";
 type LineScrollKeyframe = "start" | "end";
 interface LineScrollItem {
@@ -553,6 +554,8 @@ interface AnimationConfig {
     waveFrom: string;
     waveTo: string;
     waveEasing: string;
+    wavePathHigh: string;
+    wavePathLow: string;
     waveOscillationDurationMs: number;
     waveOscillationEasing: string;
   };
@@ -1378,9 +1381,9 @@ function startInstrumentalAnimations(
       lineData,
       INSTRUMENTAL_WAVE_PATH_SELECTOR,
       [
-        { d: INSTRUMENTAL_WAVE_PATH_HIGH },
-        { d: INSTRUMENTAL_WAVE_PATH_LOW, offset: 0.5 },
-        { d: INSTRUMENTAL_WAVE_PATH_HIGH },
+        { d: config.instrumental.wavePathHigh },
+        { d: config.instrumental.wavePathLow, offset: 0.5 },
+        { d: config.instrumental.wavePathHigh },
       ],
       {
         duration: config.instrumental.waveOscillationDurationMs,
@@ -1646,6 +1649,18 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       waveFrom: getCSSValue(engine, lyricsElement, "--blyrics-instrumental-wave-transform-from", "scaleY(1.2)"),
       waveTo: getCSSValue(engine, lyricsElement, "--blyrics-instrumental-wave-transform-to", "scaleY(0.0001)"),
       waveEasing: getCSSValue(engine, lyricsElement, "--blyrics-instrumental-wave-easing", "ease-in"),
+      wavePathHigh: getCSSValue(
+        engine,
+        lyricsElement,
+        "--blyrics-instrumental-wave-path-high",
+        INSTRUMENTAL_WAVE_PATH_HIGH_FALLBACK
+      ),
+      wavePathLow: getCSSValue(
+        engine,
+        lyricsElement,
+        "--blyrics-instrumental-wave-path-low",
+        INSTRUMENTAL_WAVE_PATH_LOW_FALLBACK
+      ),
       waveOscillationDurationMs: getCSSDurationWithFallback(
         engine,
         lyricsElement,
