@@ -11,12 +11,19 @@ import {
   getRenderedSyncType,
   hasRenderedLines,
   noteUserScroll,
+  relayout,
   resolveTickOptions,
   scheduleLyricPositionUpdate,
   tickView,
 } from "./engine";
-import { asDocument, asElement, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
-import { asWindow, FakeMediaQueryList, FakeWindow, poisonAmbientGlobals } from "./selfcheck/fakeWindow";
+import { asDocument, asElement, asFakeNode, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
+import {
+  asWindow,
+  FakeMediaQueryList,
+  FakeWindow,
+  installFakeDOMRect,
+  poisonAmbientGlobals,
+} from "./selfcheck/fakeWindow";
 import type { Lyric, LyricsRendererHost, TickOptions } from "./types";
 import { setLyrics } from "./view";
 
@@ -36,6 +43,8 @@ const ambientGlobals = poisonAmbientGlobals(
   name => `The renderer read the ambient global ${name} instead of the one its instance was handed`
 );
 
+installFakeDOMRect();
+
 // -- Measurements the host owns --------------------------------------------
 
 const VIEWPORT_HEIGHT_PX = 400;
@@ -45,11 +54,27 @@ const PLAYBACK_TIME_S = 0.2;
 // -- Fake host --------------------------------------------
 
 // The scroll container belongs to the host, not to the module, so it is not built from either
-// document. It answers only what the tick reads off it.
+// document. It answers only what the tick reads off it, and it clamps a `scrollTop` write the way a
+// browser does: silently, which is what a module aiming past the end of its content relies on.
 class FakeScrollElement {
-  scrollTop = 0;
+  private currentScrollTop = 0;
 
-  constructor(readonly viewportHeight: number) {}
+  constructor(
+    readonly viewportHeight: number,
+    readonly scrollHeight = viewportHeight * 100
+  ) {}
+
+  get clientHeight(): number {
+    return this.viewportHeight;
+  }
+
+  get scrollTop(): number {
+    return this.currentScrollTop;
+  }
+
+  set scrollTop(value: number) {
+    this.currentScrollTop = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight));
+  }
 
   getBoundingClientRect(): { height: number } {
     return { height: this.viewportHeight };
@@ -59,7 +84,11 @@ class FakeScrollElement {
 class FakeHost implements LyricsRendererHost {
   readonly resumeAffordanceCalls: boolean[] = [];
   readonly logs: unknown[][] = [];
-  readonly scrollElement = new FakeScrollElement(VIEWPORT_HEIGHT_PX);
+  readonly scrollElement: FakeScrollElement;
+
+  constructor(contentHeight?: number) {
+    this.scrollElement = new FakeScrollElement(VIEWPORT_HEIGHT_PX, contentHeight);
+  }
 
   isViewVisible(): boolean {
     return true;
@@ -642,6 +671,63 @@ assert.equal(
 );
 
 placeholderEngine.destroy();
+
+// -- The end of the song is somewhere the scroll can actually reach -----------------------------
+
+const OUTRO_LINE_HEIGHT_PX = 60;
+const OUTRO_LAST_LINE_POSITION_PX = 3000;
+const UNPADDED_CONTENT_HEIGHT_PX = OUTRO_LAST_LINE_POSITION_PX + OUTRO_LINE_HEIGHT_PX;
+
+const outroDocument = new FakeDocument();
+const outroWindow = new FakeWindow({ [ANIMATE_SCROLL_PROPERTY]: "0" });
+const outroHost = new FakeHost(UNPADDED_CONTENT_HEIGHT_PX);
+const outroMount = outroDocument.createElement("div");
+const outroEngine = createAnimationEngineInstance(asDocument(outroDocument), asWindow(outroWindow), outroHost);
+
+setLyrics(outroEngine, asElement<HTMLElement>(outroMount), LINE_SYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+
+getRenderedLines(outroEngine).forEach((line, index, lines) => {
+  line.position = OUTRO_LAST_LINE_POSITION_PX - (lines.length - 1 - index) * OUTRO_LINE_HEIGHT_PX;
+  line.height = OUTRO_LINE_HEIGHT_PX;
+});
+
+const LAST_LINE_TIME_S = LINE_SYNCED_LYRICS[LINE_SYNCED_LYRICS.length - 1].startTimeMs / 1000;
+tickView(outroEngine, LAST_LINE_TIME_S, resolveTickOptions(newTickOptions()));
+
+// The positive control: a fixture too thin to reach the scroll maths would pass the next assertion
+// by never having scrolled at all.
+assert.ok(
+  outroHost.scrollElement.scrollTop > 0,
+  "Given the last line of a song, When the view ticks at its time, Then it scrolled towards that line at all"
+);
+
+assert.equal(
+  outroEngine.scrollPos,
+  outroHost.scrollElement.scrollTop,
+  "Given a container a theme left too short to centre the last line, When the view scrolls to it, Then it aims where the scroll can go rather than past the end of the content"
+);
+
+// -- The room below the last line is taken, not asked for --------------------------------------
+
+relayout(outroEngine, false);
+
+const outroContainer = asFakeNode(outroEngine.lyricsContainer!);
+
+assert.ok(
+  Number.parseFloat(outroContainer.style.getPropertyValue("padding-bottom")) > 0,
+  "Given a view sizing the room below its last line, When the container is read, Then it carries that room where no theme rule can outrank it"
+);
+
+assert.equal(
+  outroContainer.style.getPropertyValue("padding-bottom"),
+  outroDocument.documentElement.style.getPropertyValue("--blyrics-padding-bottom"),
+  "Given a view sizing the room below its last line, When the published property is read, Then it still names the length the container took"
+);
+
+outroEngine.destroy();
 
 // -- Destroying one view releases only what it held --------------------------------------------
 

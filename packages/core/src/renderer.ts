@@ -308,6 +308,10 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
       // Everything the engine resolved off the document was resolved against the theme that just
       // went away.
       clearEngineStyleCaches(engine);
+      // The target scroll position is one of the settings a theme carries, and the scroll padding is
+      // sized against it, so a theme that moves the target moves the layout even when no rule in it
+      // does.
+      measure();
       return needsLyricRebuild;
     },
     tick(currentTimeS, options) {

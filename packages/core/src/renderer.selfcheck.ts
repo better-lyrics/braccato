@@ -71,6 +71,8 @@ const ANIMATION_TIMING_LOG_SETTING = "blyrics-debug-animation-timing";
 const REBUILD_THEME = "/* blyrics-disable-richsync = true; */";
 const RESPELT_REBUILD_THEME = "/*blyrics-disable-richsync=true;*/";
 const NEUTRAL_THEME = "/* blyrics-target-scroll-pos-ratio = 0.5; */";
+// What the target scroll position falls back to once a theme stops naming one.
+const DEFAULT_TARGET_SCROLL_RATIO = 0.37;
 
 const MAX_SWALLOWED_SCROLLS = 8;
 
@@ -189,6 +191,9 @@ function newViewFixture(styleValues: Record<string, string> = SCROLL_ANIMATION_O
   const mount = fakeDocument.createElement("div");
 
   scrollContainer.offsetHeight = SCROLL_CONTAINER_HEIGHT_PX;
+  scrollContainer.clientHeight = SCROLL_CONTAINER_HEIGHT_PX;
+  // A song's worth of content under it, so the scroll ceiling is never what a check here is reading.
+  scrollContainer.scrollHeight = SCROLL_CONTAINER_HEIGHT_PX * 100;
   scrollContainer.appendChild(mount);
   fakeWindow.overflowByElement.set(scrollContainer, "auto");
 
@@ -1565,6 +1570,13 @@ assert.deepEqual(
 themedRenderer.setLyrics(SYNCED_LYRICS);
 themedRenderer.tick(PLAYBACK_TIME_S, { isPlaying: true });
 
+// Content taller than the viewport, so that the target scroll position is what the room below the
+// last line is sized by rather than the viewport's own floor.
+const themedContainer = asFakeNode(themedRenderer.container!);
+themedContainer.scrollHeight = SCROLL_CONTAINER_HEIGHT_PX * 4;
+themedRenderer.relayout();
+const roomUnderNeutralTarget = themedContainer.style.getPropertyValue("padding-bottom");
+
 const propertyReadsBeforeThemeChange = themed.fakeWindow.propertyReads.length;
 themedRenderer.tick(PLAYBACK_TIME_S, { isPlaying: true });
 
@@ -1584,6 +1596,18 @@ assert.deepEqual(
   appliedThemeSheets(),
   [REBUILD_THEME],
   "Given a view that already carries a theme, When a second one is applied, Then it replaces the first rather than stacking another sheet on top of it"
+);
+
+assert.equal(
+  themedContainer.style.getPropertyValue("padding-bottom"),
+  SCROLL_CONTAINER_HEIGHT_PX * (1 - DEFAULT_TARGET_SCROLL_RATIO) + "px",
+  "Given a theme that moves the target scroll position, When it is applied, Then the room below the last line is sized again for the target it asks for"
+);
+
+assert.notEqual(
+  themedContainer.style.getPropertyValue("padding-bottom"),
+  roomUnderNeutralTarget,
+  "Given a theme that moves the target scroll position, When it is applied, Then that room is not the length the target before it asked for"
 );
 
 themedRenderer.tick(PLAYBACK_TIME_S, { isPlaying: true });
