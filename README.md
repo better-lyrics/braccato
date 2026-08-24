@@ -9,6 +9,20 @@
   <a href="https://www.npmjs.com/package/@braccato/core"><code>@braccato/core</code></a>, the word-by-word lyrics renderer from <a href="https://better-lyrics.boidu.dev">Better Lyrics</a>, with the parsers, providers and tooling around it.
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/@braccato/core"><img src="https://img.shields.io/npm/v/@braccato/core?style=flat-square&label=core&color=F50032" alt="@braccato/core on npm" /></a>
+  <a href="https://www.npmjs.com/package/@braccato/parsers"><img src="https://img.shields.io/npm/v/@braccato/parsers?style=flat-square&label=parsers&color=F50032" alt="@braccato/parsers on npm" /></a>
+  <a href="https://www.npmjs.com/package/@braccato/provider-blyrics"><img src="https://img.shields.io/npm/v/@braccato/provider-blyrics?style=flat-square&label=provider-blyrics&color=F50032" alt="@braccato/provider-blyrics on npm" /></a>
+  <a href="https://www.npmjs.com/package/@braccato/rics"><img src="https://img.shields.io/npm/v/@braccato/rics?style=flat-square&label=rics&color=F50032" alt="@braccato/rics on npm" /></a>
+  <a href="https://www.npmjs.com/package/@braccato/types"><img src="https://img.shields.io/npm/v/@braccato/types?style=flat-square&label=types&color=F50032" alt="@braccato/types on npm" /></a>
+</p>
+
+<p align="center">
+  <a href="https://braccato.boidu.dev"><img src="https://img.shields.io/badge/Demo-braccato.boidu.dev-F50032?style=flat-square" alt="Demo" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2196f3?style=flat-square" alt="MIT License" /></a>
+  <a href="https://better-lyrics.boidu.dev"><img src="https://img.shields.io/badge/Built%20for-Better%20Lyrics-F50032?style=flat-square" alt="Built for Better Lyrics" /></a>
+</p>
+
 > [!IMPORTANT]
 > `@braccato/core` 1.0.0 is a rewrite, not a version bump. If you are on 0.1.x, read
 > [MIGRATION.md](MIGRATION.md) before upgrading.
