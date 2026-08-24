@@ -478,11 +478,65 @@ const THE_STEPS = [
   { chord: "Dm", instrumental: true },
 ];
 
+// The line-synchronised LRC returned by lyrics.api.dacubeking.com for YouTube video 7M95h7zQU3k.
+// It has no word timing, so these stay as lines rather than inventing richer timing than the source
+// supplied. The final line runs to the duration sent with the request (3:32).
+const OMAKE_PFADLIB_LINES = [
+  [1880, "Omake-Pfadlib"],
+  [8870, "泽野弘之"],
+  [13120, "进击的巨人第六话 儿时的回忆 结尾钢琴曲"],
+  [28130, "从天而降的噩梦，突如其来的歹人，让三笠失去了家人。"],
+  [43880, "面对即将被卖掉的厄运。"],
+  [51950, "是艾伦从歹人手中下了三笠。也是他教会三笠【战斗】"],
+  [74460, "然而，父母在途中被歹人杀害，无家可归是直面三笠的一个残忍的事实。"],
+  [92420, "耶格尔医生……"],
+  [95670, "我……从这里开始，究竟该朝哪个方向走回去才好？"],
+  [106220, "好冷……"],
+  [109270, "我已经……"],
+  [111270, "没有回去的地方了……"],
+  [115470, "……"],
+  [117820, "这个送给你。"],
+  [122750, "这样就暖和些了吧。"],
+  [126700, "……"],
+  [130050, "很温暖……"],
+  [134560, "三笠，到我们家来一起生活吧。"],
+  [138660, "经历了那么多痛苦的事情，"],
+  [142260, "你现在需要充分的修养。"],
+  [145610, "……"],
+  [146460, "怎么了？"],
+  [148460, "来呀，快点回去吧。"],
+  [152020, "回我们的家。"],
+  [154220, "……"],
+  [157920, "回家……"],
+  [166720, "只有胜者才被容许生存的，这个残酷的世界。"],
+  [171970, "撤退，阿克曼"],
+  [174070, "要登上墙壁了喔。"],
+  [176870, "我去支援前卫部队撤退"],
+  [178720, "什……喂，阿克曼!"],
+  [183020, "但是对我而言，这个世界上还有我可以回去的地方。"],
+  [190320, "艾伦，只要有你在，"],
+  [193220, "我就无所不能。"],
+];
+
+const OMAKE_PFADLIB_CHORDS = ["Dm", "Bb", "F", "C"];
+const OMAKE_PFADLIB_BARS = Array.from({ length: 53 }, (_, index) => ({
+  chord: OMAKE_PFADLIB_CHORDS[index % OMAKE_PFADLIB_CHORDS.length],
+  instrumental: true,
+}));
+
 /**
  * What the picker shows and what the audio generator walks. `beatMs` is the only tempo there is: a
  * bar is four beats, and every syllable duration below is measured in them.
  */
 export const SONGS = [
+  {
+    id: "omake-pfadlib",
+    title: "Omake-Pfadlib",
+    summary: "The line-synced Kugou fixture returned for 7M95h7zQU3k, with its original 3:32 timeline.",
+    beatMs: 1000,
+    bars: OMAKE_PFADLIB_BARS,
+    timedLines: OMAKE_PFADLIB_LINES,
+  },
   {
     id: "kettle",
     title: "Kettle",
@@ -548,11 +602,21 @@ export function buildScore(songId) {
   const bars = [];
   let barStartMs = 0;
 
+  if (song.timedLines !== undefined) {
+    for (let index = 0; index < song.timedLines.length; index++) {
+      const [startTimeMs, words] = song.timedLines[index];
+      const nextStartMs = song.timedLines[index + 1]?.[0] ?? song.bars.length * barMs;
+      lyrics.push({ startTimeMs, durationMs: nextStartMs - startTimeMs, words });
+    }
+  }
+
   for (const bar of song.bars) {
     bars.push({ startMs: barStartMs, durationMs: barMs, chord: bar.chord });
 
     if (bar.instrumental) {
-      lyrics.push({ startTimeMs: barStartMs, durationMs: barMs, words: "", isInstrumental: true });
+      if (song.timedLines === undefined) {
+        lyrics.push({ startTimeMs: barStartMs, durationMs: barMs, words: "", isInstrumental: true });
+      }
       barStartMs += barMs;
       continue;
     }

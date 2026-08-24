@@ -21,8 +21,10 @@ import {
   ANIMATING_CLASS,
   CURRENT_LYRICS_CLASS,
   FOOTER_CLASS,
+  HIGHLIGHT_CLIP_CLASS,
   LINE_CLASS,
   PAUSED_CLASS,
+  RTL_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
 import type { LineData, PartData } from "./inject";
@@ -53,6 +55,7 @@ const SCROLL_TIMING_BUFFER_MS = SCROLL_TIMING_RATIO_BASE_TOTAL_MS - SCROLL_TIMIN
 const AUTO_QUEUE_SCROLL_RATIO = SCROLL_TIMING_RATIO_BASE_QUEUE_SCROLL_THRESHOLD_MS / SCROLL_TIMING_RATIO_BASE_TOTAL_MS;
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
 const SWIPE_DURATION_RATIO = registerThemeSetting("blyrics-swipe-duration-ratio", 1.6);
+const HIGHLIGHT_RENDER_MODE = registerThemeSetting("blyrics-highlight-render-mode", "gradient", true);
 
 const ENABLE_DEBUG_RENDER = registerThemeSetting("blyrics-debug-renderer", false);
 const ENABLE_ANIMATION_TIMING_LOGS = registerThemeSetting("blyrics-debug-animation-timing", false);
@@ -181,6 +184,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   pendingLineScroll: PendingLineScroll | null;
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
   visibleWillChangeElements: Set<HTMLElement>;
+  visibleWillChangeViewport: VisibleWillChangeViewport | null;
   cachedDurations: Map<string, number>;
   cachedCSSValues: Map<string, string>;
   cachedAnimationSettings: AnimationSettings | null;
@@ -259,6 +263,7 @@ export function createAnimationEngineInstance(
     pendingLineScroll: null,
     lineScrollElementTokens: new WeakMap(),
     visibleWillChangeElements: new Set(),
+    visibleWillChangeViewport: null,
     cachedDurations: new Map(),
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
@@ -473,6 +478,12 @@ interface LineScrollItem {
   height: number;
   position: number;
 }
+interface VisibleWillChangeViewport {
+  lines: readonly LineScrollItem[];
+  fromScrollTop: number;
+  toScrollTop: number;
+  viewportHeight: number;
+}
 interface LineScrollAnimationRecord {
   animation: Animation;
   lineElement: HTMLElement;
@@ -517,6 +528,7 @@ interface AnimationConfig {
     exitTo: string;
   };
   highlight: {
+    renderMode: "gradient" | "clip";
     fadeInDurationMs: number;
     fadeOutDurationMs: number;
     fadeInEasing: string;
@@ -912,7 +924,16 @@ export function noteVisibilityChange(engine: AnimationEngineInstance): void {
   });
 }
 
-function activeTextGradientKeyframes(config: AnimationConfig): Keyframe[] {
+function clipPathKeyframes(part: PartData): [string, string] {
+  const hidden = part.lyricElement.classList.contains(RTL_CLASS) ? "inset(0 0 0 100%)" : "inset(0 100% 0 0)";
+  return [hidden, "inset(0 0 0 0)"];
+}
+
+function activeTextSwipeKeyframes(part: PartData, config: AnimationConfig): Keyframe[] {
+  if (config.highlight.renderMode === "clip") {
+    const [from, to] = clipPathKeyframes(part);
+    return [{ clipPath: from }, { clipPath: to }];
+  }
   return [
     {
       "--lyric-transition-amount-start": config.highlight.swipeStartFrom,
@@ -933,7 +954,14 @@ function activeTextVisibleKeyframes(): Keyframe[] {
   return [{ opacity: 1 }, { opacity: 1 }];
 }
 
-function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
+function activeTextInstantKeyframes(part: PartData, config: AnimationConfig): Keyframe[] {
+  if (config.highlight.renderMode === "clip") {
+    const [, revealed] = clipPathKeyframes(part);
+    return [
+      { opacity: 1, clipPath: revealed },
+      { opacity: 1, clipPath: revealed },
+    ];
+  }
   return [
     {
       opacity: 1,
@@ -956,7 +984,14 @@ function highlightTarget(part: PartData): { element: Element; options: KeyframeA
   return { element: part.lyricElement, options: { pseudoElement: "::after" } };
 }
 
-function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
+function lineSyncedTextKeyframes(part: PartData, config: AnimationConfig): Keyframe[] {
+  if (config.highlight.renderMode === "clip") {
+    const [, revealed] = clipPathKeyframes(part);
+    return [
+      { opacity: 0, clipPath: revealed },
+      { opacity: 1, clipPath: revealed },
+    ];
+  }
   return [
     {
       opacity: 0,
@@ -971,7 +1006,14 @@ function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
-function fadeOutTextKeyframes(config: AnimationConfig): Keyframe[] {
+function fadeOutTextKeyframes(part: PartData, config: AnimationConfig): Keyframe[] {
+  if (config.highlight.renderMode === "clip") {
+    const [, revealed] = clipPathKeyframes(part);
+    return [
+      { opacity: 1, filter: config.highlight.glowTo, clipPath: revealed },
+      { opacity: 0, filter: config.highlight.glowTo, clipPath: revealed },
+    ];
+  }
   return [
     {
       opacity: 1,
@@ -1005,7 +1047,7 @@ function startRichSyncedHighlightAnimations(
   if (config.enabled.highlightSwipe) {
     swipeAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGradientKeyframes(config), {
+      target.element.animate(activeTextSwipeKeyframes(part, config), {
         duration: swipeDurationMs,
         easing: config.highlight.swipeEasing,
         fill: "forwards",
@@ -1020,7 +1062,7 @@ function startRichSyncedHighlightAnimations(
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
     target.element.animate(
-      config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(config),
+      config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(part, config),
       {
         duration: 1,
         easing: "linear",
@@ -1066,7 +1108,7 @@ function startLineSyncedHighlightAnimations(
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
-    target.element.animate(lineSyncedTextKeyframes(config), {
+    target.element.animate(lineSyncedTextKeyframes(part, config), {
       duration: fadeInDuration,
       easing: config.enabled.highlightFade ? config.highlight.fadeInEasing : "linear",
       fill: "forwards",
@@ -1160,6 +1202,8 @@ function startWordAnimations(
   appliedTimingOffsetMs: number
 ): void {
   resetPartAnimations(part);
+
+  part.lyricElement.classList.toggle(HIGHLIGHT_CLIP_CLASS, config.highlight.renderMode === "clip");
 
   const rawElapsedMs = (currentTime - part.time) * 1000;
   // Providers do ship words that end before they start: one -0.01s word in a Musixmatch richsync
@@ -1262,7 +1306,7 @@ function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
 
   const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
   const target = highlightTarget(part);
-  const animation = target.element.animate(fadeOutTextKeyframes(config), {
+  const animation = target.element.animate(fadeOutTextKeyframes(part, config), {
     duration: fadeDuration,
     easing: config.enabled.highlightFade ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
@@ -1544,6 +1588,8 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
     "--blyrics-lyric-scroll-timing-function",
     "cubic-bezier(0.86, 0, 0.2, 1)"
   );
+  const configuredHighlightRenderMode = HIGHLIGHT_RENDER_MODE.getStringValue().trim().toLowerCase();
+  const highlightRenderMode = configuredHighlightRenderMode === "clip" ? "clip" : "gradient";
 
   return {
     enabled: {
@@ -1580,6 +1626,7 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       exitTo: getCSSValue(engine, lyricsElement, "--blyrics-line-exit-transform-to", "scale(var(--blyrics-scale))"),
     },
     highlight: {
+      renderMode: highlightRenderMode,
       fadeInDurationMs: getCSSDurationWithFallback(
         engine,
         lyricsElement,
@@ -1908,6 +1955,7 @@ function clearVisibleLyricWillChange(engine: AnimationEngineInstance): void {
     element.style.removeProperty("will-change");
   }
   engine.visibleWillChangeElements = new Set();
+  engine.visibleWillChangeViewport = null;
 }
 
 function updateVisibleLyricWillChange(
@@ -1917,11 +1965,28 @@ function updateVisibleLyricWillChange(
   toScrollTop: number,
   viewportHeight: number
 ): void {
+  const previousViewport = engine.visibleWillChangeViewport;
+  if (
+    previousViewport?.lines === lines &&
+    previousViewport.fromScrollTop === fromScrollTop &&
+    previousViewport.toScrollTop === toScrollTop &&
+    previousViewport.viewportHeight === viewportHeight
+  ) {
+    return;
+  }
+
   const nextVisibleElements = new Set<HTMLElement>();
 
   for (const line of lines) {
     if (isLineVisibleDuringScroll(line, fromScrollTop, toScrollTop, viewportHeight)) {
-      line.lyricElement.style.setProperty("will-change", LINE_SCROLL_WILL_CHANGE_VALUE);
+      // Ticks run every 20ms while the song is playing, but the visible set usually changes only
+      // when the scroll position does. Rewriting the same inline declaration on every tick still
+      // enters the browser's style invalidation path and was the only DOM write in an otherwise
+      // unchanged frame. Promote a line only when it enters the set; lines already in it keep the
+      // declaration they have.
+      if (!engine.visibleWillChangeElements.has(line.lyricElement)) {
+        line.lyricElement.style.setProperty("will-change", LINE_SCROLL_WILL_CHANGE_VALUE);
+      }
       nextVisibleElements.add(line.lyricElement);
     }
   }
@@ -1933,6 +1998,7 @@ function updateVisibleLyricWillChange(
   }
 
   engine.visibleWillChangeElements = nextVisibleElements;
+  engine.visibleWillChangeViewport = { lines, fromScrollTop, toScrollTop, viewportHeight };
 }
 
 function getLineScrollItems(lines: LineData[], lyricsElement: HTMLElement): LineScrollItem[] {
@@ -2940,6 +3006,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
   // resize report looking like a new height, and each one measures again and forces a rescroll.
   engine.lyricWidth = lyricsElement.clientWidth;
   engine.lyricHeight = lyricsElement.clientHeight;
+  // The array identity and scroll offsets may stay unchanged while wrapping moves a line into or
+  // out of the viewport. Make the next tick re-evaluate visibility against the new measurements.
+  engine.visibleWillChangeViewport = null;
 
   for (const line of engine.lines) {
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);

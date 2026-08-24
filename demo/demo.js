@@ -50,6 +50,9 @@ const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|webm)$/i;
 // Object URLs are not in the list: those are minted from a picked file rather than typed.
 const AUDIO_URL_SCHEMES = new Set(["http:", "https:"]);
 const PANEL_OPEN_WIDTH = "(min-width: 1080px)";
+const BENCHMARK_MODE = new URLSearchParams(location.search).get("benchmark") === "1";
+const BENCHMARK_START_S = 8;
+const BENCHMARK_END_S = 13;
 
 const view = document.querySelector(TAG_NAME);
 const player = document.getElementById("player");
@@ -450,7 +453,7 @@ function builtInLyrics() {
 
 const DEFAULTS = {
   songId: SONGS[0].id,
-  timing: "syllables",
+  timing: "lines",
   themeId: THEMES[0].id,
   offsetMs: 0,
   passiveScroll: false,
@@ -506,6 +509,7 @@ function readStateFromUrl() {
  */
 function writeStateToUrl() {
   const params = new URLSearchParams();
+  if (BENCHMARK_MODE) params.set("benchmark", "1");
   if (state.audio === null && state.songId !== DEFAULTS.songId) params.set("song", state.songId);
   if (state.importedLyrics === null && state.timing !== DEFAULTS.timing) params.set("lines", state.timing);
   if (state.themeId !== null && state.themeId !== DEFAULTS.themeId) params.set("theme", state.themeId);
@@ -621,7 +625,9 @@ function paintControls() {
 
   timingHint.textContent =
     state.importedLyrics === null
-      ? TIMINGS[state.timing].hint
+      ? state.timing === "syllables" && scoreFor(state.songId).every(line => line.parts === undefined)
+        ? "This source only supplied line timestamps, so there is no syllable timing to preserve."
+        : TIMINGS[state.timing].hint
       : `${state.importedName} is what the element is holding. Pick one of these to put the built-in song back.`;
 
   nowPlaying.textContent = state.audio?.label ?? SONGS.find(candidate => candidate.id === state.songId).title;
@@ -1088,6 +1094,25 @@ function wireTransport() {
   });
 }
 
+// A muted five-second loop for external profilers. It is URL-driven so every run can start from a
+// fresh document with the same song segment and no automation click or seek in the measurement.
+function startBenchmarkIfRequested() {
+  if (!BENCHMARK_MODE) return;
+
+  document.documentElement.dataset.benchmark = "on";
+  player.muted = true;
+  player.addEventListener("timeupdate", () => {
+    if (player.currentTime >= BENCHMARK_END_S) player.currentTime = BENCHMARK_START_S;
+  });
+
+  const start = () => {
+    player.currentTime = BENCHMARK_START_S;
+    startPlayback();
+  };
+  if (player.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) start();
+  else player.addEventListener("loadeddata", start, { once: true });
+}
+
 // -- Autoscroll --------------------------------------------
 
 /**
@@ -1327,6 +1352,7 @@ async function boot() {
   wireDropAndPaste();
   wireTransport();
   paintTransport();
+  startBenchmarkIfRequested();
 
   // The element never tells its renderer that someone scrolled the view, so autoscroll would keep
   // pulling the song back under anyone reading ahead. `renderer` is published for reaching past the

@@ -59,11 +59,13 @@ class FakeClassList {
 class FakeStyle {
   cursor = "";
   readonly properties: Record<string, string> = {};
+  readonly propertyWriteCounts: Record<string, number> = {};
   private readonly priorities: Record<string, string> = {};
 
   setProperty(name: string, value: string, priority = ""): void {
     this.properties[name] = value;
     this.priorities[name] = priority;
+    this.propertyWriteCounts[name] = (this.propertyWriteCounts[name] ?? 0) + 1;
   }
 
   getPropertyValue(name: string): string {
@@ -94,6 +96,11 @@ export class FakeAnimation {
   readonly playState = "idle";
   cancelled = false;
   playbackRate = 1;
+
+  constructor(
+    readonly keyframes: Keyframe[] | PropertyIndexedKeyframes | null = null,
+    readonly options: number | KeyframeAnimationOptions | undefined = undefined
+  ) {}
 
   cancel(): void {
     this.cancelled = true;
@@ -190,8 +197,11 @@ export class FakeNode {
     return this.generatesBox ? [this.getBoundingClientRect()] : [];
   }
 
-  animate(): FakeAnimation {
-    const animation = new FakeAnimation();
+  animate(
+    keyframes: Keyframe[] | PropertyIndexedKeyframes | null = null,
+    options?: number | KeyframeAnimationOptions
+  ): FakeAnimation {
+    const animation = new FakeAnimation(keyframes, options);
     this.animations.push(animation);
     return animation;
   }

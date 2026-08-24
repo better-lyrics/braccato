@@ -7,7 +7,7 @@
 // rewritten afterwards.
 
 import { execFileSync } from "child_process";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { checkApiDocs } from "./check-api-docs.js";
@@ -15,8 +15,15 @@ import { checkApiDocs } from "./check-api-docs.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 const packageDir = join(root, "packages", "core");
-const outDir = join(packageDir, "dist");
 const rendererDir = join(packageDir, "src");
+const isWatchBuild = process.env.BRACCATO_PACKAGE_WATCH === "1";
+const publishedOutDir = join(packageDir, "dist");
+const outDir = isWatchBuild ? mkdtempSync(join(packageDir, ".dist-watch-")) : publishedOutDir;
+
+const removeStagingDir = () => {
+  if (isWatchBuild) rmSync(outDir, { recursive: true, force: true });
+};
+if (isWatchBuild) process.once("exit", removeStagingDir);
 
 // The manifest is `packages/core/package.json`, hand written and published from where it sits like
 // every other package here. What this script owes it is the other half of the promise: every subpath
@@ -34,7 +41,10 @@ const EMITTED_PREFIX = "./dist/";
 
 // -- Emit --------------------------------------------
 
-rmSync(outDir, { recursive: true, force: true });
+// A watch build is compiled, rewritten, copied, and checked in staging. Only the complete artifact
+// reaches dist, so linked consumers never observe tsc's extensionless imports or a missing package.
+// A one-off/package release build still cleans the published directory directly.
+if (!isWatchBuild) rmSync(outDir, { recursive: true, force: true });
 
 execFileSync("npx", ["tsc", "-p", join(__dirname, "tsconfig.package.json"), "--outDir", outDir], {
   stdio: "inherit",
@@ -114,6 +124,13 @@ cpSync(join(packageDir, "LICENSE"), join(outDir, "LICENSE"));
 // out whether they still describe it. The version travels with them, because it is the manifest's
 // now rather than something this emit writes.
 checkApiDocs(outDir, manifest.version);
+
+if (isWatchBuild) {
+  mkdirSync(publishedOutDir, { recursive: true });
+  cpSync(outDir, publishedOutDir, { recursive: true, force: true });
+  removeStagingDir();
+  process.removeListener("exit", removeStagingDir);
+}
 
 console.log(
   `Emitted @braccato/core ${manifest.version} to packages/core/dist: ${emitted.length} files, ${stylesheets.length} stylesheets`

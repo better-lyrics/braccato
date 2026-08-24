@@ -158,6 +158,11 @@ while a property said otherwise would leave the module with two answers and no r
 `parseThemeConfig` is published on `@braccato/core/themeSettings` for reading the settings out of a
 stylesheet somewhere no renderer is running.
 
+The word highlight defaults to the compatible gradient renderer. A theme can opt into the
+solid-color clipped renderer with `/* blyrics-highlight-render-mode = clip; */`. Changing this
+setting rebuilds the lyrics; swipe duration, easing, early setup, fades, and glow timing stay the
+same. Unknown values fall back to `gradient`.
+
 ### Custom properties
 
 The ones a theme reaches for first. `variables.css` declares the rest.
@@ -190,6 +195,7 @@ refactor. Import them from `@braccato/core/constants` instead of typing them out
 | `LINE_CLASS`              | `blyrics--line`             | One line, carrying its own `dir="auto"`.                     |
 | `CURRENT_LYRICS_CLASS`    | `blyrics--active`           | The line the song is on right now.                           |
 | `WORD_CLASS`              | `blyrics--word`             | One word, and the unit the sweep animates.                   |
+| `HIGHLIGHT_CLIP_CLASS`    | `blyrics-highlight-clip`    | The opt-in solid-color highlight surface.                    |
 | `BACKGROUND_LYRIC_CLASS`  | `blyrics-background-lyric`  | A background vocal, sung over the line it answers.           |
 | `USER_SCROLLING_CLASS`    | `blyrics-user-scrolling`    | Set while a reader has scrolled away and autoscroll waits.   |
 | `TRANSLATED_LYRICS_CLASS` | `blyrics--translated`       | A translation hung off a line that was already built.        |
@@ -298,6 +304,10 @@ Full documentation is at [braccato.boidu.dev](https://braccato.boidu.dev).
 The demo page lives at [`demo/`](https://github.com/better-lyrics/braccato/tree/master/demo) in the
 repository and runs against the emitted package, with a control for most of what is above. Clone the
 repository and run `pnpm -C demo dev`, then open `http://localhost:5173/`.
+
+For renderer profiling, select **Perf: Gradient**, **Perf: Clip**, or **Perf: Off** in the Theme
+panel. Adding `benchmark=1` to the URL mutes playback and loops the same five-second segment, so an
+external profiler can compare fresh documents without automating the transport.
 
 ## Licence
 

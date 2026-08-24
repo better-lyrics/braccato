@@ -46,6 +46,7 @@
   },
   "scripts": {
     "build": "tsx ../../tooling/build-package.ts",
+    "dev": "tsx ../../tooling/watch-package.ts",
     "typecheck": "tsc --noEmit",
     "selfcheck": "tsx ../../tooling/run-selfchecks.ts",
     "clean": "rm -rf dist"

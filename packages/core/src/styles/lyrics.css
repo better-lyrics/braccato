@@ -181,6 +181,21 @@
 	);
 }
 
+/* Experimental lower-cost highlight surface. The renderer adds this class only when a theme opts
+ * into `blyrics-highlight-render-mode = clip;`; the gradient remains the compatibility default. */
+.blyrics--word.blyrics-highlight-clip::after,
+.blyrics--word.blyrics-highlight-clip .blyrics-word-highlight {
+	background-image: none;
+	background-clip: border-box;
+	clip-path: inset(0 100% 0 0);
+	color: var(--blyrics-lyric-active-color);
+}
+
+.blyrics--word.blyrics-highlight-clip.blyrics-rtl::after,
+.blyrics--word.blyrics-highlight-clip.blyrics-rtl .blyrics-word-highlight {
+	clip-path: inset(0 0 0 100%);
+}
+
 [blyrics-alt-hover] .blyrics--word:hover {
 	text-decoration: underline;
 	text-underline-offset: 0.15em;

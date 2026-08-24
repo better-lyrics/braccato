@@ -15,6 +15,7 @@
 		"format": "biome format --write .",
 		"release": "bash scripts/release.sh",
 		"package": "tsx tooling/build-package.ts",
+		"package:watch": "tsx tooling/watch-package.ts",
 		"selfcheck": "tsx tooling/run-selfchecks.ts"
 	},
 	"devDependencies": {

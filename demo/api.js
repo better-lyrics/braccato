@@ -229,6 +229,11 @@ export const CLASS_NAMES = [
   { constant: "CURRENT_LYRICS_CLASS", value: "blyrics--active", summary: "The line the song is on right now." },
   { constant: "WORD_CLASS", value: "blyrics--word", summary: "One word, and the unit the sweep animates." },
   {
+    constant: "HIGHLIGHT_CLIP_CLASS",
+    value: "blyrics-highlight-clip",
+    summary: "Selects the opt-in solid-color highlight surface on a word.",
+  },
+  {
     constant: "BACKGROUND_LYRIC_CLASS",
     value: "blyrics-background-lyric",
     summary: "A background vocal, sung over the line it answers.",
@@ -258,6 +263,12 @@ export const CLASS_NAMES = [
 // `rebuilds` marks the ones the lines are built out of rather than ticked against, which is why
 // writing one of those reports braccato:lyrics-loaded again.
 export const THEME_SETTINGS = [
+  {
+    key: "blyrics-highlight-render-mode",
+    fallback: "gradient",
+    rebuilds: true,
+    summary: "Uses the compatible gradient swipe, or the experimental lower-cost clip reveal.",
+  },
   {
     key: "blyrics-target-scroll-pos-ratio",
     fallback: "0.37",

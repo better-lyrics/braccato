@@ -11,6 +11,43 @@
 
 import sustain from "./theme-sustain.css?raw";
 
+function performanceTheme(renderMode, highlightEnabled) {
+  return `/* Deterministic renderer benchmark. Keep the song, timing, seek point, viewport, and browser
+   refresh rate fixed when comparing these three themes. */
+/* blyrics-highlight-render-mode = ${renderMode}; */
+
+.blyrics-container {
+	--blyrics-animate-line-scale: 0;
+	--blyrics-animate-word-wobble: 0;
+	--blyrics-animate-highlight-swipe: ${highlightEnabled ? 1 : 0};
+	--blyrics-animate-highlight-glow: ${highlightEnabled ? 1 : 0};
+	--blyrics-animate-highlight-fade: ${highlightEnabled ? 1 : 0};
+	--blyrics-animate-scroll: 1;
+	--blyrics-animate-instrumental: 0;
+	--blyrics-scale: 1;
+	--blyrics-active-scale: 1;
+	--blyrics-font-weight: 700;
+	--blyrics-lyric-active-color: oklch(0.91 0.1 84);
+	--blyrics-lyric-inactive-color: oklch(0.91 0.1 84 / 0.24);
+	--blyrics-glow-color: oklch(0.96 0.08 84 / 0.9);
+}
+
+${
+  highlightEnabled
+    ? ""
+    : `.blyrics--word::after,
+.blyrics-word-highlight {
+	display: none;
+}
+
+.blyrics--active,
+.blyrics--active .blyrics--word {
+	color: var(--blyrics-lyric-active-color);
+}
+`
+}`;
+}
+
 export const THEMES = [
   {
     id: "amber",
@@ -96,5 +133,23 @@ export const THEMES = [
 	--blyrics-lyric-active-color: oklch(0.93 0.012 96 / 0.7);
 }
 `,
+  },
+  {
+    id: "perf-gradient",
+    title: "Perf: Gradient",
+    summary: "A/B control: the existing gradient swipe with unrelated renderer motion disabled.",
+    css: performanceTheme("gradient", true),
+  },
+  {
+    id: "perf-clip",
+    title: "Perf: Clip",
+    summary: "Candidate: a solid text duplicate revealed with a direction-aware inset clip.",
+    css: performanceTheme("clip", true),
+  },
+  {
+    id: "perf-off",
+    title: "Perf: Off",
+    summary: "Lower-bound control: scroll remains, while the duplicate highlight surface is hidden.",
+    css: performanceTheme("gradient", false),
   },
 ];

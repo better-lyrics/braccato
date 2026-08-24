@@ -1,5 +1,12 @@
 import { strict as assert } from "node:assert";
-import { LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import {
+  HIGHLIGHT_CLIP_CLASS,
+  LINE_CLASS,
+  RTL_CLASS,
+  USER_SCROLLING_CLASS,
+  WORD_CLASS,
+  WORD_HIGHLIGHT_CLASS,
+} from "./constants";
 import {
   type AnimationEngineInstance,
   clearLyrics,
@@ -17,6 +24,7 @@ import {
 } from "./engine";
 import { asDocument, asElement, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
 import { asWindow, FakeMediaQueryList, FakeWindow, poisonAmbientGlobals } from "./selfcheck/fakeWindow";
+import { setThemeSettings } from "./themeSettings";
 import type { Lyric, LyricsRendererHost, TickOptions } from "./types";
 import { setLyrics } from "./view";
 
@@ -149,6 +157,15 @@ const FLOATING_STYLE: Record<string, string> = {
   [ANIMATE_SCROLL_PROPERTY]: "0",
 };
 
+const HIGHLIGHT_FIXTURE_STYLE: Record<string, string> = {
+  [ANIMATE_SCROLL_PROPERTY]: "0",
+  "--blyrics-animate-line-scale": "0",
+  "--blyrics-animate-word-wobble": "0",
+  "--blyrics-animate-highlight-glow": "0",
+};
+
+const HIGHLIGHT_RENDER_MODE_SETTING = "blyrics-highlight-render-mode";
+
 function newTickOptions(): TickOptions {
   return {
     eventCreationTime: -1,
@@ -190,6 +207,38 @@ function soleMediaQuery(fakeWindow: FakeWindow): FakeMediaQueryList {
     "Given an instance, When its window is read, Then it asked that window about exactly one media query"
   );
   return lists[0];
+}
+
+function renderedWords(mount: FakeNode): FakeNode[] {
+  return collectTree(mount).filter(node => node.classList.contains(WORD_CLASS));
+}
+
+function renderHighlightFixture(
+  mode: string | null,
+  lyrics: Lyric[],
+  styleOverrides: Record<string, string> = {}
+): {
+  engine: AnimationEngineInstance;
+  mount: FakeNode;
+} {
+  setThemeSettings(mode === null ? new Map() : new Map([[HIGHLIGHT_RENDER_MODE_SETTING, mode]]));
+
+  const fixtureDocument = new FakeDocument();
+  const fixtureWindow = new FakeWindow({ ...HIGHLIGHT_FIXTURE_STYLE, ...styleOverrides });
+  const fixtureEngine = createAnimationEngineInstance(
+    asDocument(fixtureDocument),
+    asWindow(fixtureWindow),
+    new FakeHost()
+  );
+  const fixtureMount = fixtureDocument.createElement("div");
+  setLyrics(fixtureEngine, asElement<HTMLElement>(fixtureMount), lyrics, { loaderVisible: false, noLyrics: false });
+  placeLines(fixtureEngine);
+  assert.equal(
+    tickView(fixtureEngine, PLAYBACK_TIME_S, resolveTickOptions(newTickOptions())),
+    "ok",
+    "Given a highlight fixture, When it ticks during the two-second setup lead, Then its animations are prepared"
+  );
+  return { engine: fixtureEngine, mount: fixtureMount };
 }
 
 // -- Two instances --------------------------------------------
@@ -459,6 +508,25 @@ assert.equal(
   "Given a document that disables scroll animation, When its view ticks, Then it promotes nothing"
 );
 
+const panelWillChangeWriteCounts = renderedLineElements(panelMount).map(
+  line => line.style.propertyWriteCounts["will-change"] ?? 0
+);
+const panelVisibleWillChangeElements = panelEngine.visibleWillChangeElements;
+
+tickView(panelEngine, PLAYBACK_TIME_S, resolveTickOptions(newTickOptions()));
+
+assert.deepEqual(
+  renderedLineElements(panelMount).map(line => line.style.propertyWriteCounts["will-change"] ?? 0),
+  panelWillChangeWriteCounts,
+  "Given the visible lines are already promoted, When another tick sees the same viewport, Then it does not rewrite will-change"
+);
+
+assert.equal(
+  panelEngine.visibleWillChangeElements,
+  panelVisibleWillChangeElements,
+  "Given the viewport inputs are unchanged, When another tick updates promotion, Then it reuses the visible set rather than scanning into a new one"
+);
+
 // -- A reduced motion change reaches one view --------------------------------------------
 
 assert.equal(
@@ -485,6 +553,162 @@ assert.notEqual(
   null,
   "Given a reduced motion change on one window, When the other view's settings are read, Then they survived"
 );
+
+// -- Gradient and clipped highlight surfaces --------------------------------------------
+
+const HIGHLIGHT_FIXTURE_LYRICS: Lyric[] = [
+  {
+    startTimeMs: 1000,
+    durationMs: 3000,
+    words: "Short extraordinarilylong שלום",
+    parts: [
+      { startTimeMs: 1000, durationMs: 800, words: "Short" },
+      { startTimeMs: 1800, durationMs: 1200, words: "extraordinarilylong" },
+      { startTimeMs: 3000, durationMs: 1000, words: "שלום" },
+    ],
+  },
+];
+
+const gradientFixture = renderHighlightFixture(null, HIGHLIGHT_FIXTURE_LYRICS);
+const gradientWords = renderedWords(gradientFixture.mount);
+const gradientSwipe = gradientWords[0]?.animations[0];
+assert.ok(gradientSwipe, "Given the default renderer mode, When a rich-synced word is prepared, Then it has a swipe");
+assert.equal(
+  gradientWords[0]?.classList.contains(HIGHLIGHT_CLIP_CLASS),
+  false,
+  "Given no render-mode setting, When a word is prepared, Then it keeps the published gradient surface"
+);
+assert.deepEqual(
+  gradientSwipe.keyframes,
+  [
+    { "--lyric-transition-amount-start": "-0.2", "--lyric-transition-amount-end": "-0.1" },
+    { "--lyric-transition-amount-start": "1.4", "--lyric-transition-amount-end": "1.5" },
+  ],
+  "Given the default renderer mode, When its swipe is read, Then the existing gradient custom-property keyframes are unchanged"
+);
+
+assert.equal(
+  setThemeSettings(new Map([[HIGHLIGHT_RENDER_MODE_SETTING, "clip"]])),
+  true,
+  "Given lyrics built for the gradient surface, When a theme opts into clipping, Then the host is told to rebuild them"
+);
+assert.equal(
+  setThemeSettings(new Map([[HIGHLIGHT_RENDER_MODE_SETTING, "clip"]])),
+  false,
+  "Given clipping is already selected, When the same theme is applied again, Then no redundant lyric rebuild is requested"
+);
+
+const clipFixture = renderHighlightFixture("clip", HIGHLIGHT_FIXTURE_LYRICS);
+const clipWords = renderedWords(clipFixture.mount);
+const ltrClipSwipe = clipWords[0]?.animations[0];
+const wrappedClipHighlight = collectTree(clipWords[1]).find(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
+const rtlClipSwipe = clipWords[2]?.animations[0];
+
+assert.ok(
+  clipWords.every(word => word.classList.contains(HIGHLIGHT_CLIP_CLASS)),
+  "Given clip mode, When rich-synced words are prepared, Then every word selects the solid-color surface"
+);
+assert.deepEqual(
+  ltrClipSwipe?.keyframes,
+  [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
+  "Given a left-to-right word in clip mode, When its swipe is read, Then the reveal travels left to right"
+);
+assert.ok(
+  wrappedClipHighlight,
+  "Given a word long enough to wrap, When it is rendered, Then it owns the nested highlight surface"
+);
+assert.deepEqual(
+  wrappedClipHighlight?.animations[0]?.keyframes,
+  [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
+  "Given a wrapped word in clip mode, When its swipe is read, Then the nested surface receives the clip animation"
+);
+assert.equal(
+  clipWords[2]?.classList.contains(RTL_CLASS),
+  true,
+  "Given right-to-left text, When its word is built, Then direction is available to the clip renderer"
+);
+assert.deepEqual(
+  rtlClipSwipe?.keyframes,
+  [{ clipPath: "inset(0 0 0 100%)" }, { clipPath: "inset(0 0 0 0)" }],
+  "Given a right-to-left word in clip mode, When its swipe is read, Then the reveal travels right to left"
+);
+assert.deepEqual(
+  [ltrClipSwipe?.currentTime, ltrClipSwipe?.options],
+  [gradientSwipe.currentTime, gradientSwipe.options],
+  "Given gradient and clip controls for the same word, When their timing is read, Then duration, easing, fill, and early current time are identical"
+);
+
+const lineSyncedClipFixture = renderHighlightFixture("clip", [
+  { startTimeMs: 1000, durationMs: 3000, words: "Whole line" },
+]);
+const lineSyncedWord = renderedWords(lineSyncedClipFixture.mount)[0];
+assert.deepEqual(
+  lineSyncedWord?.animations[0]?.keyframes,
+  [
+    { opacity: 0, clipPath: "inset(0 0 0 0)" },
+    { opacity: 1, clipPath: "inset(0 0 0 0)" },
+  ],
+  "Given line-synced lyrics in clip mode, When their fade starts, Then the solid highlight is already fully revealed"
+);
+
+const instantClipFixture = renderHighlightFixture("clip", HIGHLIGHT_FIXTURE_LYRICS, {
+  "--blyrics-animate-highlight-swipe": "0",
+});
+assert.deepEqual(
+  renderedWords(instantClipFixture.mount)[0]?.animations[0]?.keyframes,
+  [
+    { opacity: 1, clipPath: "inset(0 0 0 0)" },
+    { opacity: 1, clipPath: "inset(0 0 0 0)" },
+  ],
+  "Given swipe is disabled in clip mode, When a word starts, Then its solid highlight appears fully revealed"
+);
+
+const exitingClipFixture = renderHighlightFixture("clip", [
+  {
+    startTimeMs: 1000,
+    durationMs: 1000,
+    words: "First",
+    parts: [{ startTimeMs: 1000, durationMs: 1000, words: "First" }],
+  },
+  {
+    startTimeMs: 2000,
+    durationMs: 1000,
+    words: "Second",
+    parts: [{ startTimeMs: 2000, durationMs: 1000, words: "Second" }],
+  },
+]);
+tickView(exitingClipFixture.engine, 2.2, resolveTickOptions(newTickOptions()));
+assert.deepEqual(
+  renderedWords(exitingClipFixture.mount)[0]?.animations.at(-1)?.keyframes,
+  [
+    { opacity: 1, filter: "drop-shadow(0 0 0 var(--blyrics-glow-color))", clipPath: "inset(0 0 0 0)" },
+    { opacity: 0, filter: "drop-shadow(0 0 0 var(--blyrics-glow-color))", clipPath: "inset(0 0 0 0)" },
+  ],
+  "Given a clipped word leaves its active line, When its swipe is replaced by the exit fade, Then the surface stays fully revealed while fading"
+);
+
+const invalidModeFixture = renderHighlightFixture("not-a-mode", HIGHLIGHT_FIXTURE_LYRICS);
+assert.equal(
+  invalidModeFixture.engine.cachedAnimationSettings?.config.highlight.renderMode,
+  "gradient",
+  "Given an unknown render mode, When animation settings are resolved, Then rendering safely falls back to gradient"
+);
+assert.equal(
+  setThemeSettings(new Map()),
+  true,
+  "Given a manually selected render mode, When the theme stops declaring it, Then the host is told to rebuild with the default"
+);
+
+for (const fixture of [
+  gradientFixture,
+  clipFixture,
+  lineSyncedClipFixture,
+  instantClipFixture,
+  exitingClipFixture,
+  invalidModeFixture,
+]) {
+  fixture.engine.destroy();
+}
 
 // -- Dropping one view's song leaves the other's --------------------------------------------
 
