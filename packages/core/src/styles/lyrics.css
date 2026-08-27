@@ -38,6 +38,7 @@
 	display: block;
 	max-width: 100%;
 	overflow-wrap: normal;
+	position: relative;
 	text-align: inherit;
 	unicode-bidi: plaintext;
 	white-space: normal;
@@ -47,6 +48,7 @@
 	display: block;
 	margin-top: 0.1em;
 	max-width: 100%;
+	position: relative;
 	text-align: inherit;
 	unicode-bidi: plaintext;
 	white-space: normal;
@@ -158,12 +160,13 @@
 	user-select: none;
 }
 
-.blyrics--word:has(.blyrics-word-highlight)::after {
+.blyrics-word-with-highlight::after {
 	content: none;
 }
 
 .blyrics-rtl.blyrics--word::after,
 .blyrics--word.blyrics-rtl::after,
+.blyrics-word-highlight.blyrics-rtl,
 .blyrics-rtl .blyrics-word-highlight,
 .blyrics--word.blyrics-rtl .blyrics-word-highlight {
 	background-image: linear-gradient(
@@ -184,7 +187,7 @@
 /* Experimental lower-cost highlight surface. The renderer adds this class only when a theme opts
  * into `blyrics-highlight-render-mode = clip;`; the gradient remains the compatibility default. */
 .blyrics--word.blyrics-highlight-clip::after,
-.blyrics--word.blyrics-highlight-clip .blyrics-word-highlight {
+.blyrics-word-highlight.blyrics-highlight-clip {
 	background-image: none;
 	background-clip: border-box;
 	clip-path: inset(0 100% 0 0);
@@ -192,7 +195,7 @@
 }
 
 .blyrics--word.blyrics-highlight-clip.blyrics-rtl::after,
-.blyrics--word.blyrics-highlight-clip.blyrics-rtl .blyrics-word-highlight {
+.blyrics-word-highlight.blyrics-highlight-clip.blyrics-rtl {
 	clip-path: inset(0 0 0 100%);
 }
 

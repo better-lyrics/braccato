@@ -8,3 +8,4 @@ test-data/
 .env
 # Deployment settings are environment specific and not tracked.
 DEPLOY.md
+.idea

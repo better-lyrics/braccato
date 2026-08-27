@@ -28,6 +28,7 @@ import {
   WORD_CLASS,
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
+  WORD_WITH_HIGHLIGHT_CLASS,
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
 import { getSeekTimeFromClick } from "./seek";
@@ -99,6 +100,7 @@ export interface PartData {
    */
   duration: number;
   lyricElement: HTMLElement;
+  highlightElement?: HTMLElement;
   animations: Animation[];
 }
 
@@ -142,11 +144,12 @@ interface WordGroup {
   tokens: RenderToken[];
 }
 
-function newPartData(part: LyricPart, span: HTMLElement): PartData {
+function newPartData(part: LyricPart, span: HTMLElement, highlight?: HTMLElement): PartData {
   return {
     time: part.startTimeMs / 1000,
     duration: part.durationMs / 1000,
     lyricElement: span,
+    highlightElement: highlight,
     animations: [],
   };
 }
@@ -300,7 +303,11 @@ function cloneTextWithBreaks(doc: Document, source: HTMLElement): DocumentFragme
   return fragment;
 }
 
-function createTimedWordSpan(doc: Document, part: LyricPart, wrapThreshold: number): HTMLSpanElement {
+function createTimedWordSpan(
+  doc: Document,
+  part: LyricPart,
+  wrapThreshold: number
+): { span: HTMLSpanElement; highlight?: HTMLSpanElement } {
   const span = doc.createElement("span");
   span.classList.add(WORD_CLASS);
   span.dir = "auto";
@@ -323,18 +330,24 @@ function createTimedWordSpan(doc: Document, part: LyricPart, wrapThreshold: numb
   }
 
   const hasBreaks = appendLongWordBreaks(doc, span, part.words, wrapThreshold);
+  let highlight: HTMLSpanElement | undefined;
   if (hasBreaks) {
-    const highlight = doc.createElement("span");
+    highlight = doc.createElement("span");
     highlight.classList.add(WORD_HIGHLIGHT_CLASS);
     highlight.setAttribute("aria-hidden", "true");
     highlight.appendChild(cloneTextWithBreaks(doc, span));
-    span.appendChild(highlight);
+    span.classList.add(WORD_WITH_HIGHLIGHT_CLASS);
+
+    if (testRtl(part.words)) highlight.classList.add(RTL_CLASS);
+    if (part.durationMs > longWordThreshold.getNumberValue()) highlight.dataset.longWord = "true";
+    if (part.isBackground) highlight.classList.add(BACKGROUND_LYRIC_CLASS);
+    if (part.explicit) highlight.classList.add(EXPLICIT_WORD_CLASS);
   }
   span.dataset.time = String(part.startTimeMs / 1000);
   span.dataset.duration = String(part.durationMs / 1000);
   span.dataset.content = part.words;
   span.style.setProperty("--blyrics-duration", part.durationMs + "ms");
-  return span;
+  return { span, highlight };
 }
 
 function createWordGroup(doc: Document, group: WordGroup, lineData: LineData): HTMLElement {
@@ -352,13 +365,23 @@ function createWordGroup(doc: Document, group: WordGroup, lineData: LineData): H
     groupElement.classList.add(BACKGROUND_LYRIC_CLASS);
   }
 
+  const highlights: HTMLSpanElement[] = [];
+  const words: HTMLSpanElement[] = [];
+
   for (const token of group.tokens) {
     if (token.kind === "space") continue;
 
-    const span = createTimedWordSpan(doc, token.part, wrapThreshold);
-    lineData.parts.push(newPartData(token.part, span));
-    groupElement.appendChild(span);
+    const { span, highlight } = createTimedWordSpan(doc, token.part, wrapThreshold);
+    lineData.parts.push(newPartData(token.part, span, highlight));
+    if (highlight) highlights.push(highlight);
+    words.push(span);
   }
+
+  // The highlight must precede the in-flow text. If it follows a fragmented inline, browsers use
+  // the final fragment when resolving its absolute width. The content line is its containing block,
+  // so putting the out-of-flow copies first does not disturb the text or its bidi layout.
+  for (const highlight of highlights) groupElement.appendChild(highlight);
+  for (const word of words) groupElement.appendChild(word);
 
   return groupElement;
 }

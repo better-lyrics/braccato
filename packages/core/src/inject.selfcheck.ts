@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { LYRICS_CLASS, ROMANIZED_LYRICS_CLASS, TRANSLATED_LYRICS_CLASS, WORD_CLASS } from "./constants";
+import {
+  LYRICS_CLASS,
+  ROMANIZED_LYRICS_CLASS,
+  TRANSLATED_LYRICS_CLASS,
+  WORD_CLASS,
+  WORD_GROUP_CLASS,
+  WORD_HIGHLIGHT_CLASS,
+  WORD_WITH_HIGHLIGHT_CLASS,
+} from "./constants";
 import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
 import { asDocument, asElement, collectTree, FakeDocument, type FactoryName, type FakeNode } from "./selfcheck/fakeDom";
@@ -84,6 +92,30 @@ assert.deepEqual(
 assert.ok(
   builtNodes.some(node => node.name === "wbr"),
   "Given a word past the wrap threshold, When it is built, Then its break nodes come from the injected document"
+);
+
+const wrappedWord = builtNodes.find(
+  node => node.classList.contains(WORD_CLASS) && node.dataset.content === "indistinguishable"
+);
+const wrappedHighlight = builtNodes.find(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
+
+assert.ok(
+  wrappedWord?.classList.contains(WORD_WITH_HIGHLIGHT_CLASS),
+  "Given a word with authored breaks, When it is built, Then its pseudo highlight is disabled"
+);
+assert.ok(
+  wrappedHighlight?.parentNode?.classList.contains(WORD_GROUP_CLASS),
+  "Given a wrapping highlight, When it is built, Then the word group owns it instead of the fragmented word"
+);
+assert.equal(
+  wrappedHighlight?.parentNode?.childNodes[0],
+  wrappedHighlight,
+  "Given a wrapping highlight, When its group is built, Then the out-of-flow copy precedes the in-flow text"
+);
+assert.equal(
+  lineData.parts[1].highlightElement,
+  wrappedHighlight,
+  "Given a wrapping highlight outside its word, When animation data is built, Then it retains the highlight target"
 );
 
 assert.deepEqual(

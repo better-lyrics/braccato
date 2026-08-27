@@ -601,7 +601,7 @@ assert.equal(
 const clipFixture = renderHighlightFixture("clip", HIGHLIGHT_FIXTURE_LYRICS);
 const clipWords = renderedWords(clipFixture.mount);
 const ltrClipSwipe = clipWords[0]?.animations[0];
-const wrappedClipHighlight = collectTree(clipWords[1]).find(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
+const wrappedClipHighlight = collectTree(clipFixture.mount).find(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
 const rtlClipSwipe = clipWords[2]?.animations[0];
 
 assert.ok(
@@ -615,7 +615,7 @@ assert.deepEqual(
 );
 assert.ok(
   wrappedClipHighlight,
-  "Given a word long enough to wrap, When it is rendered, Then it owns the nested highlight surface"
+  "Given a word long enough to wrap, When it is rendered, Then its group owns a highlight surface"
 );
 assert.deepEqual(
   wrappedClipHighlight?.animations[0]?.keyframes,

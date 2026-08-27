@@ -977,7 +977,7 @@ function activeTextInstantKeyframes(part: PartData, config: AnimationConfig): Ke
 }
 
 function highlightTarget(part: PartData): { element: Element; options: KeyframeAnimationOptions } {
-  const highlight = part.lyricElement.querySelector(WORD_HIGHLIGHT_SELECTOR);
+  const highlight = part.highlightElement ?? part.lyricElement.querySelector(WORD_HIGHLIGHT_SELECTOR);
   if (highlight) {
     return { element: highlight, options: {} };
   }
@@ -1204,6 +1204,7 @@ function startWordAnimations(
   resetPartAnimations(part);
 
   part.lyricElement.classList.toggle(HIGHLIGHT_CLIP_CLASS, config.highlight.renderMode === "clip");
+  part.highlightElement?.classList.toggle(HIGHLIGHT_CLIP_CLASS, config.highlight.renderMode === "clip");
 
   const rawElapsedMs = (currentTime - part.time) * 1000;
   // Providers do ship words that end before they start: one -0.01s word in a Musixmatch richsync

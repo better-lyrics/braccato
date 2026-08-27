@@ -1639,9 +1639,9 @@ braccato-lyrics {
 
    Two selectors because there are two targets. A word short enough to stay whole is animated
    through its own `::after`; one past `blyrics-long-word-wrap-threshold` is split, and the sweep
-   moves to the `.blyrics-word-highlight` span inside it. */
+   moves to the `.blyrics-word-highlight` span before it. */
 .blyrics--word:not([data-long-word])::after,
-.blyrics--word:not([data-long-word]) .blyrics-word-highlight {
+.blyrics-word-highlight:not([data-long-word]) {
 	--blyrics-glow-color: transparent;
 }
 
