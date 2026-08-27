@@ -952,7 +952,7 @@ function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
 }
 
 function highlightTarget(part: PartData): { element: Element; options: KeyframeAnimationOptions } {
-  const highlight = part.lyricElement.querySelector(WORD_HIGHLIGHT_SELECTOR);
+  const highlight = part.highlightElement ?? part.lyricElement.querySelector(WORD_HIGHLIGHT_SELECTOR);
   if (highlight) {
     return { element: highlight, options: {} };
   }
