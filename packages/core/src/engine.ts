@@ -1190,46 +1190,42 @@ function startWordAnimations(
         appliedTimingOffsetMs
       );
 
-  const wobbleAnimation = config.enabled.wordWobble
-    ? trackLyricAnimationTiming(
-        engine,
-        part.lyricElement.animate(
-          [
-            { transform: config.word.wobbleFrom },
-            {
-              transform: config.word.wobblePeak,
-              offset: config.word.wobblePeakOffset,
-              easing: config.word.wobblePeakEasing,
-            },
-            // The two offsets are read and clamped independently, so a theme is free to settle
-            // before it peaks. animate() rejects offsets that go backwards, and that throw would
-            // orphan the highlight animations above, which are not tracked until the end.
-            {
-              transform: config.word.wobbleSettle,
-              offset: Math.max(config.word.wobblePeakOffset, config.word.wobbleSettleOffset),
-            },
-            { transform: config.word.wobbleTo, easing: config.word.wobbleEndEasing },
-          ],
-          {
-            duration: config.word.wobbleDurationMs,
-            easing: config.word.wobbleEasing,
-            fill: "forwards",
-          }
-        ),
-        { appliedTimingOffsetMs, offsetMs: 0 }
-      )
-    : null;
-
-  if (wobbleAnimation) {
-    wobbleAnimation.currentTime = correctedAnimationTimeMs(
-      wordTimeMs,
-      appliedTimingOffsetMs,
-      config.word.wobbleDurationMs
-    );
+  const wobbleAnimations: Animation[] = [];
+  if (config.enabled.wordWobble) {
+    const wobbleKeyframes: Keyframe[] = [
+      { transform: config.word.wobbleFrom },
+      {
+        transform: config.word.wobblePeak,
+        offset: config.word.wobblePeakOffset,
+        easing: config.word.wobblePeakEasing,
+      },
+      // The two offsets are read and clamped independently, so a theme is free to settle
+      // before it peaks. animate() rejects offsets that go backwards, and that throw would
+      // orphan the highlight animations above, which are not tracked until the end.
+      {
+        transform: config.word.wobbleSettle,
+        offset: Math.max(config.word.wobblePeakOffset, config.word.wobbleSettleOffset),
+      },
+      { transform: config.word.wobbleTo, easing: config.word.wobbleEndEasing },
+    ];
+    const wobbleOptions: KeyframeAnimationOptions = {
+      duration: config.word.wobbleDurationMs,
+      easing: config.word.wobbleEasing,
+      fill: "forwards",
+    };
+    const wobbleStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, config.word.wobbleDurationMs);
+    // The wobble is a paint transform, so the highlight copy must carry it too or the active
+    // sweep drifts off the word.
+    for (const wordElement of [part.lyricElement, part.highlightElement!]) {
+      const animation = trackLyricAnimationTiming(engine, wordElement.animate(wobbleKeyframes, wobbleOptions), {
+        appliedTimingOffsetMs,
+        offsetMs: 0,
+      });
+      animation.currentTime = wobbleStartMs;
+      wobbleAnimations.push(animation);
+    }
   }
-  part.animations = wobbleAnimation
-    ? [...highlightAnimations.animations, wobbleAnimation]
-    : highlightAnimations.animations;
+  part.animations = [...highlightAnimations.animations, ...wobbleAnimations];
 }
 
 function startLineAnimations(
