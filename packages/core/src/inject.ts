@@ -89,7 +89,7 @@ export function deriveSyncType(lyrics: Lyric[]): LyricSyncType {
   return lyrics.every(item => item.startTimeMs === 0) ? "none" : "synced";
 }
 
-export interface AnimationTargetData {
+export interface PartData {
   /**
    * Time of this part in seconds
    */
@@ -101,9 +101,8 @@ export interface AnimationTargetData {
   duration: number;
   lyricElement: HTMLElement;
   animations: Animation[];
-}
-
-export interface PartData extends AnimationTargetData {
+  // Renderer-created word records always have this target. It remains optional so adding it does
+  // not break consumers that construct the public PartData shape themselves.
   highlightElement?: HTMLElement;
 }
 
@@ -117,7 +116,7 @@ export type LineData = {
   isSelected: boolean;
   height: number;
   position: number;
-} & AnimationTargetData;
+} & PartData;
 
 type SpaceToken = {
   kind: "space";
@@ -427,15 +426,15 @@ export function createLyricsLine(
     } else {
       const shouldUseBackgroundLine = options.splitBackgroundLine && item.isBackground;
       const target = shouldUseBackgroundLine ? backgroundRun : mainRun;
-      const highlightTarget = shouldUseBackgroundLine ? backgroundHighlightRun : mainHighlightRun;
+      const highlightRun = shouldUseBackgroundLine ? backgroundHighlightRun : mainHighlightRun;
       const pendingSpace = shouldUseBackgroundLine ? pendingBackgroundSpace : pendingForegroundSpace;
       if (target.childNodes.length > 0 && pendingSpace.length > 0) {
         target.appendChild(doc.createTextNode(pendingSpace));
-        highlightTarget.appendChild(doc.createTextNode(pendingSpace));
+        highlightRun.appendChild(doc.createTextNode(pendingSpace));
       }
       const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
       target.appendChild(lyricGroup);
-      highlightTarget.appendChild(highlightGroup);
+      highlightRun.appendChild(highlightGroup);
       if (shouldUseBackgroundLine) {
         hasBackground = true;
         pendingBackgroundSpace = "";

@@ -25,7 +25,7 @@ import {
   PAUSED_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
-import type { AnimationTargetData, LineData, PartData } from "./inject";
+import type { LineData, PartData } from "./inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
@@ -412,7 +412,7 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.lyricsContainer = null;
 }
 
-function resetPartAnimations(part: AnimationTargetData): void {
+function resetPartAnimations(part: PartData): void {
   for (const animation of part.animations) {
     animation.cancel();
   }
@@ -439,10 +439,9 @@ function resetLineAnimationState(lineData: LineData): void {
   markLineAnimationsStopped(lineData);
 }
 
-function togglePartClass(part: AnimationTargetData, className: string, force: boolean): void {
+function togglePartClass(part: PartData, className: string, force: boolean): void {
   part.lyricElement.classList.toggle(className, force);
-  const highlight = (part as Partial<PartData>).highlightElement;
-  highlight?.classList.toggle(className, force);
+  part.highlightElement?.classList.toggle(className, force);
 }
 
 function setAnimationsPlayState(lineData: LineData, isPlaying: boolean): void {
@@ -710,7 +709,7 @@ function normalizeAnimationTimeMs(animation: Animation, timeMs: number, timing: 
 }
 
 function animationTimingSample(
-  part: AnimationTargetData,
+  part: PartData,
   animation: Animation,
   currentTime: number
 ): NativeAnimationTimingSample | null {
@@ -751,7 +750,7 @@ function animationTimingSample(
   };
 }
 
-function largestNativeTimingSample(part: AnimationTargetData, currentTime: number): NativeAnimationTimingSample | null {
+function largestNativeTimingSample(part: PartData, currentTime: number): NativeAnimationTimingSample | null {
   let largestSample: NativeAnimationTimingSample | null = null;
 
   for (const animation of part.animations) {
@@ -956,12 +955,6 @@ function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
-function highlightTarget(part: PartData): { element: Element; options: KeyframeAnimationOptions } {
-  // The builder gives every timed word a real target. The field stays optional only because
-  // PartData is public and requiring a new member would break consumers that describe old data.
-  return { element: part.highlightElement!, options: {} };
-}
-
 function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
   return [
     {
@@ -1005,17 +998,16 @@ function startRichSyncedHighlightAnimations(
   appliedTimingOffsetMs: number
 ): HighlightAnimations {
   const animations: Animation[] = [];
-  const target = highlightTarget(part);
+  const highlight = part.highlightElement!;
 
   let swipeAnimation: Animation | undefined;
   if (config.enabled.highlightSwipe) {
     swipeAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGradientKeyframes(config), {
+      highlight.animate(activeTextGradientKeyframes(config), {
         duration: swipeDurationMs,
         easing: config.highlight.swipeEasing,
         fill: "forwards",
-        ...target.options,
       }),
       { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs }
     );
@@ -1025,13 +1017,12 @@ function startRichSyncedHighlightAnimations(
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
-    target.element.animate(
+    highlight.animate(
       config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(config),
       {
         duration: 1,
         easing: "linear",
         fill: "forwards",
-        ...target.options,
       }
     ),
     { appliedTimingOffsetMs, offsetMs: 0 }
@@ -1043,11 +1034,10 @@ function startRichSyncedHighlightAnimations(
   if (config.enabled.highlightGlow) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGlowKeyframes(config), {
+      highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
         fill: "forwards",
-        ...target.options,
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1068,15 +1058,14 @@ function startLineSyncedHighlightAnimations(
 ): HighlightAnimations {
   const animations: Animation[] = [];
   const fadeInDuration = config.enabled.highlightFade ? config.highlight.fadeInDurationMs : 1;
-  const target = highlightTarget(part);
+  const highlight = part.highlightElement!;
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
-    target.element.animate(lineSyncedTextKeyframes(config), {
+    highlight.animate(lineSyncedTextKeyframes(config), {
       duration: fadeInDuration,
       easing: config.enabled.highlightFade ? config.highlight.fadeInEasing : "linear",
       fill: "forwards",
-      ...target.options,
     }),
     { appliedTimingOffsetMs, offsetMs: 0 }
   );
@@ -1087,11 +1076,10 @@ function startLineSyncedHighlightAnimations(
   if (config.enabled.highlightGlow) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGlowKeyframes(config), {
+      highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
         fill: "forwards",
-        ...target.options,
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1267,12 +1255,10 @@ function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
   resetPartAnimations(part);
 
   const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
-  const target = highlightTarget(part);
-  const animation = target.element.animate(fadeOutTextKeyframes(config), {
+  const animation = part.highlightElement!.animate(fadeOutTextKeyframes(config), {
     duration: fadeDuration,
     easing: config.enabled.highlightFade ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
-    ...target.options,
   });
 
   part.animations = [animation];
