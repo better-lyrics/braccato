@@ -55,10 +55,19 @@
 }
 
 .blyrics-bidi-run {
-	display: inline;
+	display: block;
 	max-width: 100%;
 	unicode-bidi: normal;
 	white-space: inherit;
+}
+
+.blyrics-highlight-run {
+	inset: 0 0 auto;
+	pointer-events: none;
+	position: absolute;
+	user-select: none;
+	width: auto;
+	z-index: 1;
 }
 
 .blyrics-word-group {
@@ -118,69 +127,33 @@
 	initial-value: -0.1;
 }
 
-.blyrics--word::after,
-.blyrics-word-highlight {
+.blyrics--word.blyrics-word-highlight {
 	color: transparent;
 	background-image: linear-gradient(
 		90deg,
 		var(--blyrics-lyric-active-color)
-			calc(
-				100% * var(--lyric-transition-amount-start) - 4rem *
-					var(--lyric-transition-amount-start) + 2rem
-			),
+			calc(100% * var(--lyric-transition-amount-start)),
 		#00000000
-			calc(
-				100% * var(--lyric-transition-amount-end) - 4rem *
-					var(--lyric-transition-amount-end) + 2rem + 1px
-			)
+			calc(100% * var(--lyric-transition-amount-end) + 1px)
 	);
 	background-clip: text;
-	box-sizing: content-box;
 	filter: drop-shadow(0 0 0 var(--blyrics-glow-color));
-	left: -2rem;
 	opacity: 0;
-	padding: 2rem;
 	pointer-events: none;
-	position: absolute;
-	top: -2rem;
-	white-space: inherit;
-	width: 100%;
 	--lyric-transition-amount-start: var(
 		--blyrics-highlight-swipe-start-from,
 		-0.2
 	);
 	--lyric-transition-amount-end: var(--blyrics-highlight-swipe-end-from, -0.1);
 }
-
-.blyrics--word::after {
-	content: attr(data-content);
-}
-
-.blyrics-word-highlight {
-	user-select: none;
-}
-
-.blyrics-word-with-highlight::after {
-	content: none;
-}
-
-.blyrics-rtl.blyrics--word::after,
-.blyrics--word.blyrics-rtl::after,
 .blyrics-word-highlight.blyrics-rtl,
-.blyrics-rtl .blyrics-word-highlight,
-.blyrics--word.blyrics-rtl .blyrics-word-highlight {
+.blyrics-rtl .blyrics-word-highlight {
 	background-image: linear-gradient(
 		270deg,
 		var(--blyrics-lyric-active-color)
-			calc(
-				100% * var(--lyric-transition-amount-start) - 4rem *
-					var(--lyric-transition-amount-start) + 2rem
-			),
+			calc(100% * var(--lyric-transition-amount-start)),
 		#00000000
-			calc(
-				100% * var(--lyric-transition-amount-end) - 4rem *
-					var(--lyric-transition-amount-end) + 2rem + 1px
-			)
+			calc(100% * var(--lyric-transition-amount-end) + 1px)
 	);
 }
 

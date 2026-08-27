@@ -25,7 +25,7 @@ import {
   PAUSED_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
-import type { LineData, PartData } from "./inject";
+import type { AnimationTargetData, LineData, PartData } from "./inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
@@ -412,7 +412,7 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.lyricsContainer = null;
 }
 
-function resetPartAnimations(part: PartData): void {
+function resetPartAnimations(part: AnimationTargetData): void {
   for (const animation of part.animations) {
     animation.cancel();
   }
@@ -439,10 +439,16 @@ function resetLineAnimationState(lineData: LineData): void {
   markLineAnimationsStopped(lineData);
 }
 
+function togglePartClass(part: AnimationTargetData, className: string, force: boolean): void {
+  part.lyricElement.classList.toggle(className, force);
+  const highlight = (part as Partial<PartData>).highlightElement;
+  highlight?.classList.toggle(className, force);
+}
+
 function setAnimationsPlayState(lineData: LineData, isPlaying: boolean): void {
   const children = [lineData, ...lineData.parts];
   for (const part of children) {
-    part.lyricElement.classList.toggle(PAUSED_CLASS, !isPlaying);
+    togglePartClass(part, PAUSED_CLASS, !isPlaying);
     for (const animation of part.animations) {
       if (isPlaying) {
         animation.play();
@@ -456,12 +462,11 @@ function setAnimationsPlayState(lineData: LineData, isPlaying: boolean): void {
 function clearLineStateClasses(lineData: LineData): void {
   lineData.lyricElement.classList.remove(ANIMATING_CLASS);
   for (const part of [lineData, ...lineData.parts]) {
-    part.lyricElement.classList.remove(PAUSED_CLASS);
+    togglePartClass(part, PAUSED_CLASS, false);
   }
 }
 
 const LINE_SYNCED_WORD_CLASS = "blyrics-line-synced-word";
-const WORD_HIGHLIGHT_SELECTOR = ".blyrics-word-highlight";
 const INSTRUMENTAL_FILL_SELECTOR = ".blyrics--instrumental-fill";
 const INSTRUMENTAL_WAVE_CLIP_SELECTOR = ".blyrics--wave-clip";
 const INSTRUMENTAL_WAVE_PATH_SELECTOR = ".blyrics--wave-path";
@@ -705,7 +710,7 @@ function normalizeAnimationTimeMs(animation: Animation, timeMs: number, timing: 
 }
 
 function animationTimingSample(
-  part: PartData,
+  part: AnimationTargetData,
   animation: Animation,
   currentTime: number
 ): NativeAnimationTimingSample | null {
@@ -746,7 +751,7 @@ function animationTimingSample(
   };
 }
 
-function largestNativeTimingSample(part: PartData, currentTime: number): NativeAnimationTimingSample | null {
+function largestNativeTimingSample(part: AnimationTargetData, currentTime: number): NativeAnimationTimingSample | null {
   let largestSample: NativeAnimationTimingSample | null = null;
 
   for (const animation of part.animations) {
@@ -952,11 +957,9 @@ function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
 }
 
 function highlightTarget(part: PartData): { element: Element; options: KeyframeAnimationOptions } {
-  const highlight = part.highlightElement ?? part.lyricElement.querySelector(WORD_HIGHLIGHT_SELECTOR);
-  if (highlight) {
-    return { element: highlight, options: {} };
-  }
-  return { element: part.lyricElement, options: { pseudoElement: "::after" } };
+  // The builder gives every timed word a real target. The field stays optional only because
+  // PartData is public and requiring a new member would break consumers that describe old data.
+  return { element: part.highlightElement!, options: {} };
 }
 
 function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {

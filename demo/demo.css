@@ -1635,12 +1635,7 @@ braccato-lyrics {
 /* `--blyrics-glow-color` is documented as the bloom a word earns by being held, but the package
    hands it to every word alike, so nothing on the screen distinguishes the held ones. The engine
    already marks them: `data-long-word` goes on any part past `blyrics-long-word-threshold`. So the
-   rest give their glow up and the held ones keep whatever colour the theme chose.
-
-   Two selectors because there are two targets. A word short enough to stay whole is animated
-   through its own `::after`; one past `blyrics-long-word-wrap-threshold` is split, and the sweep
-   moves to the `.blyrics-word-highlight` span before it. */
-.blyrics--word:not([data-long-word])::after,
+   rest give their glow up and the held ones keep whatever colour the theme chose. */
 .blyrics-word-highlight:not([data-long-word]) {
 	--blyrics-glow-color: transparent;
 }
