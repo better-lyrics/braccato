@@ -19,6 +19,7 @@ import {
   BIDI_SENSITIVE_CLASS,
   CONTENT_LINE_CLASS,
   EXPLICIT_WORD_CLASS,
+  HIGHLIGHT_RUN_CLASS,
   LINE_MAIN_CLASS,
   LINE_SYNCED_WORD_CLASS,
   LONG_WORD_GROUP_CLASS,
@@ -100,6 +101,9 @@ export interface PartData {
   duration: number;
   lyricElement: HTMLElement;
   animations: Animation[];
+  // Renderer-created word records always have this target. It remains optional so adding it does
+  // not break consumers that construct the public PartData shape themselves.
+  highlightElement?: HTMLElement;
 }
 
 export type LineData = {
@@ -142,11 +146,12 @@ interface WordGroup {
   tokens: RenderToken[];
 }
 
-function newPartData(part: LyricPart, span: HTMLElement): PartData {
+function newPartData(part: LyricPart, span: HTMLElement, highlight: HTMLElement): PartData {
   return {
     time: part.startTimeMs / 1000,
     duration: part.durationMs / 1000,
     lyricElement: span,
+    highlightElement: highlight,
     animations: [],
   };
 }
@@ -292,75 +297,69 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, th
   return true;
 }
 
-function cloneTextWithBreaks(doc: Document, source: HTMLElement): DocumentFragment {
-  const fragment = doc.createDocumentFragment();
-  for (const node of source.childNodes) {
-    fragment.appendChild(node.cloneNode(true));
-  }
-  return fragment;
-}
-
-function createTimedWordSpan(doc: Document, part: LyricPart, wrapThreshold: number): HTMLSpanElement {
+function createTimedWordSpan(
+  doc: Document,
+  part: LyricPart,
+  wrapThreshold: number
+): { span: HTMLSpanElement; highlight: HTMLSpanElement } {
   const span = doc.createElement("span");
-  span.classList.add(WORD_CLASS);
-  span.dir = "auto";
+  const highlight = doc.createElement("span");
+  highlight.classList.add(WORD_HIGHLIGHT_CLASS);
 
-  if (part.durationMs === 0) {
-    span.classList.add(ZERO_DURATION_ANIMATION_CLASS);
-    span.classList.add(LINE_SYNCED_WORD_CLASS);
-  }
-  if (testRtl(part.words)) {
-    span.classList.add(RTL_CLASS);
-  }
-  if (part.durationMs > longWordThreshold.getNumberValue()) {
-    span.dataset.longWord = "true";
-  }
-  if (part.isBackground) {
-    span.classList.add(BACKGROUND_LYRIC_CLASS);
-  }
-  if (part.explicit) {
-    span.classList.add(EXPLICIT_WORD_CLASS);
-  }
+  for (const wordElement of [span, highlight]) {
+    wordElement.classList.add(WORD_CLASS);
+    wordElement.dir = "auto";
+    if (part.durationMs === 0) {
+      wordElement.classList.add(ZERO_DURATION_ANIMATION_CLASS);
+      wordElement.classList.add(LINE_SYNCED_WORD_CLASS);
+    }
+    if (testRtl(part.words)) wordElement.classList.add(RTL_CLASS);
+    if (part.durationMs > longWordThreshold.getNumberValue()) wordElement.dataset.longWord = "true";
+    if (part.isBackground) wordElement.classList.add(BACKGROUND_LYRIC_CLASS);
+    if (part.explicit) wordElement.classList.add(EXPLICIT_WORD_CLASS);
 
-  const hasBreaks = appendLongWordBreaks(doc, span, part.words, wrapThreshold);
-  if (hasBreaks) {
-    const highlight = doc.createElement("span");
-    highlight.classList.add(WORD_HIGHLIGHT_CLASS);
-    highlight.setAttribute("aria-hidden", "true");
-    highlight.appendChild(cloneTextWithBreaks(doc, span));
-    span.appendChild(highlight);
+    appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+    wordElement.dataset.time = String(part.startTimeMs / 1000);
+    wordElement.dataset.duration = String(part.durationMs / 1000);
+    wordElement.dataset.content = part.words;
+    wordElement.style.setProperty("--blyrics-duration", part.durationMs + "ms");
   }
-  span.dataset.time = String(part.startTimeMs / 1000);
-  span.dataset.duration = String(part.durationMs / 1000);
-  span.dataset.content = part.words;
-  span.style.setProperty("--blyrics-duration", part.durationMs + "ms");
-  return span;
+  return { span, highlight };
 }
 
-function createWordGroup(doc: Document, group: WordGroup, lineData: LineData): HTMLElement {
+function createWordGroup(
+  doc: Document,
+  group: WordGroup,
+  lineData: LineData
+): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
-  const groupElement = doc.createElement("span");
-  groupElement.classList.add(WORD_GROUP_CLASS);
-  groupElement.dir = "auto";
-  groupElement.dataset.content = group.text;
+  const lyricGroup = doc.createElement("span");
+  const highlightGroup = doc.createElement("span");
 
-  if (group.text.length > wrapThreshold * 2) {
-    groupElement.classList.add(LONG_WORD_GROUP_CLASS);
-  }
+  for (const groupElement of [lyricGroup, highlightGroup]) {
+    groupElement.classList.add(WORD_GROUP_CLASS);
+    groupElement.dir = "auto";
+    groupElement.dataset.content = group.text;
 
-  if (group.isBackground) {
-    groupElement.classList.add(BACKGROUND_LYRIC_CLASS);
+    if (group.text.length > wrapThreshold * 2) {
+      groupElement.classList.add(LONG_WORD_GROUP_CLASS);
+    }
+
+    if (group.isBackground) {
+      groupElement.classList.add(BACKGROUND_LYRIC_CLASS);
+    }
   }
 
   for (const token of group.tokens) {
     if (token.kind === "space") continue;
 
-    const span = createTimedWordSpan(doc, token.part, wrapThreshold);
-    lineData.parts.push(newPartData(token.part, span));
-    groupElement.appendChild(span);
+    const { span, highlight } = createTimedWordSpan(doc, token.part, wrapThreshold);
+    lineData.parts.push(newPartData(token.part, span, highlight));
+    lyricGroup.appendChild(span);
+    highlightGroup.appendChild(highlight);
   }
 
-  return groupElement;
+  return { lyricGroup, highlightGroup };
 }
 
 function createContentLine(doc: Document, className: string, text: string): HTMLDivElement {
@@ -375,6 +374,13 @@ function createBidiRun(doc: Document, text: string): HTMLSpanElement {
   const run = doc.createElement("span");
   run.classList.add(BIDI_RUN_CLASS);
   applyDirection(run, text);
+  return run;
+}
+
+function createHighlightRun(doc: Document, text: string): HTMLSpanElement {
+  const run = createBidiRun(doc, text);
+  run.classList.add(HIGHLIGHT_RUN_CLASS);
+  run.setAttribute("aria-hidden", "true");
   return run;
 }
 
@@ -398,14 +404,18 @@ export function createLyricsLine(
     .join("");
   const main = createContentLine(doc, LINE_MAIN_CLASS, mainText);
   const mainRun = createBidiRun(doc, mainText);
+  const mainHighlightRun = createHighlightRun(doc, mainText);
   const groupedTokens = groupTokensByWord(normalizeParts(parts));
   const backgroundLine = createContentLine(doc, BACKGROUND_LINE_CLASS, backgroundText);
   const backgroundRun = createBidiRun(doc, backgroundText);
+  const backgroundHighlightRun = createHighlightRun(doc, backgroundText);
   let hasBackground = false;
   let pendingForegroundSpace = "";
   let pendingBackgroundSpace = "";
 
+  main.appendChild(mainHighlightRun);
   main.appendChild(mainRun);
+  backgroundLine.appendChild(backgroundHighlightRun);
   backgroundLine.appendChild(backgroundRun);
 
   for (const item of groupedTokens) {
@@ -416,11 +426,15 @@ export function createLyricsLine(
     } else {
       const shouldUseBackgroundLine = options.splitBackgroundLine && item.isBackground;
       const target = shouldUseBackgroundLine ? backgroundRun : mainRun;
+      const highlightRun = shouldUseBackgroundLine ? backgroundHighlightRun : mainHighlightRun;
       const pendingSpace = shouldUseBackgroundLine ? pendingBackgroundSpace : pendingForegroundSpace;
       if (target.childNodes.length > 0 && pendingSpace.length > 0) {
         target.appendChild(doc.createTextNode(pendingSpace));
+        highlightRun.appendChild(doc.createTextNode(pendingSpace));
       }
-      target.appendChild(createWordGroup(doc, item, line));
+      const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
+      target.appendChild(lyricGroup);
+      highlightRun.appendChild(highlightGroup);
       if (shouldUseBackgroundLine) {
         hasBackground = true;
         pendingBackgroundSpace = "";

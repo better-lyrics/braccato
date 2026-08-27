@@ -439,10 +439,15 @@ function resetLineAnimationState(lineData: LineData): void {
   markLineAnimationsStopped(lineData);
 }
 
+function togglePartClass(part: PartData, className: string, force: boolean): void {
+  part.lyricElement.classList.toggle(className, force);
+  part.highlightElement?.classList.toggle(className, force);
+}
+
 function setAnimationsPlayState(lineData: LineData, isPlaying: boolean): void {
   const children = [lineData, ...lineData.parts];
   for (const part of children) {
-    part.lyricElement.classList.toggle(PAUSED_CLASS, !isPlaying);
+    togglePartClass(part, PAUSED_CLASS, !isPlaying);
     for (const animation of part.animations) {
       if (isPlaying) {
         animation.play();
@@ -456,12 +461,11 @@ function setAnimationsPlayState(lineData: LineData, isPlaying: boolean): void {
 function clearLineStateClasses(lineData: LineData): void {
   lineData.lyricElement.classList.remove(ANIMATING_CLASS);
   for (const part of [lineData, ...lineData.parts]) {
-    part.lyricElement.classList.remove(PAUSED_CLASS);
+    togglePartClass(part, PAUSED_CLASS, false);
   }
 }
 
 const LINE_SYNCED_WORD_CLASS = "blyrics-line-synced-word";
-const WORD_HIGHLIGHT_SELECTOR = ".blyrics-word-highlight";
 const INSTRUMENTAL_FILL_SELECTOR = ".blyrics--instrumental-fill";
 const INSTRUMENTAL_WAVE_CLIP_SELECTOR = ".blyrics--wave-clip";
 const INSTRUMENTAL_WAVE_PATH_SELECTOR = ".blyrics--wave-path";
@@ -951,14 +955,6 @@ function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
-function highlightTarget(part: PartData): { element: Element; options: KeyframeAnimationOptions } {
-  const highlight = part.lyricElement.querySelector(WORD_HIGHLIGHT_SELECTOR);
-  if (highlight) {
-    return { element: highlight, options: {} };
-  }
-  return { element: part.lyricElement, options: { pseudoElement: "::after" } };
-}
-
 function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
   return [
     {
@@ -1002,17 +998,16 @@ function startRichSyncedHighlightAnimations(
   appliedTimingOffsetMs: number
 ): HighlightAnimations {
   const animations: Animation[] = [];
-  const target = highlightTarget(part);
+  const highlight = part.highlightElement!;
 
   let swipeAnimation: Animation | undefined;
   if (config.enabled.highlightSwipe) {
     swipeAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGradientKeyframes(config), {
+      highlight.animate(activeTextGradientKeyframes(config), {
         duration: swipeDurationMs,
         easing: config.highlight.swipeEasing,
         fill: "forwards",
-        ...target.options,
       }),
       { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs }
     );
@@ -1022,13 +1017,12 @@ function startRichSyncedHighlightAnimations(
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
-    target.element.animate(
+    highlight.animate(
       config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(config),
       {
         duration: 1,
         easing: "linear",
         fill: "forwards",
-        ...target.options,
       }
     ),
     { appliedTimingOffsetMs, offsetMs: 0 }
@@ -1040,11 +1034,10 @@ function startRichSyncedHighlightAnimations(
   if (config.enabled.highlightGlow) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGlowKeyframes(config), {
+      highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
         fill: "forwards",
-        ...target.options,
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1065,15 +1058,14 @@ function startLineSyncedHighlightAnimations(
 ): HighlightAnimations {
   const animations: Animation[] = [];
   const fadeInDuration = config.enabled.highlightFade ? config.highlight.fadeInDurationMs : 1;
-  const target = highlightTarget(part);
+  const highlight = part.highlightElement!;
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
-    target.element.animate(lineSyncedTextKeyframes(config), {
+    highlight.animate(lineSyncedTextKeyframes(config), {
       duration: fadeInDuration,
       easing: config.enabled.highlightFade ? config.highlight.fadeInEasing : "linear",
       fill: "forwards",
-      ...target.options,
     }),
     { appliedTimingOffsetMs, offsetMs: 0 }
   );
@@ -1084,11 +1076,10 @@ function startLineSyncedHighlightAnimations(
   if (config.enabled.highlightGlow) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
-      target.element.animate(activeTextGlowKeyframes(config), {
+      highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
         fill: "forwards",
-        ...target.options,
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1199,46 +1190,42 @@ function startWordAnimations(
         appliedTimingOffsetMs
       );
 
-  const wobbleAnimation = config.enabled.wordWobble
-    ? trackLyricAnimationTiming(
-        engine,
-        part.lyricElement.animate(
-          [
-            { transform: config.word.wobbleFrom },
-            {
-              transform: config.word.wobblePeak,
-              offset: config.word.wobblePeakOffset,
-              easing: config.word.wobblePeakEasing,
-            },
-            // The two offsets are read and clamped independently, so a theme is free to settle
-            // before it peaks. animate() rejects offsets that go backwards, and that throw would
-            // orphan the highlight animations above, which are not tracked until the end.
-            {
-              transform: config.word.wobbleSettle,
-              offset: Math.max(config.word.wobblePeakOffset, config.word.wobbleSettleOffset),
-            },
-            { transform: config.word.wobbleTo, easing: config.word.wobbleEndEasing },
-          ],
-          {
-            duration: config.word.wobbleDurationMs,
-            easing: config.word.wobbleEasing,
-            fill: "forwards",
-          }
-        ),
-        { appliedTimingOffsetMs, offsetMs: 0 }
-      )
-    : null;
-
-  if (wobbleAnimation) {
-    wobbleAnimation.currentTime = correctedAnimationTimeMs(
-      wordTimeMs,
-      appliedTimingOffsetMs,
-      config.word.wobbleDurationMs
-    );
+  const wobbleAnimations: Animation[] = [];
+  if (config.enabled.wordWobble) {
+    const wobbleKeyframes: Keyframe[] = [
+      { transform: config.word.wobbleFrom },
+      {
+        transform: config.word.wobblePeak,
+        offset: config.word.wobblePeakOffset,
+        easing: config.word.wobblePeakEasing,
+      },
+      // The two offsets are read and clamped independently, so a theme is free to settle
+      // before it peaks. animate() rejects offsets that go backwards, and that throw would
+      // orphan the highlight animations above, which are not tracked until the end.
+      {
+        transform: config.word.wobbleSettle,
+        offset: Math.max(config.word.wobblePeakOffset, config.word.wobbleSettleOffset),
+      },
+      { transform: config.word.wobbleTo, easing: config.word.wobbleEndEasing },
+    ];
+    const wobbleOptions: KeyframeAnimationOptions = {
+      duration: config.word.wobbleDurationMs,
+      easing: config.word.wobbleEasing,
+      fill: "forwards",
+    };
+    const wobbleStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, config.word.wobbleDurationMs);
+    // The wobble is a paint transform, so the highlight copy must carry it too or the active
+    // sweep drifts off the word.
+    for (const wordElement of [part.lyricElement, part.highlightElement!]) {
+      const animation = trackLyricAnimationTiming(engine, wordElement.animate(wobbleKeyframes, wobbleOptions), {
+        appliedTimingOffsetMs,
+        offsetMs: 0,
+      });
+      animation.currentTime = wobbleStartMs;
+      wobbleAnimations.push(animation);
+    }
   }
-  part.animations = wobbleAnimation
-    ? [...highlightAnimations.animations, wobbleAnimation]
-    : highlightAnimations.animations;
+  part.animations = [...highlightAnimations.animations, ...wobbleAnimations];
 }
 
 function startLineAnimations(
@@ -1264,12 +1251,10 @@ function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
   resetPartAnimations(part);
 
   const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
-  const target = highlightTarget(part);
-  const animation = target.element.animate(fadeOutTextKeyframes(config), {
+  const animation = part.highlightElement!.animate(fadeOutTextKeyframes(config), {
     duration: fadeDuration,
     easing: config.enabled.highlightFade ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
-    ...target.options,
   });
 
   part.animations = [animation];

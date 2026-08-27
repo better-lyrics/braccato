@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { LYRICS_CLASS, ROMANIZED_LYRICS_CLASS, TRANSLATED_LYRICS_CLASS, WORD_CLASS } from "./constants";
+import {
+  HIGHLIGHT_RUN_CLASS,
+  LYRICS_CLASS,
+  ROMANIZED_LYRICS_CLASS,
+  TRANSLATED_LYRICS_CLASS,
+  WORD_CLASS,
+  WORD_GROUP_CLASS,
+  WORD_HIGHLIGHT_CLASS,
+} from "./constants";
 import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
 import { asDocument, asElement, collectTree, FakeDocument, type FactoryName, type FakeNode } from "./selfcheck/fakeDom";
@@ -25,7 +33,7 @@ Object.defineProperty(globalThis, "document", {
 
 // -- Fixtures --------------------------------------------
 
-const FACTORY_NAMES: FactoryName[] = ["createElement", "createElementNS", "createTextNode", "createDocumentFragment"];
+const FACTORY_NAMES: FactoryName[] = ["createElement", "createElementNS", "createTextNode"];
 
 function findForeignNodes(root: FakeNode, owner: FakeDocument): string[] {
   return collectTree(root)
@@ -42,8 +50,8 @@ const lyricElement = doc.createElement("div");
 lyricElement.dataset.time = "12.5";
 const buildTarget = asElement<HTMLElement>(lyricElement);
 
-// "indistinguishable" is past the long word wrap threshold, which is what drives the text node,
-// wbr and document fragment paths; "world" is a background part, which drives the second line.
+// "indistinguishable" is past the long word wrap threshold, which drives the wbr path; "world" is
+// a background part, which drives the second line.
 const parts: LyricPart[] = [
   { startTimeMs: 0, words: "Hello ", durationMs: 400 },
   { startTimeMs: 400, words: "indistinguishable ", durationMs: 900 },
@@ -76,7 +84,9 @@ assert.equal(
 const builtNodes = collectTree(lyricElement);
 
 assert.deepEqual(
-  builtNodes.filter(node => node.classList.contains(WORD_CLASS)).map(node => node.dataset.content),
+  builtNodes
+    .filter(node => node.classList.contains(WORD_CLASS) && !node.classList.contains(WORD_HIGHLIGHT_CLASS))
+    .map(node => node.dataset.content),
   ["Hello", "indistinguishable", "world"],
   "Given a line with a background part, When it is built, Then every word is rendered once"
 );
@@ -84,6 +94,44 @@ assert.deepEqual(
 assert.ok(
   builtNodes.some(node => node.name === "wbr"),
   "Given a word past the wrap threshold, When it is built, Then its break nodes come from the injected document"
+);
+
+const wrappedWord = builtNodes.find(
+  node =>
+    node.classList.contains(WORD_CLASS) &&
+    !node.classList.contains(WORD_HIGHLIGHT_CLASS) &&
+    node.dataset.content === "indistinguishable"
+);
+const highlights = builtNodes.filter(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
+const wrappedHighlight = highlights.find(node => node.dataset.content === "indistinguishable");
+
+assert.equal(
+  highlights.length,
+  3,
+  "Given three timed words, When the line is built, Then every word has the same real highlight target"
+);
+assert.ok(
+  wrappedHighlight?.parentNode?.classList.contains(WORD_GROUP_CLASS),
+  "Given a wrapping highlight, When it is built, Then its matching highlight group owns it"
+);
+assert.ok(
+  wrappedHighlight?.parentNode?.parentNode?.classList.contains(HIGHLIGHT_RUN_CLASS),
+  "Given a timed word, When it is built, Then its highlight participates in the shared highlight run"
+);
+assert.equal(
+  lineData.parts[1].highlightElement,
+  wrappedHighlight,
+  "Given a timed word, When animation data is built, Then it retains its real highlight target"
+);
+assert.equal(
+  wrappedWord?.textContent,
+  wrappedHighlight?.textContent,
+  "Given a wrapping word, When both runs are built, Then the visible and highlighted text are identical"
+);
+assert.deepEqual(
+  lineData.parts.map(part => part.highlightElement?.dataset.content),
+  lineData.parts.map(part => part.lyricElement.dataset.content),
+  "Given a timed line, When both runs are built, Then every highlight maps to the same word content"
 );
 
 assert.deepEqual(
@@ -163,7 +211,12 @@ richsyncContainer.classList.add(LYRICS_CLASS);
 richsyncContainer.dataset.sync = "richsync";
 richsyncContainer.appendChild(lyricElement);
 
-const backgroundWord = builtNodes.find(node => node.classList.contains(WORD_CLASS) && node.dataset.content === "world");
+const backgroundWord = builtNodes.find(
+  node =>
+    node.classList.contains(WORD_CLASS) &&
+    !node.classList.contains(WORD_HIGHLIGHT_CLASS) &&
+    node.dataset.content === "world"
+);
 assert.ok(backgroundWord !== undefined, "Given a built line, When a word is looked up, Then the fixture holds it");
 
 const callsBeforeClicks = doc.calls.length;

@@ -33,6 +33,7 @@ export const BACKGROUND_LINE_CLASS = "blyrics-background-line" as const;
 export const WORD_GROUP_CLASS = "blyrics-word-group" as const;
 export const LONG_WORD_GROUP_CLASS = "blyrics-word-group-long" as const;
 export const WORD_HIGHLIGHT_CLASS = "blyrics-word-highlight" as const;
+export const HIGHLIGHT_RUN_CLASS = "blyrics-highlight-run" as const;
 export const LINE_SYNCED_WORD_CLASS = "blyrics-line-synced-word" as const;
 export const BIDI_RUN_CLASS = "blyrics-bidi-run" as const;
 export const BIDI_SENSITIVE_CLASS = "blyrics-bidi-sensitive" as const;
