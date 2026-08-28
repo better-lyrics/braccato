@@ -25,7 +25,7 @@ import {
   PAUSED_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
-import type { LineData, PartData } from "./inject";
+import type { AnimationData, LineData, PartData } from "./inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
@@ -412,7 +412,7 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.lyricsContainer = null;
 }
 
-function resetPartAnimations(part: PartData): void {
+function resetPartAnimations(part: AnimationData): void {
   for (const animation of part.animations) {
     animation.cancel();
   }
@@ -439,9 +439,11 @@ function resetLineAnimationState(lineData: LineData): void {
   markLineAnimationsStopped(lineData);
 }
 
-function togglePartClass(part: PartData, className: string, force: boolean): void {
+function togglePartClass(part: LineData | PartData, className: string, force: boolean): void {
   part.lyricElement.classList.toggle(className, force);
-  part.highlightElement?.classList.toggle(className, force);
+  if ("highlightElement" in part) {
+    part.highlightElement.classList.toggle(className, force);
+  }
 }
 
 function setAnimationsPlayState(lineData: LineData, isPlaying: boolean): void {
@@ -709,7 +711,7 @@ function normalizeAnimationTimeMs(animation: Animation, timeMs: number, timing: 
 }
 
 function animationTimingSample(
-  part: PartData,
+  part: AnimationData,
   animation: Animation,
   currentTime: number
 ): NativeAnimationTimingSample | null {
@@ -750,7 +752,7 @@ function animationTimingSample(
   };
 }
 
-function largestNativeTimingSample(part: PartData, currentTime: number): NativeAnimationTimingSample | null {
+function largestNativeTimingSample(part: AnimationData, currentTime: number): NativeAnimationTimingSample | null {
   let largestSample: NativeAnimationTimingSample | null = null;
 
   for (const animation of part.animations) {
@@ -998,7 +1000,7 @@ function startRichSyncedHighlightAnimations(
   appliedTimingOffsetMs: number
 ): HighlightAnimations {
   const animations: Animation[] = [];
-  const highlight = part.highlightElement!;
+  const highlight = part.highlightElement;
 
   let swipeAnimation: Animation | undefined;
   if (config.enabled.highlightSwipe) {
@@ -1058,7 +1060,7 @@ function startLineSyncedHighlightAnimations(
 ): HighlightAnimations {
   const animations: Animation[] = [];
   const fadeInDuration = config.enabled.highlightFade ? config.highlight.fadeInDurationMs : 1;
-  const highlight = part.highlightElement!;
+  const highlight = part.highlightElement;
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
@@ -1216,7 +1218,7 @@ function startWordAnimations(
     const wobbleStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, config.word.wobbleDurationMs);
     // The wobble is a paint transform, so the highlight copy must carry it too or the active
     // sweep drifts off the word.
-    for (const wordElement of [part.lyricElement, part.highlightElement!]) {
+    for (const wordElement of [part.lyricElement, part.highlightElement]) {
       const animation = trackLyricAnimationTiming(engine, wordElement.animate(wobbleKeyframes, wobbleOptions), {
         appliedTimingOffsetMs,
         offsetMs: 0,
@@ -1251,7 +1253,7 @@ function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
   resetPartAnimations(part);
 
   const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
-  const animation = part.highlightElement!.animate(fadeOutTextKeyframes(config), {
+  const animation = part.highlightElement.animate(fadeOutTextKeyframes(config), {
     duration: fadeDuration,
     easing: config.enabled.highlightFade ? config.highlight.fadeOutEasing : "linear",
     fill: "none",

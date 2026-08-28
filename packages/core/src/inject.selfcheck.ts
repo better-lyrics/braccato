@@ -129,7 +129,7 @@ assert.equal(
   "Given a wrapping word, When both runs are built, Then the visible and highlighted text are identical"
 );
 assert.deepEqual(
-  lineData.parts.map(part => part.highlightElement?.dataset.content),
+  lineData.parts.map(part => part.highlightElement.dataset.content),
   lineData.parts.map(part => part.lyricElement.dataset.content),
   "Given a timed line, When both runs are built, Then every highlight maps to the same word content"
 );
