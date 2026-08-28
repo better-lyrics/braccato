@@ -89,7 +89,7 @@ export function deriveSyncType(lyrics: Lyric[]): LyricSyncType {
   return lyrics.every(item => item.startTimeMs === 0) ? "none" : "synced";
 }
 
-export interface PartData {
+export interface AnimationData {
   /**
    * Time of this part in seconds
    */
@@ -101,9 +101,10 @@ export interface PartData {
   duration: number;
   lyricElement: HTMLElement;
   animations: Animation[];
-  // Renderer-created word records always have this target. It remains optional so adding it does
-  // not break consumers that construct the public PartData shape themselves.
-  highlightElement?: HTMLElement;
+}
+
+export interface PartData extends AnimationData {
+  highlightElement: HTMLElement;
 }
 
 export type LineData = {
@@ -116,7 +117,7 @@ export type LineData = {
   isSelected: boolean;
   height: number;
   position: number;
-} & PartData;
+} & AnimationData;
 
 type SpaceToken = {
   kind: "space";
