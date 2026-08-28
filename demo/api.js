@@ -16,7 +16,7 @@
 // on it: npm renders the README as the package page, and GitHub renders it under the directory.
 export const PACKAGE = {
   name: "@braccato/core",
-  version: "1.2.1",
+  version: "1.3.0",
   npmHref: "https://www.npmjs.com/package/@braccato/core",
   repoHref: "https://github.com/better-lyrics/braccato/tree/master/packages/core",
 };
