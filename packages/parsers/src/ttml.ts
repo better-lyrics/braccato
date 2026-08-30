@@ -54,6 +54,64 @@ function parseTime(timeStr: string | number | undefined): number {
 
 export { parseTime as parseTTMLTime };
 
+// -- Entity Decoding -----------------------------------
+
+const NAMED_ENTITIES: Record<string, string> = {
+	amp: "&",
+	apos: "'",
+	quot: '"',
+	lt: "<",
+	gt: ">",
+	nbsp: "\u00A0",
+	hellip: "…",
+	lsquo: "‘",
+	rsquo: "’",
+	ldquo: "“",
+	rdquo: "”",
+	mdash: "—",
+	ndash: "–",
+	copy: "©",
+	reg: "®",
+	trade: "™",
+};
+
+/**
+ * Decode HTML and XML character references / entities in a text string.
+ * Handles hex (e.g. &#x27;), decimal (e.g. &#39;), and named entities (e.g. &apos;, &quot;, &amp;).
+ */
+function decodeEntities(text: string): string {
+	if (typeof text !== "string" || !text.includes("&")) return text;
+
+	return text.replace(/&(?:#x([0-9a-fA-F]+)|#([0-9]+)|([a-zA-Z0-9]+));/g, (match, hex, dec, named) => {
+		if (hex) {
+			const code = Number.parseInt(hex, 16);
+			if (Number.isFinite(code) && code >= 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)) {
+				try {
+					return String.fromCodePoint(code);
+				} catch {
+					return match;
+				}
+			}
+			return match;
+		}
+		if (dec) {
+			const code = Number.parseInt(dec, 10);
+			if (Number.isFinite(code) && code >= 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)) {
+				try {
+					return String.fromCodePoint(code);
+				} catch {
+					return match;
+				}
+			}
+			return match;
+		}
+		if (named) {
+			return NAMED_ENTITIES[named] ?? match;
+		}
+		return match;
+	});
+}
+
 // -- Agents --------------------------------------------
 
 function extractAgentMapping(metadataElements: MetadataElement[]): Map<string, string> {
@@ -93,7 +151,7 @@ function collectSpanText(children: NestedSpan[] | undefined): string {
 	if (!children) return "";
 	let text = "";
 	for (const child of children) {
-		if (typeof child["#text"] === "string") text += child["#text"];
+		if (typeof child["#text"] === "string") text += decodeEntities(child["#text"]);
 		else if (child.span) text += collectSpanText(child.span);
 	}
 	return text;
@@ -119,13 +177,14 @@ function parseLyricPart(
 
 		for (const subPart of localP) {
 			if (subPart["#text"]) {
-				text += subPart["#text"];
+				const decodedText = decodeEntities(subPart["#text"]);
+				text += decodedText;
 				const lastPart = parts[parts.length - 1];
 
 				parts.push({
 					startTimeMs: lastPart ? lastPart.startTimeMs + lastPart.durationMs : beginTime,
 					durationMs: 0,
-					words: subPart["#text"],
+					words: decodedText,
 					isBackground,
 				});
 			} else if (subPart.span) {
@@ -204,6 +263,8 @@ const PARSER_OPTIONS: X2jOptions = {
 	allowBooleanAttributes: true,
 	parseAttributeValue: false,
 	parseTagValue: false,
+	tagValueProcessor: (_tagName, tagValue) => decodeEntities(tagValue),
+	attributeValueProcessor: (_attrName, attrValue) => decodeEntities(attrValue),
 };
 
 export interface ParseTTMLOptions {
