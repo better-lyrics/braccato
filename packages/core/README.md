@@ -186,6 +186,33 @@ frequency. Both must use the same commands in the same order with the same numbe
 browser only interpolates two paths smoothly when their command sequences match, and a mismatched
 pair snaps at the halfway point instead of flowing.
 
+### Letter wave (experimental)
+
+Off unless a theme opts in with `/* blyrics-letter-wave = true; */`. It splits every word into
+per-letter spans and, as the word is sung, floats each letter up and eases it most of the way back on
+a small stagger, so a wave travels through the word. It layers on top of the word wobble rather than
+replacing it: the word keeps whatever `--blyrics-word-wobble-*` does and the letters ride on top, so
+it composes with the default `scaleX` pop and reduces to just the letters when a theme sets its wobble
+to identity. It follows `--blyrics-animate-word-wobble`, so reduced motion turns it off with the rest.
+
+A word held past `blyrics-long-word-threshold` (the same `data-long-word` the glow keys off) also
+swells each letter with a transient scale at the crest.
+
+```css
+.blyrics-container {
+  --blyrics-letter-wave-transform: translateY(-0.05em); /* crest lift */
+  --blyrics-letter-wave-settle: translateY(-0.02em); /* rest the crest eases back to */
+  --blyrics-letter-wave-emphasis-scale: 1.11; /* long-word letter swell, 1 turns it off */
+  --blyrics-letter-wave-duration: 0.9s;
+  --blyrics-letter-wave-rise-easing: ease-in-out;
+  --blyrics-letter-wave-fall-easing: ease-out;
+}
+```
+
+The split multiplies the DOM per character and reruns the karaoke sweep per letter, so it is opt in
+and best kept to themes that want the effect. `blyrics-letter-wave` reloads the lines when it changes,
+the way every build-time setting does.
+
 ### Class names
 
 These are published API rather than implementation. Renaming one costs a migration rather than a

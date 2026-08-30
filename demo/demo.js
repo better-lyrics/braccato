@@ -448,10 +448,12 @@ function builtInLyrics() {
 
 // -- State --------------------------------------------
 
+const DEFAULT_THEME = THEMES[0];
+
 const DEFAULTS = {
   songId: SONGS[0].id,
   timing: "syllables",
-  themeId: THEMES[0].id,
+  themeId: DEFAULT_THEME.id,
   offsetMs: 0,
   passiveScroll: false,
   viewScroll: false,
@@ -461,7 +463,7 @@ const DEFAULTS = {
 const state = {
   ...DEFAULTS,
   installer: INSTALLERS[0].id,
-  themeText: THEMES[0].css,
+  themeText: DEFAULT_THEME.css,
   importedLyrics: null,
   importedName: "",
   audio: null,

@@ -551,6 +551,14 @@ interface AnimationConfig {
     wobblePeakOffset: number;
     wobbleSettleOffset: number;
   };
+  letterWave: {
+    transform: string;
+    settle: string;
+    emphasisScale: string;
+    durationMs: number;
+    riseEasing: string;
+    fallEasing: string;
+  };
   instrumental: {
     fillFadeDurationMs: number;
     fillFadeEasing: string;
@@ -1201,9 +1209,6 @@ function startWordAnimations(
         offset: config.word.wobblePeakOffset,
         easing: config.word.wobblePeakEasing,
       },
-      // The two offsets are read and clamped independently, so a theme is free to settle
-      // before it peaks. animate() rejects offsets that go backwards, and that throw would
-      // orphan the highlight animations above, which are not tracked until the end.
       {
         transform: config.word.wobbleSettle,
         offset: Math.max(config.word.wobblePeakOffset, config.word.wobbleSettleOffset),
@@ -1216,8 +1221,6 @@ function startWordAnimations(
       fill: "forwards",
     };
     const wobbleStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, config.word.wobbleDurationMs);
-    // The wobble is a paint transform, so the highlight copy must carry it too or the active
-    // sweep drifts off the word.
     for (const wordElement of [part.lyricElement, part.highlightElement]) {
       const animation = trackLyricAnimationTiming(engine, wordElement.animate(wobbleKeyframes, wobbleOptions), {
         appliedTimingOffsetMs,
@@ -1225,6 +1228,41 @@ function startWordAnimations(
       });
       animation.currentTime = wobbleStartMs;
       wobbleAnimations.push(animation);
+    }
+
+    const letters = part.letterElements;
+    if (letters && letters.length > 0) {
+      const emphasise = part.lyricElement?.dataset.longWord === "true";
+      const emphasisPeak = emphasise ? ` scale(${config.letterWave.emphasisScale})` : "";
+      const emphasisRest = emphasise ? " scale(1)" : "";
+      const floatKeyframes: Keyframe[] = [
+        { transform: `translateY(0)${emphasisRest}`, easing: config.letterWave.riseEasing },
+        {
+          transform: `${config.letterWave.transform}${emphasisPeak}`,
+          offset: 0.4,
+          easing: config.letterWave.fallEasing,
+        },
+        { transform: `${config.letterWave.settle}${emphasisRest}` },
+      ];
+      const letterCount = letters.length;
+      const staggerMs = timedDurationMs > 0 ? timedDurationMs / 2.5 / letterCount : 0;
+      const cascadeDurationMs = config.letterWave.durationMs + (letterCount - 1) * staggerMs;
+      const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
+      for (const set of [part.letterElements, part.highlightLetterElements]) {
+        set?.forEach((letterElement, index) => {
+          const options: KeyframeAnimationOptions = {
+            duration: config.letterWave.durationMs,
+            delay: index * staggerMs,
+            fill: "forwards",
+          };
+          const animation = trackLyricAnimationTiming(engine, letterElement.animate(floatKeyframes, options), {
+            appliedTimingOffsetMs,
+            offsetMs: 0,
+          });
+          animation.currentTime = floatStartMs;
+          wobbleAnimations.push(animation);
+        });
+      }
     }
   }
   part.animations = [...highlightAnimations.animations, ...wobbleAnimations];
@@ -1621,6 +1659,14 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       wobbleTo: getCSSValue(engine, lyricsElement, "--blyrics-word-wobble-transform-to", "scaleX(1)"),
       wobblePeakOffset: getCSSOffset(engine, lyricsElement, "--blyrics-word-wobble-peak-offset", 0.125),
       wobbleSettleOffset: getCSSOffset(engine, lyricsElement, "--blyrics-word-wobble-settle-offset", 0.75),
+    },
+    letterWave: {
+      transform: getCSSValue(engine, lyricsElement, "--blyrics-letter-wave-transform", "translateY(-0.06em)"),
+      settle: getCSSValue(engine, lyricsElement, "--blyrics-letter-wave-settle", "translateY(-0.05em)"),
+      emphasisScale: getCSSValue(engine, lyricsElement, "--blyrics-letter-wave-emphasis-scale", "1.08"),
+      durationMs: getCSSDurationWithFallback(engine, lyricsElement, "--blyrics-letter-wave-duration", "0.9s"),
+      riseEasing: getCSSValue(engine, lyricsElement, "--blyrics-letter-wave-rise-easing", "ease-in-out"),
+      fallEasing: getCSSValue(engine, lyricsElement, "--blyrics-letter-wave-fall-easing", "ease-in-out"),
     },
     instrumental: {
       fillFadeDurationMs: getCSSDurationWithFallback(

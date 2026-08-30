@@ -117,13 +117,13 @@
 
 @property --lyric-transition-amount-start {
 	syntax: "<number>";
-	inherits: false;
+	inherits: true;
 	initial-value: -0.2;
 }
 
 @property --lyric-transition-amount-end {
 	syntax: "<number>";
-	inherits: false;
+	inherits: true;
 	initial-value: -0.1;
 }
 
@@ -155,6 +155,25 @@
 		#00000000
 			calc(100% * var(--lyric-transition-amount-end) + 1px)
 	);
+}
+
+.blyrics--letter {
+	display: inline-block;
+}
+
+.blyrics-word-highlight:has(.blyrics--letter) {
+	background-image: none;
+}
+
+.blyrics-word-highlight .blyrics--letter {
+	background-image: linear-gradient(
+		90deg,
+		var(--blyrics-lyric-active-color)
+			calc(100% * (var(--lyric-transition-amount-start) * var(--letters, 1) - var(--letter-index, 0))),
+		#00000000
+			calc(100% * (var(--lyric-transition-amount-end) * var(--letters, 1) - var(--letter-index, 0)) + 1px)
+	);
+	background-clip: text;
 }
 
 [blyrics-alt-hover] .blyrics--word:hover {
