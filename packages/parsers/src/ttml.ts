@@ -204,6 +204,7 @@ const PARSER_OPTIONS: X2jOptions = {
 	allowBooleanAttributes: true,
 	parseAttributeValue: false,
 	parseTagValue: false,
+	htmlEntities: true,
 };
 
 export interface ParseTTMLOptions {
