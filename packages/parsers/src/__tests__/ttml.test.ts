@@ -92,6 +92,25 @@ describe("TTMLParser", () => {
 			expect(nonInstrumental[0].parts!.length).toBeGreaterThanOrEqual(2);
 		});
 
+		it("decodes HTML and XML entities in line and word text", () => {
+			const ttml = `<?xml version="1.0" encoding="UTF-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en">
+  <head><metadata></metadata></head>
+  <body dur="30s">
+    <div>
+      <p begin="5s" end="10s" key="l1">It&rsquo;s caf&#233; &amp; more&#8230;</p>
+      <p begin="10s" end="15s" key="l2"><span begin="10s" end="12s">don&#39;t</span><span begin="12s" end="15s">na&#xEF;ve</span></p>
+    </div>
+  </body>
+</tt>`;
+
+			const result = TTMLParser.parse(ttml);
+			const nonInstrumental = result.filter((l) => !l.isInstrumental);
+
+			expect(nonInstrumental[0].words).toBe("It’s café & more…");
+			expect(nonInstrumental[1].parts!.map((p) => p.words)).toEqual(["don't", "naïve"]);
+		});
+
 		it("detects language", () => {
 			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="ja">
   <head><metadata></metadata></head>
