@@ -157,6 +157,14 @@ export interface LyricsRenderer {
    */
   relayout(measureLines?: boolean): void;
   /**
+   * Runs `mutate`, which hangs translations or romanizations onto the built lines or takes them off,
+   * then slides the lines and their surviving decorators from where they were to where the change put
+   * them, so a streamed-in line eases the rest of the lyric down rather than jumping it. Re-measures
+   * either way. Honours reduced motion and `--blyrics-animate-decoration-entry`: when either is off it
+   * runs `mutate` and re-measures with no slide.
+   */
+  animateDecorationChange(mutate: () => void): void;
+  /**
    * Drops the song and the DOM built for it. The renderer built that DOM, so it takes it away again.
    */
   clear(): void;

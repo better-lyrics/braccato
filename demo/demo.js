@@ -99,6 +99,7 @@ const viewScrollInput = document.getElementById("scrollable-view");
 const pageRulesInput = document.getElementById("page-rules");
 const injectRomanizationsButton = document.getElementById("inject-romanizations");
 const injectTranslationsButton = document.getElementById("inject-translations");
+const injectBothButton = document.getElementById("inject-both");
 const animateDecorationsInput = document.getElementById("animate-decorations");
 
 const eventLog = document.getElementById("event-log");
@@ -570,8 +571,7 @@ function applyLyrics() {
   view.lyrics = lyrics;
   applied.lyrics = lyrics;
 
-  setDecorationsShown("romanization", false);
-  setDecorationsShown("translation", false);
+  paintDecorationButtons();
 
   const json = JSON.stringify(lyrics, null, 2);
   lyricsArray.textContent =
@@ -1290,94 +1290,84 @@ function wireControls(lineClass, lyricsClass) {
     view.renderer?.relayout();
   });
 
-  injectRomanizationsButton.addEventListener("click", () => toggleDecorations("romanization"));
-  injectTranslationsButton.addEventListener("click", () => toggleDecorations("translation"));
+  injectRomanizationsButton.addEventListener("click", () => toggleKinds(["romanization"]));
+  injectTranslationsButton.addEventListener("click", () => toggleKinds(["translation"]));
+  injectBothButton.addEventListener("click", toggleBothDecorations);
 
   animateDecorationsInput.addEventListener("change", () => {
     view.style.setProperty("--blyrics-animate-decoration-entry", animateDecorationsInput.checked ? "1" : "0");
   });
 }
 
-const DECORATION_SLIDE_MS = 350;
 const DECORATION_FADE_MS = 250;
-const DECORATION_EASE = "cubic-bezier(0.25, 1, 0.5, 1)";
 
 const DECORATION_KINDS = {
   romanization: {
-    noun: "romanizations",
     selector: ".blyrics--romanized",
-    button: injectRomanizationsButton,
     inject: (line, pair) => injectRomanization(document, line.lyricElement, line, pair.roman),
   },
   translation: {
-    noun: "translations",
     selector: ".blyrics--translated",
-    button: injectTranslationsButton,
     inject: (line, pair) => injectTranslation(document, line.lyricElement, pair.trans),
   },
 };
-
-function setDecorationsShown(kind, shown) {
-  const { button, noun } = DECORATION_KINDS[kind];
-  button.textContent = `${shown ? "Hide" : "Show"} ${noun}`;
-}
 
 function liveDecorations(selector) {
   return [...document.querySelectorAll(selector)].filter(el => !el.classList.contains("blyrics--leaving"));
 }
 
-function slideLines(mutate) {
-  const lineEls = (view.renderer?.lines ?? []).map(line => line.lyricElement).filter(Boolean);
-  if (!animateDecorationsInput.checked || lineEls.length === 0) {
-    mutate();
-    view.renderer?.relayout();
-    return;
-  }
-
-  const first = lineEls.map(el => el.getBoundingClientRect().top);
-  mutate();
-  view.renderer?.relayout();
-  lineEls.forEach((el, i) => {
-    const dy = first[i] - el.getBoundingClientRect().top;
-    if (Math.abs(dy) < 0.5) return;
-    el.animate(
-      { translate: [`0 ${dy}px`, "0 0"] },
-      { duration: DECORATION_SLIDE_MS, easing: DECORATION_EASE, composite: "add" }
-    );
-  });
+function decorationSelector(kinds) {
+  return kinds.map(kind => DECORATION_KINDS[kind].selector).join(", ");
 }
 
-function toggleDecorations(kind) {
-  if (liveDecorations(DECORATION_KINDS[kind].selector).length > 0) hideDecorations(kind);
-  else showDecorations(kind);
+function paintDecorationButtons() {
+  const roman = liveDecorations(DECORATION_KINDS.romanization.selector).length > 0;
+  const trans = liveDecorations(DECORATION_KINDS.translation.selector).length > 0;
+  injectRomanizationsButton.textContent = roman ? "Hide romanizations" : "Show romanizations";
+  injectTranslationsButton.textContent = trans ? "Hide translations" : "Show translations";
+  injectBothButton.textContent = roman && trans ? "Hide both" : "Show both";
 }
 
-function showDecorations(kind) {
-  const k = DECORATION_KINDS[kind];
-  slideLines(() => {
+function showDecorations(kinds) {
+  view.renderer?.animateDecorationChange(() => {
     (view.renderer?.lines ?? []).forEach((line, index) => {
       const el = line.lyricElement;
       if (!el || el.dataset.instrumental) return;
-      k.inject(line, DEMO_DECORATIONS[index % DEMO_DECORATIONS.length]);
+      const pair = DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
+      kinds.forEach(kind => DECORATION_KINDS[kind].inject(line, pair));
     });
   });
-  if (liveDecorations(k.selector).length === 0) return;
-  setDecorationsShown(kind, true);
+  paintDecorationButtons();
 }
 
-function hideDecorations(kind) {
-  const leaving = liveDecorations(DECORATION_KINDS[kind].selector);
+function hideDecorations(kinds) {
+  const leaving = liveDecorations(decorationSelector(kinds));
   if (leaving.length === 0) return;
-  setDecorationsShown(kind, false);
 
   if (!animateDecorationsInput.checked) {
-    leaving.forEach(el => el.remove());
-    view.renderer?.relayout();
+    view.renderer?.animateDecorationChange(() => leaving.forEach(el => el.remove()));
+    paintDecorationButtons();
     return;
   }
 
   leaving.forEach(el => el.classList.add("blyrics--leaving"));
-  setTimeout(() => slideLines(() => leaving.forEach(el => el.remove())), DECORATION_FADE_MS);
+  paintDecorationButtons();
+  setTimeout(
+    () => view.renderer?.animateDecorationChange(() => leaving.forEach(el => el.remove())),
+    DECORATION_FADE_MS
+  );
+}
+
+function toggleKinds(kinds) {
+  if (liveDecorations(decorationSelector(kinds)).length > 0) hideDecorations(kinds);
+  else showDecorations(kinds);
+}
+
+function toggleBothDecorations() {
+  const roman = liveDecorations(DECORATION_KINDS.romanization.selector).length > 0;
+  const trans = liveDecorations(DECORATION_KINDS.translation.selector).length > 0;
+  if (roman && trans) hideDecorations(["romanization", "translation"]);
+  else showDecorations(["romanization", "translation"]);
 }
 
 // -- Boot --------------------------------------------

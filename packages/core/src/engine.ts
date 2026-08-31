@@ -23,6 +23,8 @@ import {
   FOOTER_CLASS,
   LINE_CLASS,
   PAUSED_CLASS,
+  ROMANIZED_LYRICS_CLASS,
+  TRANSLATED_LYRICS_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
 import type { AnimationData, LineData, PartData } from "./inject";
@@ -2956,6 +2958,74 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();
+}
+
+// -- Decoration slide --------------------------
+
+const DECORATION_SLIDE_MS = 350;
+const DECORATION_SLIDE_EASING = "cubic-bezier(0.25, 1, 0.5, 1)";
+const DECORATION_MIN_SHIFT_PX = 0.5;
+
+function slideElementBy(element: HTMLElement, dy: number): void {
+  element.animate(
+    { translate: [`0 ${dy}px`, "0 0"] },
+    { duration: DECORATION_SLIDE_MS, easing: DECORATION_SLIDE_EASING, composite: "add" }
+  );
+}
+
+function decorationSlideAllowed(engine: AnimationEngineInstance, container: HTMLElement): boolean {
+  if (engine.window.matchMedia(REDUCED_MOTION_QUERY).matches) return false;
+  return (
+    engine.window.getComputedStyle(container).getPropertyValue("--blyrics-animate-decoration-entry").trim() !== "0"
+  );
+}
+
+function decoratorElements(container: HTMLElement): HTMLElement[] {
+  return [
+    ...container.querySelectorAll<HTMLElement>(`.${ROMANIZED_LYRICS_CLASS}`),
+    ...container.querySelectorAll<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`),
+  ];
+}
+
+export function animateDecorationChange(
+  engine: AnimationEngineInstance,
+  mutate: () => void,
+  remeasure: () => void
+): void {
+  const container = engine.lyricsContainer;
+  const lineElements = getRenderedLines(engine)
+    .map(line => line.lyricElement)
+    .filter((element): element is HTMLElement => element !== null);
+
+  if (!container || lineElements.length === 0 || !decorationSlideAllowed(engine, container)) {
+    mutate();
+    remeasure();
+    return;
+  }
+
+  const lineTop = new Map(lineElements.map(element => [element, element.getBoundingClientRect().y]));
+  const decoratorTop = new Map(
+    decoratorElements(container).map(element => [element, element.getBoundingClientRect().y])
+  );
+
+  mutate();
+  remeasure();
+
+  const lineShift = new Map<HTMLElement, number>();
+  for (const element of lineElements) {
+    const dy = (lineTop.get(element) ?? 0) - element.getBoundingClientRect().y;
+    lineShift.set(element, dy);
+    if (Math.abs(dy) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, dy);
+  }
+
+  for (const element of decoratorElements(container)) {
+    const first = decoratorTop.get(element);
+    if (first === undefined) continue;
+    const parentLine = element.closest<HTMLElement>(`.${LINE_CLASS}`);
+    const parentShift = (parentLine ? lineShift.get(parentLine) : 0) ?? 0;
+    const dy = first - element.getBoundingClientRect().y - parentShift;
+    if (Math.abs(dy) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, dy);
+  }
 }
 
 // -- Debounced Lyrics Update --------------------------
