@@ -184,6 +184,8 @@
 
 .blyrics--translated,
 .blyrics--romanized {
+	animation: blyrics-decoration-in calc(var(--blyrics-animate-decoration-entry) * 0.35s)
+		cubic-bezier(0.25, 1, 0.5, 1) both;
 	color: var(--blyrics-translated-color);
 	display: block;
 	font-family: var(--blyrics-translated-font-family);
@@ -195,6 +197,16 @@
 	text-align: inherit;
 	unicode-bidi: plaintext;
 	white-space: normal;
+}
+
+/* A streamed-in decorator floats up into place. Compositor-only (transform + opacity), so it never
+   clips its own text or touches layout; the host slides the lines around it (a FLIP on the lines'
+   translate) to make room. */
+@keyframes blyrics-decoration-in {
+	from {
+		opacity: 0;
+		transform: translateY(-0.4em);
+	}
 }
 
 .blyrics--romanized {

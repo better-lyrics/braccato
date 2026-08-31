@@ -44,6 +44,9 @@
 
 	/* The module's own tokens, sized for a full page rather than for a music player's side panel. */
 	--blyrics-font-size: clamp(1.75rem, 4.4vw, 3.25rem);
+	/* Tracked off the main size rather than the module's fixed 2rem default, so a translation or
+	   romanization stays smaller than the line it sits under at every viewport width. */
+	--blyrics-translated-font-size: calc(var(--blyrics-font-size) * 0.62);
 	--blyrics-line-height: 1.2;
 	--blyrics-padding: 0.8rem;
 
@@ -1623,6 +1626,21 @@ braccato-lyrics {
    cannot reach the view's target scroll position. */
 .blyrics-container {
 	padding-top: var(--blyrics-padding-top, 2rem);
+}
+
+/* The package floats a streamed-in translation or romanization in; the demo's Hide control plays the
+   reverse (compositor-only, so no clipping or stutter) and then slides the lines up to close the gap
+   with a FLIP. The same toggle drops the fade to an instant removal. */
+.blyrics--leaving {
+	animation: blyrics-decoration-out calc(var(--blyrics-animate-decoration-entry) * 0.25s)
+		cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+
+@keyframes blyrics-decoration-out {
+	to {
+		opacity: 0;
+		transform: translateY(-0.4em);
+	}
 }
 
 /* The page's default tracking, tightened a little because the lyric type is large enough to want it.

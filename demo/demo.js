@@ -97,9 +97,26 @@ const offsetValue = document.getElementById("offset-value");
 const passiveScrollInput = document.getElementById("passive-scroll");
 const viewScrollInput = document.getElementById("scrollable-view");
 const pageRulesInput = document.getElementById("page-rules");
+const injectDecorationsButton = document.getElementById("inject-decorations");
+const animateDecorationsInput = document.getElementById("animate-decorations");
 
 const eventLog = document.getElementById("event-log");
 const dropzone = document.getElementById("dropzone");
+
+// Illustrative pairs the "Show translations & romanizations" control hangs off the lines, cycled by
+// line. A provider streams these in after the words; the demo has none of its own, so the animation
+// is what is on show, not the text.
+const DEMO_DECORATIONS = [
+  { roman: "hikari no naka de", trans: "inside the light" },
+  { roman: "kaze ga fuku hi ni", trans: "on a day the wind blows" },
+  { roman: "kimi no koe ga suru", trans: "I can hear your voice" },
+  { roman: "yoru wo koete", trans: "past the night" },
+  { roman: "tooku made", trans: "as far as it goes" },
+  { roman: "mou ichido", trans: "one more time" },
+];
+
+let injectTranslation = () => false;
+let injectRomanization = () => false;
 
 // -- Before the module exists --------------------------------------------
 
@@ -554,6 +571,9 @@ function applyLyrics() {
   view.lyricsOptions = { noLyrics: state.importedLyrics === null && state.timing === "empty" };
   view.lyrics = lyrics;
   applied.lyrics = lyrics;
+
+  // A fresh build replaces every line, so any decorations hung off the old ones are gone.
+  setDecorationsShown(false);
 
   const json = JSON.stringify(lyrics, null, 2);
   lyricsArray.textContent =
@@ -1271,17 +1291,105 @@ function wireControls(lineClass, lyricsClass) {
     // this page just moved under it.
     view.renderer?.relayout();
   });
+
+  injectDecorationsButton.addEventListener("click", toggleDecorations);
+
+  animateDecorationsInput.addEventListener("change", () => {
+    view.style.setProperty("--blyrics-animate-decoration-entry", animateDecorationsInput.checked ? "1" : "0");
+  });
+}
+
+const DECORATION_SELECTOR = ".blyrics--translated, .blyrics--romanized";
+const DECORATION_SLIDE_MS = 350;
+const DECORATION_FADE_MS = 250;
+const DECORATION_EASE = "cubic-bezier(0.25, 1, 0.5, 1)";
+
+function setDecorationsShown(shown) {
+  injectDecorationsButton.textContent = shown
+    ? "Hide translations & romanizations"
+    : "Show translations & romanizations";
+}
+
+function liveDecorations() {
+  return [...document.querySelectorAll(DECORATION_SELECTOR)].filter(el => !el.classList.contains("blyrics--leaving"));
+}
+
+// FLIP the lines: measure, run the mutation that changes their heights, then animate each one from
+// where it was to where it lands. It writes the `translate` longhand, which the scroll engine leaves
+// alone between scrolls and which composes with the `transform: scale` it owns, so the slide never
+// fights the sweep. The decorators themselves float in and out on their own through the package CSS.
+function slideLines(mutate) {
+  const lineEls = (view.renderer?.lines ?? []).map(line => line.lyricElement).filter(Boolean);
+  if (!animateDecorationsInput.checked || lineEls.length === 0) {
+    mutate();
+    view.renderer?.relayout();
+    return;
+  }
+
+  const first = lineEls.map(el => el.getBoundingClientRect().top);
+  mutate();
+  view.renderer?.relayout();
+  lineEls.forEach((el, i) => {
+    const dy = first[i] - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) return;
+    el.animate(
+      { translate: [`0 ${dy}px`, "0 0"] },
+      { duration: DECORATION_SLIDE_MS, easing: DECORATION_EASE, composite: "add" }
+    );
+  });
+}
+
+// Hangs a romanization and a translation off every sung line, the way a provider streams them in
+// after the words, so the entry animation in the package CSS has something to play. Clicking again
+// plays the reverse and pulls them back off.
+function toggleDecorations() {
+  if (liveDecorations().length > 0) hideDecorations();
+  else showDecorations();
+}
+
+function showDecorations() {
+  slideLines(() => {
+    (view.renderer?.lines ?? []).forEach((line, index) => {
+      const el = line.lyricElement;
+      if (!el || el.dataset.instrumental) return;
+      const pair = DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
+      injectRomanization(document, el, line, pair.roman);
+      injectTranslation(document, el, pair.trans);
+    });
+  });
+  if (liveDecorations().length === 0) return;
+  setDecorationsShown(true);
+}
+
+function hideDecorations() {
+  const leaving = liveDecorations();
+  if (leaving.length === 0) return;
+  setDecorationsShown(false);
+
+  if (!animateDecorationsInput.checked) {
+    leaving.forEach(el => el.remove());
+    view.renderer?.relayout();
+    return;
+  }
+
+  // The decorators float out first, the lines holding still, then the lines slide up to close the gap
+  // as the nodes are pulled: the reverse of the entry, and never on the layout path.
+  leaving.forEach(el => el.classList.add("blyrics--leaving"));
+  setTimeout(() => slideLines(() => leaving.forEach(el => el.remove())), DECORATION_FADE_MS);
 }
 
 // -- Boot --------------------------------------------
 
 async function boot() {
-  const [, { CUSTOM_THEME_STYLE_ID, LINE_CLASS, LYRICS_CLASS }, themeSettings] = await Promise.all([
+  const [, { CUSTOM_THEME_STYLE_ID, LINE_CLASS, LYRICS_CLASS }, themeSettings, core] = await Promise.all([
     import("@braccato/core/element"),
     import("@braccato/core/constants"),
     import("@braccato/core/themeSettings"),
+    import("@braccato/core"),
   ]);
   parseThemeConfig = themeSettings.parseThemeConfig;
+  injectTranslation = core.injectTranslation;
+  injectRomanization = core.injectRomanization;
 
   for (const type of ["braccato:lyrics-loaded", "braccato:line-click", "braccato:scroll-state", "braccato:error"]) {
     view.addEventListener(type, logEvent);

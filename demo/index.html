@@ -324,6 +324,14 @@
           </fieldset>
           <p class="group__hint" id="timing-hint"></p>
 
+          <div class="row">
+            <button class="button" id="inject-decorations" type="button">Show translations &amp; romanizations</button>
+          </div>
+          <p class="group__hint">
+            Hangs a translation and romanization off every line, the way a provider streams them in after the words
+            land. Switch song or timing to clear them.
+          </p>
+
           <p class="group__note">Or import a file. TTML, LRC, SRT, QRC and plain text, recognised by reading it.</p>
           <div class="row">
             <button class="button" id="lyrics-file" type="button">Choose a file</button>
@@ -411,6 +419,14 @@
             <code>renderer.noteUserScroll()</code> has anything to report. Autoscroll then waits while you read ahead,
             and the renderer asks for the button at the foot of the view. Pause the song first. A view that is
             rendering discounts one scroll a frame against the ones it makes itself, and yours go on that.
+          </p>
+
+          <label class="switch">
+            <input id="animate-decorations" type="checkbox" checked />
+            <span>Animate decoration entry</span>
+          </label>
+          <p class="group__hint">
+            Off makes streamed-in translations and romanizations appear at once instead of sliding the lines apart.
           </p>
         </section>
 
