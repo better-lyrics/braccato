@@ -1328,15 +1328,21 @@ function paintDecorationButtons() {
   injectBothButton.textContent = roman && trans ? "Hide both" : "Show both";
 }
 
+function repositionDecorations() {
+  view.renderer?.scheduleLyricPositionUpdate(
+    () => true,
+    () => {}
+  );
+}
+
 function showDecorations(kinds) {
-  view.renderer?.animateDecorationChange(() => {
-    (view.renderer?.lines ?? []).forEach((line, index) => {
-      const el = line.lyricElement;
-      if (!el || el.dataset.instrumental) return;
-      const pair = DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
-      kinds.forEach(kind => DECORATION_KINDS[kind].inject(line, pair));
-    });
+  (view.renderer?.lines ?? []).forEach((line, index) => {
+    const el = line.lyricElement;
+    if (!el || el.dataset.instrumental) return;
+    const pair = DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
+    kinds.forEach(kind => DECORATION_KINDS[kind].inject(line, pair));
   });
+  repositionDecorations();
   paintDecorationButtons();
 }
 
@@ -1345,17 +1351,18 @@ function hideDecorations(kinds) {
   if (leaving.length === 0) return;
 
   if (!animateDecorationsInput.checked) {
-    view.renderer?.animateDecorationChange(() => leaving.forEach(el => el.remove()));
+    leaving.forEach(el => el.remove());
+    repositionDecorations();
     paintDecorationButtons();
     return;
   }
 
   leaving.forEach(el => el.classList.add("blyrics--leaving"));
   paintDecorationButtons();
-  setTimeout(
-    () => view.renderer?.animateDecorationChange(() => leaving.forEach(el => el.remove())),
-    DECORATION_FADE_MS
-  );
+  setTimeout(() => {
+    leaving.forEach(el => el.remove());
+    repositionDecorations();
+  }, DECORATION_FADE_MS);
 }
 
 function toggleKinds(kinds) {

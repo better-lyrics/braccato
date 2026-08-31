@@ -1760,37 +1760,38 @@ slidingLines[0].appendChild(survivingDecoration);
 slidingRenderer.relayout();
 
 const measurementsBeforeSlide = sliding.measurements;
-let slidingMutations = 0;
 
-slidingRenderer.animateDecorationChange(() => {
-  slidingMutations += 1;
-  slidingLines[1].offsetTop = LINE_PITCH_PX - 40;
-  slidingLines[2].offsetTop = 2 * LINE_PITCH_PX - 40;
-  survivingDecoration.offsetTop = LINE_HEIGHT_PX;
-});
-
-assert.equal(
-  slidingMutations,
-  1,
-  "Given a decoration change, When it runs, Then the mutation it wraps runs exactly once"
+slidingLines[1].offsetTop = LINE_PITCH_PX - 40;
+slidingLines[2].offsetTop = 2 * LINE_PITCH_PX - 40;
+survivingDecoration.offsetTop = LINE_HEIGHT_PX;
+slidingRenderer.scheduleLyricPositionUpdate(
+  () => true,
+  () => {}
 );
+
+const slidingFrame = sliding.fakeWindow.requestedFrames.at(-1);
+assert.ok(
+  slidingFrame,
+  "Given a streamed decoration, When the view is asked to catch up, Then it queues a frame rather than sliding under whoever told it"
+);
+slidingFrame(0);
 
 assert.equal(
   sliding.measurements,
   measurementsBeforeSlide + 1,
-  "Given a decoration change, When it runs, Then the lines it moved are measured again"
+  "Given the frame a streamed decoration queued, When it runs, Then the lines it moved are measured again"
 );
 
 assert.deepEqual(
   slidingLines.map(line => line.animations.length),
   [0, 1, 1],
-  "Given a decoration that moved the lines below it, When the change runs, Then those lines slide and the one whose top held does not"
+  "Given a decoration that moved the lines below it, When the frame runs, Then those lines slide and the one whose top held does not"
 );
 
 assert.equal(
   survivingDecoration.animations.length,
   1,
-  "Given a decoration that moved within its own line, When the change runs, Then it slides to its new place rather than snapping under the line's own slide"
+  "Given a decoration that moved within its own line, When the frame runs, Then it slides to its new place rather than snapping under the line's own slide"
 );
 
 slidingRenderer.destroy();
@@ -1824,29 +1825,30 @@ instantLines.forEach((line, index) => {
 instantRenderer.relayout();
 
 const measurementsBeforeInstant = instant.measurements;
-let instantMutations = 0;
 
-instantRenderer.animateDecorationChange(() => {
-  instantMutations += 1;
-  instantLines[1].offsetTop = LINE_PITCH_PX - 40;
-});
-
-assert.equal(
-  instantMutations,
-  1,
-  "Given the slide switched off, When a decoration change runs, Then its mutation still runs once"
+instantLines[1].offsetTop = LINE_PITCH_PX - 40;
+instantRenderer.scheduleLyricPositionUpdate(
+  () => true,
+  () => {}
 );
+
+const instantFrame = instant.fakeWindow.requestedFrames.at(-1);
+assert.ok(
+  instantFrame,
+  "Given a streamed decoration with the slide off, When the view is asked to catch up, Then it still queues a frame"
+);
+instantFrame(0);
 
 assert.equal(
   instant.measurements,
   measurementsBeforeInstant + 1,
-  "Given the slide switched off, When a decoration change runs, Then the lines are still measured again"
+  "Given the slide switched off, When the frame runs, Then the lines are still measured again"
 );
 
 assert.deepEqual(
   instantLines.map(line => line.animations.length),
   [0, 0, 0],
-  "Given the slide switched off, When a decoration change moves the lines, Then none of them slides"
+  "Given the slide switched off, When the frame moves the lines, Then none of them slides"
 );
 
 instantRenderer.destroy();

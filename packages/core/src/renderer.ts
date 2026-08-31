@@ -12,7 +12,6 @@
 
 import { CUSTOM_THEME_STYLE_ID } from "./constants";
 import {
-  animateDecorationChange as animateEngineDecorationChange,
   clearLyrics,
   clearOnScreenLyrics as clearEngineOnScreenLyrics,
   clearStyleCaches as clearEngineStyleCaches,
@@ -322,13 +321,6 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     relayout(measureLines = true) {
       if (isDestroyed) return;
       measure(measureLines);
-    },
-    animateDecorationChange(mutate) {
-      if (isDestroyed) {
-        mutate();
-        return;
-      }
-      animateEngineDecorationChange(engine, mutate, measure);
     },
     clear() {
       if (isDestroyed) return;

@@ -2954,6 +2954,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);
     line.position = bounds.y;
     line.height = bounds.height;
+    line.decorations = new Map(
+      lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
+    );
   }
 
   engine.wasUserScrolling = true; // trigger rescrolls
@@ -2980,52 +2983,43 @@ function decorationSlideAllowed(engine: AnimationEngineInstance, container: HTML
   );
 }
 
-function decoratorElements(container: HTMLElement): HTMLElement[] {
+function lineDecorators(lineElement: HTMLElement): HTMLElement[] {
   return [
-    ...container.querySelectorAll<HTMLElement>(`.${ROMANIZED_LYRICS_CLASS}`),
-    ...container.querySelectorAll<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`),
+    ...lineElement.querySelectorAll<HTMLElement>(`.${ROMANIZED_LYRICS_CLASS}`),
+    ...lineElement.querySelectorAll<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`),
   ];
 }
 
-export function animateDecorationChange(
-  engine: AnimationEngineInstance,
-  mutate: () => void,
-  remeasure: () => void
-): void {
+/**
+ * Snapshots where the lines and their decorators sit now, so the remeasure that follows can slide
+ * each one from there to wherever a streamed decoration just pushed it. Returns null when nothing
+ * should animate, and otherwise a function to call once the new layout is measured: the line rides
+ * its own shift and a decorator rides only the part of its shift its line did not already carry, so
+ * a survivor whose line held still still slides into the gap a removed sibling left.
+ */
+function captureDecorationSlide(engine: AnimationEngineInstance): (() => void) | null {
   const container = engine.lyricsContainer;
-  const lineElements = getRenderedLines(engine)
-    .map(line => line.lyricElement)
-    .filter((element): element is HTMLElement => element !== null);
+  if (!container || !decorationSlideAllowed(engine, container)) return null;
 
-  if (!container || lineElements.length === 0 || !decorationSlideAllowed(engine, container)) {
-    mutate();
-    remeasure();
-    return;
-  }
+  const before = engine.lines.map(line => ({
+    line,
+    position: line.position,
+    decorations: new Map(line.decorations),
+  }));
 
-  const lineTop = new Map(lineElements.map(element => [element, element.getBoundingClientRect().y]));
-  const decoratorTop = new Map(
-    decoratorElements(container).map(element => [element, element.getBoundingClientRect().y])
-  );
+  return () => {
+    for (const { line, position, decorations } of before) {
+      const lineShift = position - line.position;
+      if (Math.abs(lineShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, lineShift);
 
-  mutate();
-  remeasure();
-
-  const lineShift = new Map<HTMLElement, number>();
-  for (const element of lineElements) {
-    const dy = (lineTop.get(element) ?? 0) - element.getBoundingClientRect().y;
-    lineShift.set(element, dy);
-    if (Math.abs(dy) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, dy);
-  }
-
-  for (const element of decoratorElements(container)) {
-    const first = decoratorTop.get(element);
-    if (first === undefined) continue;
-    const parentLine = element.closest<HTMLElement>(`.${LINE_CLASS}`);
-    const parentShift = (parentLine ? lineShift.get(parentLine) : 0) ?? 0;
-    const dy = first - element.getBoundingClientRect().y - parentShift;
-    if (Math.abs(dy) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, dy);
-  }
+      for (const [element, was] of decorations) {
+        const now = line.decorations.get(element);
+        if (now === undefined) continue;
+        const shift = was - now - lineShift;
+        if (Math.abs(shift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, shift);
+      }
+    }
+  };
 }
 
 // -- Debounced Lyrics Update --------------------------
@@ -3078,7 +3072,9 @@ export function scheduleLyricPositionUpdate(
   engine.pendingLyricsUpdateFrame = engine.window.requestAnimationFrame(() => {
     engine.pendingLyricsUpdateFrame = null;
     const isRendering = isViewRendering();
+    const playSlide = isRendering ? captureDecorationSlide(engine) : null;
     relayout(engine, isRendering);
+    playSlide?.();
     if (!isRendering) return;
     retick();
   });
