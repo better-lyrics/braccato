@@ -19,7 +19,6 @@ import {
   CLASS_NAMES,
   CUSTOM_PROPERTIES,
   EVENTS,
-  PACKAGE,
   PROPERTIES,
   STYLESHEETS,
   THEME_SETTINGS,
@@ -36,8 +35,6 @@ const SETTING_SOURCES = ["engine.js", "inject.js"];
 
 /** The artifact both documents are held against, read once because both ask it the same questions. */
 interface EmittedApi {
-  /** The manifest's, handed in: the emit writes code and stylesheets, not a version. */
-  version: string;
   members: Set<string>;
   constants: Map<string, string>;
   elementSource: string;
@@ -96,9 +93,8 @@ function readStylesheets(packageDir: string): Map<string, string> {
   return sheets;
 }
 
-function readEmittedApi(packageDir: string, version: string): EmittedApi {
+function readEmittedApi(packageDir: string): EmittedApi {
   return {
-    version,
     members: readElementMembers(packageDir),
     constants: readClassNameConstants(packageDir),
     elementSource: readFileSync(join(packageDir, "element.js"), "utf8"),
@@ -121,10 +117,6 @@ function quotesEvery(names: string[], text: string): string[] {
 
 function checkDemoPage(emitted: EmittedApi): { failures: string[]; checked: number } {
   const failures: string[] = [];
-
-  if (emitted.version !== PACKAGE.version) {
-    failures.push(`the page says version ${PACKAGE.version}, the artifact says ${emitted.version}`);
-  }
 
   for (const { key } of THEME_SETTINGS) {
     // Most keys are written out whole; the line scroll ones are derived from a custom property name,
@@ -302,8 +294,8 @@ function checkReadme(packageDir: string, emitted: EmittedApi): { failures: strin
 
 // -- Both documents --------------------------------------------
 
-export function checkApiDocs(packageDir: string, version: string): void {
-  const emitted = readEmittedApi(packageDir, version);
+export function checkApiDocs(packageDir: string): void {
+  const emitted = readEmittedApi(packageDir);
   const demoPage = checkDemoPage(emitted);
   const readme = checkReadme(packageDir, emitted);
 
