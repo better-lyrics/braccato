@@ -9,14 +9,17 @@
 // stops where the reasoning starts. The reasoning lives beside the code it explains, in the module's
 // own file headers.
 
+import corePackage from "@braccato/core/package.json" with { type: "json" };
+
 // -- The package --------------------------------------------
 
-// `version` is checked against the emitted package.json, so the number on the page cannot drift from
-// the number in the artifact. There is no separate README link, because both of these already land
-// on it: npm renders the README as the package page, and GitHub renders it under the directory.
+// `version` comes straight from the package's own manifest, so the number on the page is the
+// artifact's by construction and cannot drift. There is no separate README link, because both of
+// these already land on it: npm renders the README as the package page, and GitHub renders it under
+// the directory.
 export const PACKAGE = {
   name: "@braccato/core",
-  version: "1.3.0",
+  version: corePackage.version,
   npmHref: "https://www.npmjs.com/package/@braccato/core",
   repoHref: "https://github.com/better-lyrics/braccato/tree/master/packages/core",
 };
