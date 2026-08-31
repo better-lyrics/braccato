@@ -44,6 +44,7 @@
 
 	/* The module's own tokens, sized for a full page rather than for a music player's side panel. */
 	--blyrics-font-size: clamp(1.75rem, 4.4vw, 3.25rem);
+	--blyrics-translated-font-size: calc(var(--blyrics-font-size) * 0.48);
 	--blyrics-line-height: 1.2;
 	--blyrics-padding: 0.8rem;
 
@@ -1623,6 +1624,18 @@ braccato-lyrics {
    cannot reach the view's target scroll position. */
 .blyrics-container {
 	padding-top: var(--blyrics-padding-top, 2rem);
+}
+
+.blyrics--leaving {
+	animation: blyrics-decoration-out calc(var(--blyrics-animate-decoration-entry) * 0.25s)
+		cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+
+@keyframes blyrics-decoration-out {
+	to {
+		opacity: 0;
+		transform: translateY(-0.4em);
+	}
 }
 
 /* The page's default tracking, tightened a little because the lyric type is large enough to want it.

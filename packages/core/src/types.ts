@@ -185,9 +185,14 @@ export interface LyricsRenderer {
    */
   clearOnScreenLyrics(): boolean;
   /**
-   * Re-measures the lines on the next frame and renders the view again against them. The predicate
-   * is the caller's half of whether that frame does anything, and only that half: whether the lines
-   * are on the screen to be measured at all is the renderer's own question, and it asks it itself.
+   * Re-measures the lines on the next frame and renders the view again against them. This is the door
+   * a consumer knocks on after streaming in a translation or romanization, and it is what slides the
+   * lines the new decoration moved from where they were to where it put them, together with any
+   * surviving decorator that shifted within its own line, so the rest of the lyric eases down rather
+   * than jumping. The slide honours reduced motion and `--blyrics-animate-decoration-entry`; with
+   * either off the lines are re-measured with no slide. The predicate is the caller's half of whether
+   * that frame does anything, and only that half: whether the lines are on the screen to be measured
+   * at all is the renderer's own question, and it asks it itself.
    *
    * @param isTicking - Whether whoever drives this view is still driving it, asked on the frame
    *   rather than now. A driver that has stopped is one whose lines may no longer be rendered, and

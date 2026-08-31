@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { CUSTOM_THEME_STYLE_ID, LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import { CUSTOM_THEME_STYLE_ID, LINE_CLASS, ROMANIZED_LYRICS_CLASS, USER_SCROLLING_CLASS } from "./constants";
 import type { LineData } from "./inject";
 import { createLyricsRenderer, withHostDefaults } from "./renderer";
 import { asDocument, asElement, asFakeAnimation, asFakeNode, FakeDocument, FakeNode } from "./selfcheck/fakeDom";
@@ -1725,6 +1725,134 @@ assert.deepEqual(
   "Given a destroyed view that created the stylesheet, When the document is read, Then it took the element with it"
 );
 
+// -- A streamed decoration slides the lines it moved, and its neighbours within a line -----------
+
+const { fixture: sliding, host: slidingHost } = newViewFixture({
+  ...SCROLL_ANIMATION_OFF,
+  "--blyrics-animate-decoration-entry": "1",
+});
+const slidingRenderer = createLyricsRenderer({
+  document: asDocument(sliding.fakeDocument),
+  window: asWindow(sliding.fakeWindow),
+  mount: asElement<HTMLElement>(sliding.mount),
+  host: slidingHost,
+});
+
+slidingRenderer.setLyrics(SYNCED_LYRICS);
+
+const slidingContainer = slidingRenderer.container;
+assert.ok(
+  slidingContainer !== null,
+  "Given built lyrics, When the view is asked, Then it holds the container it built"
+);
+
+const slidingLines = asFakeNode(slidingContainer).childNodes.filter(child => child.classList.contains(LINE_CLASS));
+slidingLines.forEach((line, index) => {
+  line.offsetTop = index * LINE_PITCH_PX;
+  line.offsetHeight = LINE_HEIGHT_PX;
+});
+
+const survivingDecoration = sliding.fakeDocument.createElement("div");
+survivingDecoration.classList.add(ROMANIZED_LYRICS_CLASS);
+survivingDecoration.offsetTop = LINE_HEIGHT_PX + 40;
+slidingLines[0].appendChild(survivingDecoration);
+
+slidingRenderer.relayout();
+
+const measurementsBeforeSlide = sliding.measurements;
+
+slidingLines[1].offsetTop = LINE_PITCH_PX - 40;
+slidingLines[2].offsetTop = 2 * LINE_PITCH_PX - 40;
+survivingDecoration.offsetTop = LINE_HEIGHT_PX;
+slidingRenderer.scheduleLyricPositionUpdate(
+  () => true,
+  () => {}
+);
+
+const slidingFrame = sliding.fakeWindow.requestedFrames.at(-1);
+assert.ok(
+  slidingFrame,
+  "Given a streamed decoration, When the view is asked to catch up, Then it queues a frame rather than sliding under whoever told it"
+);
+slidingFrame(0);
+
+assert.equal(
+  sliding.measurements,
+  measurementsBeforeSlide + 1,
+  "Given the frame a streamed decoration queued, When it runs, Then the lines it moved are measured again"
+);
+
+assert.deepEqual(
+  slidingLines.map(line => line.animations.length),
+  [0, 1, 1],
+  "Given a decoration that moved the lines below it, When the frame runs, Then those lines slide and the one whose top held does not"
+);
+
+assert.equal(
+  survivingDecoration.animations.length,
+  1,
+  "Given a decoration that moved within its own line, When the frame runs, Then it slides to its new place rather than snapping under the line's own slide"
+);
+
+slidingRenderer.destroy();
+
+// -- The same change, with the animation switched off, only re-measures --------------------------
+
+const { fixture: instant, host: instantHost } = newViewFixture({
+  ...SCROLL_ANIMATION_OFF,
+  "--blyrics-animate-decoration-entry": "0",
+});
+const instantRenderer = createLyricsRenderer({
+  document: asDocument(instant.fakeDocument),
+  window: asWindow(instant.fakeWindow),
+  mount: asElement<HTMLElement>(instant.mount),
+  host: instantHost,
+});
+
+instantRenderer.setLyrics(SYNCED_LYRICS);
+
+const instantContainer = instantRenderer.container;
+assert.ok(
+  instantContainer !== null,
+  "Given built lyrics, When the view is asked, Then it holds the container it built"
+);
+
+const instantLines = asFakeNode(instantContainer).childNodes.filter(child => child.classList.contains(LINE_CLASS));
+instantLines.forEach((line, index) => {
+  line.offsetTop = index * LINE_PITCH_PX;
+  line.offsetHeight = LINE_HEIGHT_PX;
+});
+instantRenderer.relayout();
+
+const measurementsBeforeInstant = instant.measurements;
+
+instantLines[1].offsetTop = LINE_PITCH_PX - 40;
+instantRenderer.scheduleLyricPositionUpdate(
+  () => true,
+  () => {}
+);
+
+const instantFrame = instant.fakeWindow.requestedFrames.at(-1);
+assert.ok(
+  instantFrame,
+  "Given a streamed decoration with the slide off, When the view is asked to catch up, Then it still queues a frame"
+);
+instantFrame(0);
+
+assert.equal(
+  instant.measurements,
+  measurementsBeforeInstant + 1,
+  "Given the slide switched off, When the frame runs, Then the lines are still measured again"
+);
+
+assert.deepEqual(
+  instantLines.map(line => line.animations.length),
+  [0, 0, 0],
+  "Given the slide switched off, When the frame moves the lines, Then none of them slides"
+);
+
+instantRenderer.destroy();
+
 const drivenFixtures = [
   panel,
   faceless,
@@ -1738,6 +1866,8 @@ const drivenFixtures = [
   unsynced,
   themed,
   shared,
+  sliding,
+  instant,
 ];
 
 assert.equal(
