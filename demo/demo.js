@@ -103,9 +103,6 @@ const animateDecorationsInput = document.getElementById("animate-decorations");
 const eventLog = document.getElementById("event-log");
 const dropzone = document.getElementById("dropzone");
 
-// Illustrative pairs the "Show translations & romanizations" control hangs off the lines, cycled by
-// line. A provider streams these in after the words; the demo has none of its own, so the animation
-// is what is on show, not the text.
 const DEMO_DECORATIONS = [
   { roman: "hikari no naka de", trans: "inside the light" },
   { roman: "kaze ga fuku hi ni", trans: "on a day the wind blows" },
@@ -572,7 +569,6 @@ function applyLyrics() {
   view.lyrics = lyrics;
   applied.lyrics = lyrics;
 
-  // A fresh build replaces every line, so any decorations hung off the old ones are gone.
   setDecorationsShown(false);
 
   const json = JSON.stringify(lyrics, null, 2);
@@ -1314,10 +1310,6 @@ function liveDecorations() {
   return [...document.querySelectorAll(DECORATION_SELECTOR)].filter(el => !el.classList.contains("blyrics--leaving"));
 }
 
-// FLIP the lines: measure, run the mutation that changes their heights, then animate each one from
-// where it was to where it lands. It writes the `translate` longhand, which the scroll engine leaves
-// alone between scrolls and which composes with the `transform: scale` it owns, so the slide never
-// fights the sweep. The decorators themselves float in and out on their own through the package CSS.
 function slideLines(mutate) {
   const lineEls = (view.renderer?.lines ?? []).map(line => line.lyricElement).filter(Boolean);
   if (!animateDecorationsInput.checked || lineEls.length === 0) {
@@ -1339,9 +1331,6 @@ function slideLines(mutate) {
   });
 }
 
-// Hangs a romanization and a translation off every sung line, the way a provider streams them in
-// after the words, so the entry animation in the package CSS has something to play. Clicking again
-// plays the reverse and pulls them back off.
 function toggleDecorations() {
   if (liveDecorations().length > 0) hideDecorations();
   else showDecorations();
@@ -1372,8 +1361,6 @@ function hideDecorations() {
     return;
   }
 
-  // The decorators float out first, the lines holding still, then the lines slide up to close the gap
-  // as the nodes are pulled: the reverse of the entry, and never on the layout path.
   leaving.forEach(el => el.classList.add("blyrics--leaving"));
   setTimeout(() => slideLines(() => leaving.forEach(el => el.remove())), DECORATION_FADE_MS);
 }

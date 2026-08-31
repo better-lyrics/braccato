@@ -199,9 +199,6 @@
 	white-space: normal;
 }
 
-/* A streamed-in decorator floats up into place. Compositor-only (transform + opacity), so it never
-   clips its own text or touches layout; the host slides the lines around it (a FLIP on the lines'
-   translate) to make room. */
 @keyframes blyrics-decoration-in {
 	from {
 		opacity: 0;
