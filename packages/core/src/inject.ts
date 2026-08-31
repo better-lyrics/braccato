@@ -117,6 +117,7 @@ export type LineData = {
   isSelected: boolean;
   height: number;
   position: number;
+  decorations: Map<HTMLElement, number>;
 } & AnimationData;
 
 type SpaceToken = {
@@ -171,6 +172,7 @@ export function newLineData(lyricElement: HTMLElement, startTimeMs: number, dura
     isSelected: false,
     height: -1,
     position: -1,
+    decorations: new Map(),
     animations: [],
   };
 }

@@ -23,6 +23,8 @@ import {
   FOOTER_CLASS,
   LINE_CLASS,
   PAUSED_CLASS,
+  ROMANIZED_LYRICS_CLASS,
+  TRANSLATED_LYRICS_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
 import type { AnimationData, LineData, PartData } from "./inject";
@@ -2952,10 +2954,72 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);
     line.position = bounds.y;
     line.height = bounds.height;
+    line.decorations = new Map(
+      lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
+    );
   }
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();
+}
+
+// -- Decoration slide --------------------------
+
+const DECORATION_SLIDE_MS = 350;
+const DECORATION_SLIDE_EASING = "cubic-bezier(0.25, 1, 0.5, 1)";
+const DECORATION_MIN_SHIFT_PX = 0.5;
+
+function slideElementBy(element: HTMLElement, dy: number): void {
+  element.animate(
+    { translate: [`0 ${dy}px`, "0 0"] },
+    { duration: DECORATION_SLIDE_MS, easing: DECORATION_SLIDE_EASING, composite: "add" }
+  );
+}
+
+function decorationSlideAllowed(engine: AnimationEngineInstance, container: HTMLElement): boolean {
+  if (engine.window.matchMedia(REDUCED_MOTION_QUERY).matches) return false;
+  return (
+    engine.window.getComputedStyle(container).getPropertyValue("--blyrics-animate-decoration-entry").trim() !== "0"
+  );
+}
+
+function lineDecorators(lineElement: HTMLElement): HTMLElement[] {
+  return [
+    ...lineElement.querySelectorAll<HTMLElement>(`.${ROMANIZED_LYRICS_CLASS}`),
+    ...lineElement.querySelectorAll<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`),
+  ];
+}
+
+/**
+ * Snapshots where the lines and their decorators sit now, so the remeasure that follows can slide
+ * each one from there to wherever a streamed decoration just pushed it. Returns null when nothing
+ * should animate, and otherwise a function to call once the new layout is measured: the line rides
+ * its own shift and a decorator rides only the part of its shift its line did not already carry, so
+ * a survivor whose line held still still slides into the gap a removed sibling left.
+ */
+function captureDecorationSlide(engine: AnimationEngineInstance): (() => void) | null {
+  const container = engine.lyricsContainer;
+  if (!container || !decorationSlideAllowed(engine, container)) return null;
+
+  const before = engine.lines.map(line => ({
+    line,
+    position: line.position,
+    decorations: new Map(line.decorations),
+  }));
+
+  return () => {
+    for (const { line, position, decorations } of before) {
+      const lineShift = position - line.position;
+      if (Math.abs(lineShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, lineShift);
+
+      for (const [element, was] of decorations) {
+        const now = line.decorations.get(element);
+        if (now === undefined) continue;
+        const shift = was - now - lineShift;
+        if (Math.abs(shift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, shift);
+      }
+    }
+  };
 }
 
 // -- Debounced Lyrics Update --------------------------
@@ -3008,7 +3072,9 @@ export function scheduleLyricPositionUpdate(
   engine.pendingLyricsUpdateFrame = engine.window.requestAnimationFrame(() => {
     engine.pendingLyricsUpdateFrame = null;
     const isRendering = isViewRendering();
+    const playSlide = isRendering ? captureDecorationSlide(engine) : null;
     relayout(engine, isRendering);
+    playSlide?.();
     if (!isRendering) return;
     retick();
   });

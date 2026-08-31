@@ -111,9 +111,8 @@ cpSync(join(packageDir, "LICENSE"), join(outDir, "LICENSE"));
 
 // Same shape as the exports check above, one consumer further out: the page in demo/ and the README
 // copied in beside this artifact both document the API by name, so the emit is the moment to find
-// out whether they still describe it. The version travels with them, because it is the manifest's
-// now rather than something this emit writes.
-checkApiDocs(outDir, manifest.version);
+// out whether they still describe it.
+checkApiDocs(outDir);
 
 console.log(
   `Emitted @braccato/core ${manifest.version} to packages/core/dist: ${emitted.length} files, ${stylesheets.length} stylesheets`

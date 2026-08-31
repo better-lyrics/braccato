@@ -235,7 +235,11 @@ package's stylesheets are yours to load for the same reason.
 `@braccato/core` is the facade and registers nothing. `createLyricsRenderer(options)` returns one
 `LyricsRenderer`: give it lyrics, tick it, and it owns the DOM it builds and every re-measurement
 that DOM needs. `resetPlaybackClock`, `resumeAllAutoscroll`, `injectRomanization` and
-`injectTranslation` are published beside it, for what one instance cannot answer for on its own.
+`injectTranslation` are published beside it, for what one instance cannot answer for on its own. Hang
+one onto a built line and call `renderer.scheduleLyricPositionUpdate` the way you already would to
+catch the layout up: the hung line floats into place while the lines around it slide to make room,
+rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-entry` set to `0` drops
+both for an instant insert, and reduced-motion does the same.
 
 `@braccato/core/element` registers `<braccato-lyrics>`, and `<better-lyrics>` beside it, on import.
 Registration is a side effect, which is why it is entered separately.

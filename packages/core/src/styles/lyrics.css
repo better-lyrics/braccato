@@ -184,6 +184,8 @@
 
 .blyrics--translated,
 .blyrics--romanized {
+	animation: blyrics-decoration-in calc(var(--blyrics-animate-decoration-entry) * 0.35s)
+		cubic-bezier(0.25, 1, 0.5, 1) both;
 	color: var(--blyrics-translated-color);
 	display: block;
 	font-family: var(--blyrics-translated-font-family);
@@ -195,6 +197,13 @@
 	text-align: inherit;
 	unicode-bidi: plaintext;
 	white-space: normal;
+}
+
+@keyframes blyrics-decoration-in {
+	from {
+		opacity: 0;
+		transform: translateY(-0.4em);
+	}
 }
 
 .blyrics--romanized {
