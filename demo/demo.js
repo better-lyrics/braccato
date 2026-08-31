@@ -97,7 +97,8 @@ const offsetValue = document.getElementById("offset-value");
 const passiveScrollInput = document.getElementById("passive-scroll");
 const viewScrollInput = document.getElementById("scrollable-view");
 const pageRulesInput = document.getElementById("page-rules");
-const injectDecorationsButton = document.getElementById("inject-decorations");
+const injectRomanizationsButton = document.getElementById("inject-romanizations");
+const injectTranslationsButton = document.getElementById("inject-translations");
 const animateDecorationsInput = document.getElementById("animate-decorations");
 
 const eventLog = document.getElementById("event-log");
@@ -569,7 +570,8 @@ function applyLyrics() {
   view.lyrics = lyrics;
   applied.lyrics = lyrics;
 
-  setDecorationsShown(false);
+  setDecorationsShown("romanization", false);
+  setDecorationsShown("translation", false);
 
   const json = JSON.stringify(lyrics, null, 2);
   lyricsArray.textContent =
@@ -1288,26 +1290,40 @@ function wireControls(lineClass, lyricsClass) {
     view.renderer?.relayout();
   });
 
-  injectDecorationsButton.addEventListener("click", toggleDecorations);
+  injectRomanizationsButton.addEventListener("click", () => toggleDecorations("romanization"));
+  injectTranslationsButton.addEventListener("click", () => toggleDecorations("translation"));
 
   animateDecorationsInput.addEventListener("change", () => {
     view.style.setProperty("--blyrics-animate-decoration-entry", animateDecorationsInput.checked ? "1" : "0");
   });
 }
 
-const DECORATION_SELECTOR = ".blyrics--translated, .blyrics--romanized";
 const DECORATION_SLIDE_MS = 350;
 const DECORATION_FADE_MS = 250;
 const DECORATION_EASE = "cubic-bezier(0.25, 1, 0.5, 1)";
 
-function setDecorationsShown(shown) {
-  injectDecorationsButton.textContent = shown
-    ? "Hide translations & romanizations"
-    : "Show translations & romanizations";
+const DECORATION_KINDS = {
+  romanization: {
+    noun: "romanizations",
+    selector: ".blyrics--romanized",
+    button: injectRomanizationsButton,
+    inject: (line, pair) => injectRomanization(document, line.lyricElement, line, pair.roman),
+  },
+  translation: {
+    noun: "translations",
+    selector: ".blyrics--translated",
+    button: injectTranslationsButton,
+    inject: (line, pair) => injectTranslation(document, line.lyricElement, pair.trans),
+  },
+};
+
+function setDecorationsShown(kind, shown) {
+  const { button, noun } = DECORATION_KINDS[kind];
+  button.textContent = `${shown ? "Hide" : "Show"} ${noun}`;
 }
 
-function liveDecorations() {
-  return [...document.querySelectorAll(DECORATION_SELECTOR)].filter(el => !el.classList.contains("blyrics--leaving"));
+function liveDecorations(selector) {
+  return [...document.querySelectorAll(selector)].filter(el => !el.classList.contains("blyrics--leaving"));
 }
 
 function slideLines(mutate) {
@@ -1331,29 +1347,28 @@ function slideLines(mutate) {
   });
 }
 
-function toggleDecorations() {
-  if (liveDecorations().length > 0) hideDecorations();
-  else showDecorations();
+function toggleDecorations(kind) {
+  if (liveDecorations(DECORATION_KINDS[kind].selector).length > 0) hideDecorations(kind);
+  else showDecorations(kind);
 }
 
-function showDecorations() {
+function showDecorations(kind) {
+  const k = DECORATION_KINDS[kind];
   slideLines(() => {
     (view.renderer?.lines ?? []).forEach((line, index) => {
       const el = line.lyricElement;
       if (!el || el.dataset.instrumental) return;
-      const pair = DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
-      injectRomanization(document, el, line, pair.roman);
-      injectTranslation(document, el, pair.trans);
+      k.inject(line, DEMO_DECORATIONS[index % DEMO_DECORATIONS.length]);
     });
   });
-  if (liveDecorations().length === 0) return;
-  setDecorationsShown(true);
+  if (liveDecorations(k.selector).length === 0) return;
+  setDecorationsShown(kind, true);
 }
 
-function hideDecorations() {
-  const leaving = liveDecorations();
+function hideDecorations(kind) {
+  const leaving = liveDecorations(DECORATION_KINDS[kind].selector);
   if (leaving.length === 0) return;
-  setDecorationsShown(false);
+  setDecorationsShown(kind, false);
 
   if (!animateDecorationsInput.checked) {
     leaving.forEach(el => el.remove());
