@@ -90,8 +90,8 @@ importers:
   packages/rics:
     dependencies:
       rics:
-        specifier: ^0.3.20
-        version: 0.3.21
+        specifier: ^0.3.22
+        version: 0.3.22
     devDependencies:
       typescript:
         specifier: ^5.7.3
@@ -1070,8 +1070,8 @@ packages:
     engines: {node: '>= 0.4'}
     hasBin: true
 
-  rics@0.3.21:
-    resolution: {integrity: sha512-u9mbIsUhzJ2Smhw3IqrjP6K6M3mv9izrT+a43w1+n5Q8Sdj8LI1M7u66/yuk4EeQlGj29L7KAVbcV8CgxbCa8w==}
+  rics@0.3.22:
+    resolution: {integrity: sha512-SCh371T5mETy7vl/8I3f3sv9HMGOjR3Y3D7Ay1eGlaGJhY+O8zEU8EsyWK4tBGIU+dO/huS2abCnnvE57d/1JQ==}
     engines: {node: '>=18.0.0'}
 
   rollup@4.62.4:
@@ -2041,7 +2041,7 @@ snapshots:
       path-parse: 1.0.7
       supports-preserve-symlinks-flag: 1.0.0
 
-  rics@0.3.21: {}
+  rics@0.3.22: {}
 
   rollup@4.62.4:
     dependencies:
