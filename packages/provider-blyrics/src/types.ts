@@ -22,6 +22,7 @@ export interface ProviderContext {
 	artist: string;
 	duration: number;
 	album?: string | null;
+	videoId?: string;
 	signal: AbortSignal;
 }
 

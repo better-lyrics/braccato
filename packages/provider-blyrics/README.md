@@ -17,7 +17,7 @@ const chain = new ProviderChain();
 chain.register("lrclib-synced", createLRCLibSyncedProvider());
 
 const result = await chain.fetchLyrics(
-  { song: "Title", artist: "Artist", duration: 240000 },
+  { song: "Title", artist: "Artist", duration: 240 },
   { signal: abortController.signal }
 );
 ```
@@ -30,7 +30,19 @@ import {
   createLRCLibSyncedProvider,
   createLRCLibPlainProvider,
   createLegatoProvider,
+  createBinimumProvider,
+  createPortatoProvider,
+  createUnisonProvider,
 } from "@braccato/provider-blyrics";
+```
+
+`createUnisonProvider` matches on `videoId`, so pass it on the context when you have one:
+
+```typescript
+const result = await chain.fetchLyrics(
+  { song: "Title", artist: "Artist", duration: 240, videoId: "dQw4w9WgXcQ" },
+  { signal: abortController.signal }
+);
 ```
 
 ## Validation
