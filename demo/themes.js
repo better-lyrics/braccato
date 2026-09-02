@@ -41,7 +41,6 @@ export const THEMES = [
     css: `@import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap");
 
 /* blyrics-target-scroll-pos-ratio = 0.5; */
-/* blyrics-letter-wave = true; */
 
 .blyrics-container {
 	--blyrics-font-size: 3rem;

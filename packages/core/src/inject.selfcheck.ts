@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import {
   HIGHLIGHT_RUN_CLASS,
+  LETTER_CLASS,
   LYRICS_CLASS,
   ROMANIZED_LYRICS_CLASS,
   TRANSLATED_LYRICS_CLASS,
@@ -11,6 +12,7 @@ import {
 import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
 import { asDocument, asElement, collectTree, FakeDocument, type FactoryName, type FakeNode } from "./selfcheck/fakeDom";
+import { setThemeSettings } from "./themeSettings";
 import type { LyricPart } from "./types";
 
 // The builder takes the document to build into, so two instances can render into two documents.
@@ -57,6 +59,10 @@ const parts: LyricPart[] = [
   { startTimeMs: 400, words: "indistinguishable ", durationMs: 900 },
   { startTimeMs: 1300, words: "world", durationMs: 300, isBackground: true },
 ];
+
+// Letter wave and the wrap-break path are mutually exclusive branches, so this fixture opts out to
+// exercise the wbr wrapping it asserts below.
+setThemeSettings(new Map([["blyrics-letter-wave", "false"]]));
 
 const lineData = newLineData(buildTarget, 0, 1600);
 createLyricsLine(buildDocument, parts, lineData, buildTarget);
@@ -179,6 +185,35 @@ assert.equal(
   0,
   "Given a full build, When it finishes, Then the ambient global document was never read"
 );
+
+// -- Letter wave is on by default and splits a word into letters --------------------------------------------
+
+setThemeSettings(new Map([["blyrics-letter-wave", "true"]]));
+
+const waveDoc = new FakeDocument();
+const waveElement = waveDoc.createElement("div");
+const waveTarget = asElement<HTMLElement>(waveElement);
+const waveLine = newLineData(waveTarget, 0, 400);
+createLyricsLine(asDocument(waveDoc), [{ startTimeMs: 0, words: "Hi", durationMs: 400 }], waveLine, waveTarget);
+
+const waveNodes = collectTree(waveElement);
+const waveWord = waveNodes.find(
+  node => node.classList.contains(WORD_CLASS) && !node.classList.contains(WORD_HIGHLIGHT_CLASS)
+);
+assert.deepEqual(
+  waveNodes
+    .filter(node => node.classList.contains(LETTER_CLASS) && node.parentNode === waveWord)
+    .map(node => node.textContent),
+  ["H", "i"],
+  "Given letter wave on by default, When a word is built, Then it splits into ordered per-letter spans"
+);
+assert.equal(
+  waveNodes.some(node => node.name === "wbr"),
+  false,
+  "Given letter wave on, When a word is built, Then the wrap-break path does not also run"
+);
+
+setThemeSettings(new Map());
 
 // -- A line click calls seek, not a document --------------------------------------------
 

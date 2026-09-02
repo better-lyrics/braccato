@@ -188,7 +188,7 @@ pair snaps at the halfway point instead of flowing.
 
 ### Letter wave (experimental)
 
-Off unless a theme opts in with `/* blyrics-letter-wave = true; */`. It splits every word into
+On by default; a theme opts out with `/* blyrics-letter-wave = false; */`. It splits every word into
 per-letter spans and, as the word is sung, floats each letter up and eases it most of the way back on
 a small stagger, so a wave travels through the word. It layers on top of the word wobble rather than
 replacing it: the word keeps whatever `--blyrics-word-wobble-*` does and the letters ride on top, so
@@ -209,9 +209,9 @@ swells each letter with a transient scale at the crest.
 }
 ```
 
-The split multiplies the DOM per character and reruns the karaoke sweep per letter, so it is opt in
-and best kept to themes that want the effect. `blyrics-letter-wave` reloads the lines when it changes,
-the way every build-time setting does.
+The split multiplies the DOM per character and reruns the karaoke sweep per letter, so a theme that
+does not want the cost turns it off with `/* blyrics-letter-wave = false; */`. `blyrics-letter-wave`
+reloads the lines when it changes, the way every build-time setting does.
 
 ### Class names
 

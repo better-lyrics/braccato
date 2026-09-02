@@ -41,7 +41,7 @@ export let disableRichsync = registerThemeSetting("blyrics-disable-richsync", fa
 let lineSyncedAnimationDelay = registerThemeSetting("blyrics-line-synced-animation-delay", 50, true);
 let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500, true);
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
-let letterWave = registerThemeSetting("blyrics-letter-wave", false, true);
+let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
 
 const RTL_SCRIPT_REGEX = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}]/u;
 const LTR_SCRIPT_REGEX =
