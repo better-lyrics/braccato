@@ -20,6 +20,7 @@ import {
   CONTENT_LINE_CLASS,
   EXPLICIT_WORD_CLASS,
   HIGHLIGHT_RUN_CLASS,
+  LETTER_CLASS,
   LINE_MAIN_CLASS,
   LINE_SYNCED_WORD_CLASS,
   LONG_WORD_GROUP_CLASS,
@@ -40,6 +41,7 @@ export let disableRichsync = registerThemeSetting("blyrics-disable-richsync", fa
 let lineSyncedAnimationDelay = registerThemeSetting("blyrics-line-synced-animation-delay", 50, true);
 let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500, true);
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
+let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
 
 const RTL_SCRIPT_REGEX = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}]/u;
 const LTR_SCRIPT_REGEX =
@@ -105,6 +107,8 @@ export interface AnimationData {
 
 export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
+  letterElements?: HTMLElement[];
+  highlightLetterElements?: HTMLElement[];
 }
 
 export type LineData = {
@@ -148,12 +152,20 @@ interface WordGroup {
   tokens: RenderToken[];
 }
 
-function newPartData(part: LyricPart, span: HTMLElement, highlight: HTMLElement): PartData {
+function newPartData(
+  part: LyricPart,
+  span: HTMLElement,
+  highlight: HTMLElement,
+  letterElements?: HTMLElement[],
+  highlightLetterElements?: HTMLElement[]
+): PartData {
   return {
     time: part.startTimeMs / 1000,
     duration: part.durationMs / 1000,
     lyricElement: span,
     highlightElement: highlight,
+    letterElements,
+    highlightLetterElements,
     animations: [],
   };
 }
@@ -300,14 +312,36 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, th
   return true;
 }
 
+function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
+  const chars = [...text];
+  wordElement.style.setProperty("--letters", String(chars.length));
+  return chars.map((char, index) => {
+    const letter = doc.createElement("span");
+    letter.classList.add(LETTER_CLASS);
+    letter.style.setProperty("--letter-index", String(index));
+    letter.textContent = char;
+    wordElement.appendChild(letter);
+    return letter;
+  });
+}
+
 function createTimedWordSpan(
   doc: Document,
   part: LyricPart,
-  wrapThreshold: number
-): { span: HTMLSpanElement; highlight: HTMLSpanElement } {
+  wrapThreshold: number,
+  perLetter: boolean
+): {
+  span: HTMLSpanElement;
+  highlight: HTMLSpanElement;
+  letters?: HTMLElement[];
+  highlightLetters?: HTMLElement[];
+} {
   const span = doc.createElement("span");
   const highlight = doc.createElement("span");
   highlight.classList.add(WORD_HIGHLIGHT_CLASS);
+
+  let letters: HTMLElement[] | undefined;
+  let highlightLetters: HTMLElement[] | undefined;
 
   for (const wordElement of [span, highlight]) {
     wordElement.classList.add(WORD_CLASS);
@@ -321,13 +355,19 @@ function createTimedWordSpan(
     if (part.isBackground) wordElement.classList.add(BACKGROUND_LYRIC_CLASS);
     if (part.explicit) wordElement.classList.add(EXPLICIT_WORD_CLASS);
 
-    appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+    if (perLetter) {
+      const collected = appendLetters(doc, wordElement, part.words);
+      if (wordElement === span) letters = collected;
+      else highlightLetters = collected;
+    } else {
+      appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+    }
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
     wordElement.dataset.content = part.words;
     wordElement.style.setProperty("--blyrics-duration", part.durationMs + "ms");
   }
-  return { span, highlight };
+  return { span, highlight, letters, highlightLetters };
 }
 
 function createWordGroup(
@@ -336,6 +376,7 @@ function createWordGroup(
   lineData: LineData
 ): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
+  const perLetter = letterWave.getBooleanValue();
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
 
@@ -356,8 +397,13 @@ function createWordGroup(
   for (const token of group.tokens) {
     if (token.kind === "space") continue;
 
-    const { span, highlight } = createTimedWordSpan(doc, token.part, wrapThreshold);
-    lineData.parts.push(newPartData(token.part, span, highlight));
+    const { span, highlight, letters, highlightLetters } = createTimedWordSpan(
+      doc,
+      token.part,
+      wrapThreshold,
+      perLetter
+    );
+    lineData.parts.push(newPartData(token.part, span, highlight, letters, highlightLetters));
     lyricGroup.appendChild(span);
     highlightGroup.appendChild(highlight);
   }

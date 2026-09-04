@@ -18,9 +18,12 @@
   --blyrics-wobble-duration: 1s;
   --blyrics-glow-color: color(display-p3 1 1 1 / 0.0001);
   --blyrics-word-wobble-transform-from: translateY(0);
-  --blyrics-word-wobble-transform-peak: translateY(-0.005em);
-  --blyrics-word-wobble-transform-settle: translateY(-0.028em);
-  --blyrics-word-wobble-transform-to: translateY(-0.0375em);
+  --blyrics-word-wobble-transform-peak: translateY(0);
+  --blyrics-word-wobble-transform-settle: translateY(0);
+  --blyrics-word-wobble-transform-to: translateY(0);
+  --blyrics-letter-wave-transform: translateY(-0.07em);
+  --blyrics-letter-wave-settle: translateY(-0.028em);
+  --blyrics-letter-wave-duration: 0.9s;
 }
 
 /* The signature of this theme: every line is blurred and faded by how far it sits from the one being

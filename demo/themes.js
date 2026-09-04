@@ -35,6 +35,29 @@ export const THEMES = [
 `,
   },
   {
+    id: "better-lyrics",
+    title: "Better Lyrics",
+    summary: "What the renderer ships in the extension: the scaleX pop and per-word glow, plus the wave.",
+    css: `@import url("https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap");
+
+/* blyrics-target-scroll-pos-ratio = 0.5; */
+
+.blyrics-container {
+	--blyrics-font-size: 3rem;
+	--blyrics-line-height: 1.333;
+	--blyrics-padding: 2rem;
+	--blyrics-word-wobble-transform-from: scaleX(1);
+	--blyrics-word-wobble-transform-peak: translateX(0.05em) scaleX(1.025);
+	--blyrics-word-wobble-transform-settle: translateX(0) scaleX(1);
+	--blyrics-word-wobble-transform-to: scaleX(1);
+}
+
+.blyrics-container .blyrics-word-highlight:not([data-long-word]) {
+	--blyrics-glow-color: var(--blyrics-highlight-color, color(display-p3 1 1 1 / 0.5));
+}
+`,
+  },
+  {
     id: "sustain",
     title: "Sustain",
     summary: "Depth by distance, and lines that sit where the singer puts them.",

@@ -110,6 +110,13 @@
 	--blyrics-word-wobble-peak-easing: ease-in-out;
 	--blyrics-word-wobble-end-easing: ease-out;
 
+	--blyrics-letter-wave-transform: translateY(-0.05em);
+	--blyrics-letter-wave-settle: translateY(-0.02em);
+	--blyrics-letter-wave-emphasis-scale: 1.11;
+	--blyrics-letter-wave-duration: 0.9s;
+	--blyrics-letter-wave-rise-easing: ease-in-out;
+	--blyrics-letter-wave-fall-easing: ease-out;
+
 	--blyrics-instrumental-fill-fade-duration: 150ms;
 	--blyrics-instrumental-fill-fade-easing: ease;
 	--blyrics-instrumental-fill-transform-from: translateY(78%);
