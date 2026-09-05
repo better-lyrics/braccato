@@ -109,6 +109,9 @@ export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
+  // Set when this word's resolved glow color renders nothing, so the per-frame blur is skipped.
+  // Resolved per word because themes vary the glow color per word (e.g. only long words glow).
+  glowSuppressed?: boolean;
 }
 
 export type LineData = {

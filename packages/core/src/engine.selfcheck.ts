@@ -12,6 +12,7 @@ import {
   getRenderedSyncType,
   hasRenderedLines,
   noteUserScroll,
+  parseColorAlpha,
   relayout,
   resolveTickOptions,
   scheduleLyricPositionUpdate,
@@ -930,6 +931,23 @@ assert.equal(
   null,
   "Given a word with no letters, Then there are no per-letter windows"
 );
+
+// Glow alpha parsing: the engine skips a word's per-frame blur only when its resolved glow color
+// renders nothing, so this has to read alpha out of every color form a theme might use, and fall
+// back to opaque when it cannot, so a visible glow is never dropped.
+assert.equal(parseColorAlpha("color(display-p3 1 1 1 / 0.0001)"), 0.0001, "reads slash alpha from color()");
+assert.equal(parseColorAlpha("color(display-p3 1 1 1 / 1)"), 1, "reads full slash alpha");
+assert.equal(parseColorAlpha("rgb(255 255 255 / 50%)"), 0.5, "reads percentage slash alpha");
+assert.equal(parseColorAlpha("rgba(255, 255, 255, 0.0001)"), 0.0001, "reads legacy comma alpha");
+assert.equal(parseColorAlpha("hsla(0, 0%, 100%, 0.1)"), 0.1, "reads legacy hsla alpha");
+assert.equal(parseColorAlpha("#ffffff80"), 128 / 255, "reads 8-digit hex alpha");
+assert.equal(parseColorAlpha("#fff0"), 0, "reads 4-digit hex alpha");
+assert.equal(parseColorAlpha("transparent"), 0, "treats transparent as empty");
+assert.equal(parseColorAlpha("#ffffff"), 1, "treats hex with no alpha as opaque");
+assert.equal(parseColorAlpha("white"), 1, "treats a keyword as opaque");
+assert.equal(parseColorAlpha("rgb(255, 255, 255)"), 1, "treats alphaless rgb as opaque");
+assert.equal(parseColorAlpha(""), null, "reports nothing for an empty value");
+assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolved reference");
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
