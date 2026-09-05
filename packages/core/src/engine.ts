@@ -1008,6 +1008,63 @@ function fadeOutTextKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
+export interface LetterSwipeWindow {
+  delayMs: number;
+  durationMs: number;
+  from: { start: number; end: number };
+  to: { start: number; end: number };
+}
+
+export interface SwipeRamp {
+  easing: string;
+  startFrom: string;
+  startTo: string;
+  endFrom: string;
+  endTo: string;
+}
+
+// The per-letter reveal is one continuous gradient the letters tile through `--letters` and
+// `--letter-index`. Driven from a single inherited property it repaints every letter each frame,
+// including the ones already filled or still empty; only the one or two under the moving edge are
+// actually changing. Each window hands a letter its own slice of the sweep so the rest hold a
+// finished animation, which no longer ticks. Null when the sweep is not a forward linear ramp, and
+// the single-property path stays exact there.
+export function computeLetterSwipeWindows(
+  swipe: SwipeRamp,
+  letterCount: number,
+  swipeDurationMs: number
+): LetterSwipeWindow[] | null {
+  if (swipe.easing !== "linear" || swipeDurationMs <= 0 || letterCount <= 0) {
+    return null;
+  }
+
+  const startFrom = Number.parseFloat(swipe.startFrom);
+  const startTo = Number.parseFloat(swipe.startTo);
+  const endFrom = Number.parseFloat(swipe.endFrom);
+  const endTo = Number.parseFloat(swipe.endTo);
+  if (![startFrom, startTo, endFrom, endTo].every(Number.isFinite) || startTo <= startFrom || endTo <= endFrom) {
+    return null;
+  }
+
+  const startAt = (timeMs: number): number => startFrom + ((startTo - startFrom) * timeMs) / swipeDurationMs;
+  const endAt = (timeMs: number): number => endFrom + ((endTo - endFrom) * timeMs) / swipeDurationMs;
+  const timeWhereEnd = (value: number): number => (swipeDurationMs * (value - endFrom)) / (endTo - endFrom);
+  const timeWhereStart = (value: number): number => (swipeDurationMs * (value - startFrom)) / (startTo - startFrom);
+
+  const windows: LetterSwipeWindow[] = [];
+  for (let index = 0; index < letterCount; index++) {
+    const beginMs = clamp(timeWhereEnd(index / letterCount), 0, swipeDurationMs);
+    const finishMs = clamp(timeWhereStart((index + 1) / letterCount), 0, swipeDurationMs);
+    windows.push({
+      delayMs: beginMs,
+      durationMs: Math.max(finishMs - beginMs, 1),
+      from: { start: startAt(beginMs), end: endAt(beginMs) },
+      to: { start: startAt(finishMs), end: endAt(finishMs) },
+    });
+  }
+  return windows;
+}
+
 function startRichSyncedHighlightAnimations(
   engine: AnimationEngineInstance,
   part: PartData,
@@ -1023,17 +1080,57 @@ function startRichSyncedHighlightAnimations(
 
   let swipeAnimation: Animation | undefined;
   if (config.enabled.highlightSwipe) {
-    swipeAnimation = trackLyricAnimationTiming(
-      engine,
-      highlight.animate(activeTextGradientKeyframes(config), {
-        duration: swipeDurationMs,
-        easing: config.highlight.swipeEasing,
-        fill: "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs }
-    );
-    swipeAnimation.currentTime = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
-    animations.push(swipeAnimation);
+    const swipeTiming = { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs };
+    const swipeCurrentTimeMs = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
+    const highlightLetters = part.highlightLetterElements;
+    const windows =
+      highlightLetters && highlightLetters.length > 0
+        ? computeLetterSwipeWindows(
+            {
+              easing: config.highlight.swipeEasing,
+              startFrom: config.highlight.swipeStartFrom,
+              startTo: config.highlight.swipeStartTo,
+              endFrom: config.highlight.swipeEndFrom,
+              endTo: config.highlight.swipeEndTo,
+            },
+            highlightLetters.length,
+            swipeDurationMs
+          )
+        : null;
+
+    if (windows && highlightLetters) {
+      windows.forEach((window, index) => {
+        const animation = trackLyricAnimationTiming(
+          engine,
+          highlightLetters[index].animate(
+            [
+              {
+                "--lyric-transition-amount-start": window.from.start,
+                "--lyric-transition-amount-end": window.from.end,
+              },
+              { "--lyric-transition-amount-start": window.to.start, "--lyric-transition-amount-end": window.to.end },
+            ] as Keyframe[],
+            { duration: window.durationMs, delay: window.delayMs, easing: "linear", fill: "both" }
+          ),
+          swipeTiming
+        );
+        animation.currentTime = swipeCurrentTimeMs;
+        if (index === 0) swipeAnimation = animation;
+        animations.push(animation);
+      });
+    } else {
+      swipeAnimation = trackLyricAnimationTiming(
+        engine,
+        highlight.animate(activeTextGradientKeyframes(config), {
+          duration: swipeDurationMs,
+          easing: config.highlight.swipeEasing,
+          fill: "forwards",
+        }),
+        swipeTiming
+      );
+      swipeAnimation.currentTime = swipeCurrentTimeMs;
+      animations.push(swipeAnimation);
+    }
   }
 
   const opacityAnimation = trackLyricAnimationTiming(

@@ -4,6 +4,7 @@ import {
   type AnimationEngineInstance,
   clearLyrics,
   clearOnScreenLyrics,
+  computeLetterSwipeWindows,
   computeScrollPadding,
   createAnimationEngineInstance,
   forEveryLiveView,
@@ -879,6 +880,56 @@ assert.equal(
 );
 setupLineCullObserver(noCullEngine); // safe to call directly with no observer support
 clearLyrics(noCullEngine);
+
+// Per-letter swipe windows: each letter owns the slice of the sweep where its own reveal happens,
+// holding hidden before and shown after, so only the letters under the moving edge keep animating.
+const SWIPE_RAMP = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
+const SWIPE_DURATION_MS = 1000;
+const SWIPE_LETTERS = 5;
+const swipeWindows = computeLetterSwipeWindows(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS);
+assert.ok(swipeWindows, "Given a linear forward ramp, When windows are computed, Then it returns them");
+assert.equal(swipeWindows.length, SWIPE_LETTERS, "Given N letters, Then there is one window each");
+const SWIPE_EPS = 1e-6;
+swipeWindows.forEach((window, index) => {
+  assert.ok(
+    window.delayMs >= -SWIPE_EPS && window.delayMs <= SWIPE_DURATION_MS + SWIPE_EPS,
+    "Given a window, Then its delay sits inside the sweep"
+  );
+  assert.ok(window.durationMs > 0, "Given a window, Then it animates over a real span");
+  // The held "from" value renders the letter empty: its transparent edge sits at or before its start.
+  assert.ok(
+    window.from.end * SWIPE_LETTERS - index <= SWIPE_EPS,
+    "Given the value held before a letter's slice, Then the letter is fully unfilled"
+  );
+  // The held "to" value renders the letter filled: its active edge covers the whole letter.
+  assert.ok(
+    window.to.start * SWIPE_LETTERS - index >= 1 - SWIPE_EPS,
+    "Given the value held after a letter's slice, Then the letter is fully filled"
+  );
+  const next = swipeWindows[index + 1];
+  if (next) {
+    assert.ok(next.delayMs >= window.delayMs - SWIPE_EPS, "Given consecutive letters, Then their slices advance");
+    assert.ok(
+      next.delayMs <= window.delayMs + window.durationMs + SWIPE_EPS,
+      "Given consecutive letters, Then their slices overlap so the sweep never gaps"
+    );
+  }
+});
+assert.equal(
+  computeLetterSwipeWindows({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  null,
+  "Given a non-linear ramp, When windows are computed, Then it defers to the single-property sweep"
+);
+assert.equal(
+  computeLetterSwipeWindows({ ...SWIPE_RAMP, startTo: "-0.4" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  null,
+  "Given a ramp that does not move forward, Then it defers to the single-property sweep"
+);
+assert.equal(
+  computeLetterSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
+  null,
+  "Given a word with no letters, Then there are no per-letter windows"
+);
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
