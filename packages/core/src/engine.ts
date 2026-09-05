@@ -184,6 +184,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   pendingLineScroll: PendingLineScroll | null;
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
   visibleWillChangeElements: Set<HTMLElement>;
+  culledLineElements: Set<HTMLElement>;
+  lineCullObserver: IntersectionObserver | null;
   cachedDurations: Map<string, number>;
   cachedCSSValues: Map<string, string>;
   cachedAnimationSettings: AnimationSettings | null;
@@ -262,6 +264,8 @@ export function createAnimationEngineInstance(
     pendingLineScroll: null,
     lineScrollElementTokens: new WeakMap(),
     visibleWillChangeElements: new Set(),
+    culledLineElements: new Set(),
+    lineCullObserver: null,
     cachedDurations: new Map(),
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
@@ -277,6 +281,8 @@ export function createAnimationEngineInstance(
       engine.tabRendererResizeObserver?.disconnect();
       engine.tabRendererResizeObserver = null;
       engine.observedTabRenderer = null;
+      engine.lineCullObserver?.disconnect();
+      engine.lineCullObserver = null;
       stopPassiveScrollLoop(engine);
       cancelLyricPositionUpdate(engine);
     },
@@ -398,6 +404,9 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   dropPendingLineScroll(engine);
   clearLineScrollAnimations(engine);
   clearVisibleLyricWillChange(engine);
+  engine.lineCullObserver?.disconnect();
+  engine.lineCullObserver = null;
+  clearOffscreenLineCulling(engine);
   for (const line of engine.lines) {
     resetLineAnimationState(line);
     line.isSelected = false;
@@ -999,6 +1008,63 @@ function fadeOutTextKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
+export interface LetterSwipeWindow {
+  delayMs: number;
+  durationMs: number;
+  from: { start: number; end: number };
+  to: { start: number; end: number };
+}
+
+export interface SwipeRamp {
+  easing: string;
+  startFrom: string;
+  startTo: string;
+  endFrom: string;
+  endTo: string;
+}
+
+// The per-letter reveal is one continuous gradient the letters tile through `--letters` and
+// `--letter-index`. Driven from a single inherited property it repaints every letter each frame,
+// including the ones already filled or still empty; only the one or two under the moving edge are
+// actually changing. Each window hands a letter its own slice of the sweep so the rest hold a
+// finished animation, which no longer ticks. Null when the sweep is not a forward linear ramp, and
+// the single-property path stays exact there.
+export function computeLetterSwipeWindows(
+  swipe: SwipeRamp,
+  letterCount: number,
+  swipeDurationMs: number
+): LetterSwipeWindow[] | null {
+  if (swipe.easing !== "linear" || swipeDurationMs <= 0 || letterCount <= 0) {
+    return null;
+  }
+
+  const startFrom = Number.parseFloat(swipe.startFrom);
+  const startTo = Number.parseFloat(swipe.startTo);
+  const endFrom = Number.parseFloat(swipe.endFrom);
+  const endTo = Number.parseFloat(swipe.endTo);
+  if (![startFrom, startTo, endFrom, endTo].every(Number.isFinite) || startTo <= startFrom || endTo <= endFrom) {
+    return null;
+  }
+
+  const startAt = (timeMs: number): number => startFrom + ((startTo - startFrom) * timeMs) / swipeDurationMs;
+  const endAt = (timeMs: number): number => endFrom + ((endTo - endFrom) * timeMs) / swipeDurationMs;
+  const timeWhereEnd = (value: number): number => (swipeDurationMs * (value - endFrom)) / (endTo - endFrom);
+  const timeWhereStart = (value: number): number => (swipeDurationMs * (value - startFrom)) / (startTo - startFrom);
+
+  const windows: LetterSwipeWindow[] = [];
+  for (let index = 0; index < letterCount; index++) {
+    const beginMs = clamp(timeWhereEnd(index / letterCount), 0, swipeDurationMs);
+    const finishMs = clamp(timeWhereStart((index + 1) / letterCount), 0, swipeDurationMs);
+    windows.push({
+      delayMs: beginMs,
+      durationMs: Math.max(finishMs - beginMs, 1),
+      from: { start: startAt(beginMs), end: endAt(beginMs) },
+      to: { start: startAt(finishMs), end: endAt(finishMs) },
+    });
+  }
+  return windows;
+}
+
 function startRichSyncedHighlightAnimations(
   engine: AnimationEngineInstance,
   part: PartData,
@@ -1014,17 +1080,57 @@ function startRichSyncedHighlightAnimations(
 
   let swipeAnimation: Animation | undefined;
   if (config.enabled.highlightSwipe) {
-    swipeAnimation = trackLyricAnimationTiming(
-      engine,
-      highlight.animate(activeTextGradientKeyframes(config), {
-        duration: swipeDurationMs,
-        easing: config.highlight.swipeEasing,
-        fill: "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs }
-    );
-    swipeAnimation.currentTime = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
-    animations.push(swipeAnimation);
+    const swipeTiming = { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs };
+    const swipeCurrentTimeMs = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
+    const highlightLetters = part.highlightLetterElements;
+    const windows =
+      highlightLetters && highlightLetters.length > 0
+        ? computeLetterSwipeWindows(
+            {
+              easing: config.highlight.swipeEasing,
+              startFrom: config.highlight.swipeStartFrom,
+              startTo: config.highlight.swipeStartTo,
+              endFrom: config.highlight.swipeEndFrom,
+              endTo: config.highlight.swipeEndTo,
+            },
+            highlightLetters.length,
+            swipeDurationMs
+          )
+        : null;
+
+    if (windows && highlightLetters) {
+      windows.forEach((window, index) => {
+        const animation = trackLyricAnimationTiming(
+          engine,
+          highlightLetters[index].animate(
+            [
+              {
+                "--lyric-transition-amount-start": window.from.start,
+                "--lyric-transition-amount-end": window.from.end,
+              },
+              { "--lyric-transition-amount-start": window.to.start, "--lyric-transition-amount-end": window.to.end },
+            ] as Keyframe[],
+            { duration: window.durationMs, delay: window.delayMs, easing: "linear", fill: "both" }
+          ),
+          swipeTiming
+        );
+        animation.currentTime = swipeCurrentTimeMs;
+        if (index === 0) swipeAnimation = animation;
+        animations.push(animation);
+      });
+    } else {
+      swipeAnimation = trackLyricAnimationTiming(
+        engine,
+        highlight.animate(activeTextGradientKeyframes(config), {
+          duration: swipeDurationMs,
+          easing: config.highlight.swipeEasing,
+          fill: "forwards",
+        }),
+        swipeTiming
+      );
+      swipeAnimation.currentTime = swipeCurrentTimeMs;
+      animations.push(swipeAnimation);
+    }
   }
 
   const opacityAnimation = trackLyricAnimationTiming(
@@ -1958,6 +2064,80 @@ function clearVisibleLyricWillChange(engine: AnimationEngineInstance): void {
     element.style.removeProperty("will-change");
   }
   engine.visibleWillChangeElements = new Set();
+}
+
+// One viewport of overscan on each side, so a line is rendered well before it can be scrolled into
+// view. Which lines are near the viewport is read from the browser's own intersection accounting
+// rather than computed from line positions and `scrollTop`: a transform-driven or scaled scroll (the
+// demo mounts the element that way) decouples layout coordinates from what is actually on screen, and
+// the intersection observer reports the truth in every mounting. Only lines this far out get
+// `content-visibility`, so nothing on screen ever carries its paint containment (which would clip the
+// glow/wave ink and force a per-line stacking context); `auto` keeps skipped lines findable and in
+// the accessibility tree.
+const LINE_CULL_ROOT_MARGIN = "100% 0px 100% 0px";
+
+function cullLine(element: HTMLElement): void {
+  element.style.setProperty("content-visibility", "auto");
+}
+
+function uncullLine(element: HTMLElement): void {
+  element.style.removeProperty("content-visibility");
+}
+
+function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {
+  for (const element of engine.culledLineElements) {
+    uncullLine(element);
+  }
+  engine.culledLineElements = new Set();
+}
+
+/**
+ * (Re)arms off-screen line culling for the current line set. Every line starts rendered; the observer
+ * then skips the ones outside the viewport and its overscan, and un-skips them again before they can
+ * be seen. Rebuilt rather than updated whenever the lines change or a relayout remeasures them, so the
+ * placeholder height a skipped line reports is always its freshly measured one. A host without
+ * `IntersectionObserver` keeps every line rendered, the same as before this existed.
+ */
+export function setupLineCullObserver(engine: AnimationEngineInstance): void {
+  engine.lineCullObserver?.disconnect();
+  clearOffscreenLineCulling(engine);
+
+  const ObserverConstructor = engine.window.IntersectionObserver;
+  if (typeof ObserverConstructor !== "function" || engine.lines.length === 0) {
+    engine.lineCullObserver = null;
+    return;
+  }
+
+  // Pin each line's skipped placeholder to the size it last took rendered, so skipping or un-skipping
+  // a line leaves the container's scroll height unchanged: a drift there reads to the engine as a user
+  // scroll and stops autoscroll. `auto` makes the browser reuse the line's real last-rendered box
+  // rather than the fallback (which, as a content-box value, would omit the line's padding); every
+  // line renders at least once before the observer can skip it, so the remembered size is always
+  // exact. `content-visibility` reads it only while skipped, so it is inert on rendered lines.
+  const restingHeights = engine.lines.map(line => line.lyricElement.offsetHeight);
+  engine.lines.forEach((line, index) => {
+    line.lyricElement.style.setProperty("contain-intrinsic-block-size", `auto ${restingHeights[index]}px`);
+  });
+
+  const observer = new ObserverConstructor(
+    entries => {
+      for (const entry of entries) {
+        const element = entry.target as HTMLElement;
+        if (entry.isIntersecting) {
+          if (engine.culledLineElements.delete(element)) uncullLine(element);
+        } else if (!engine.culledLineElements.has(element)) {
+          cullLine(element);
+          engine.culledLineElements.add(element);
+        }
+      }
+    },
+    { root: null, rootMargin: LINE_CULL_ROOT_MARGIN, threshold: 0 }
+  );
+
+  for (const line of engine.lines) {
+    observer.observe(line.lyricElement);
+  }
+  engine.lineCullObserver = observer;
 }
 
 function updateVisibleLyricWillChange(
@@ -2996,6 +3176,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
   engine.lyricWidth = lyricsElement.clientWidth;
   engine.lyricHeight = lyricsElement.clientHeight;
 
+  // Skipped lines report intrinsic size, so un-cull before the walk reads offsetTop/offsetHeight.
+  clearOffscreenLineCulling(engine);
+
   for (const line of engine.lines) {
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);
     line.position = bounds.y;
@@ -3004,6 +3187,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
       lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
     );
   }
+
+  // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
+  setupLineCullObserver(engine);
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();

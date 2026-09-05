@@ -4,6 +4,7 @@ import {
   type AnimationEngineInstance,
   clearLyrics,
   clearOnScreenLyrics,
+  computeLetterSwipeWindows,
   computeScrollPadding,
   createAnimationEngineInstance,
   forEveryLiveView,
@@ -14,6 +15,7 @@ import {
   relayout,
   resolveTickOptions,
   scheduleLyricPositionUpdate,
+  setupLineCullObserver,
   tickView,
 } from "./engine";
 import { asDocument, asElement, asFakeNode, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
@@ -790,6 +792,143 @@ assert.equal(
   ambientGlobals.reads,
   0,
   "Given two views driven from build to destruction, When they finish, Then neither read an ambient global document or window"
+);
+
+// -- Off-screen line culling --------------------------------------------
+
+// A window that offers an IntersectionObserver skips the lines it reports off-screen and renders the
+// rest, and it never carries `content-visibility` on a line it has not been told is gone. A window
+// without one (every other view above) leaves every line rendered, which is why those views never
+// asserted on culling.
+
+const cullDocument = new FakeDocument();
+const cullWindow = new FakeWindow(PANEL_STYLE, { intersectionObserver: true });
+const cullHost = new FakeHost();
+const cullMount = cullDocument.createElement("div");
+const cullEngine = createAnimationEngineInstance(asDocument(cullDocument), asWindow(cullWindow), cullHost);
+
+setLyrics(cullEngine, asElement<HTMLElement>(cullMount), LINE_SYNCED_LYRICS, { loaderVisible: false, noLyrics: false });
+
+const cullLines = renderedLineElements(cullMount);
+const cullObserver = cullWindow.intersectionObservers.at(-1);
+assert(cullObserver, "Given a window offering an IntersectionObserver, When lyrics are set, Then one is created");
+assert.equal(
+  cullObserver.targets.length,
+  cullLines.length,
+  "Given lyrics are set, When the culling observer arms, Then it observes every line"
+);
+for (const line of cullLines) {
+  assert.notEqual(
+    line.style.getPropertyValue("contain-intrinsic-block-size"),
+    "",
+    "Given lyrics are set, When the observer arms, Then each line carries a skipped-size placeholder"
+  );
+  assert.equal(
+    line.style.getPropertyValue("content-visibility"),
+    "",
+    "Given lyrics are set, When no line has been reported off-screen, Then none is skipped"
+  );
+}
+
+cullObserver.report(cullLines[0], false);
+assert.equal(
+  cullLines[0].style.getPropertyValue("content-visibility"),
+  "auto",
+  "Given a line, When it is reported off-screen, Then it is skipped"
+);
+
+cullObserver.report(cullLines[0], true);
+assert.equal(
+  cullLines[0].style.getPropertyValue("content-visibility"),
+  "",
+  "Given a skipped line, When it is reported back on-screen, Then it renders again"
+);
+
+cullObserver.report(cullLines[1], true);
+assert.equal(
+  cullLines[1].style.getPropertyValue("content-visibility"),
+  "",
+  "Given an on-screen line, When it is reported, Then it is never skipped"
+);
+
+cullObserver.report(cullLines[2], false);
+clearLyrics(cullEngine);
+assert.equal(
+  cullObserver.disconnected,
+  true,
+  "Given a song with a culling observer, When it is cleared, Then the observer is disconnected"
+);
+assert.equal(
+  cullLines[2].style.getPropertyValue("content-visibility"),
+  "",
+  "Given a skipped line, When the song is cleared, Then it is un-skipped"
+);
+
+// A window without an IntersectionObserver leaves every line rendered rather than failing.
+const noCullDocument = new FakeDocument();
+const noCullWindow = new FakeWindow(PANEL_STYLE);
+const noCullEngine = createAnimationEngineInstance(asDocument(noCullDocument), asWindow(noCullWindow), new FakeHost());
+const noCullMount = noCullDocument.createElement("div");
+setLyrics(noCullEngine, asElement<HTMLElement>(noCullMount), LINE_SYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+assert.equal(
+  noCullWindow.intersectionObservers.length,
+  0,
+  "Given a window with no IntersectionObserver, When lyrics are set, Then culling arms nothing and the lines render"
+);
+setupLineCullObserver(noCullEngine); // safe to call directly with no observer support
+clearLyrics(noCullEngine);
+
+// Per-letter swipe windows: each letter owns the slice of the sweep where its own reveal happens,
+// holding hidden before and shown after, so only the letters under the moving edge keep animating.
+const SWIPE_RAMP = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
+const SWIPE_DURATION_MS = 1000;
+const SWIPE_LETTERS = 5;
+const swipeWindows = computeLetterSwipeWindows(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS);
+assert.ok(swipeWindows, "Given a linear forward ramp, When windows are computed, Then it returns them");
+assert.equal(swipeWindows.length, SWIPE_LETTERS, "Given N letters, Then there is one window each");
+const SWIPE_EPS = 1e-6;
+swipeWindows.forEach((window, index) => {
+  assert.ok(
+    window.delayMs >= -SWIPE_EPS && window.delayMs <= SWIPE_DURATION_MS + SWIPE_EPS,
+    "Given a window, Then its delay sits inside the sweep"
+  );
+  assert.ok(window.durationMs > 0, "Given a window, Then it animates over a real span");
+  // The held "from" value renders the letter empty: its transparent edge sits at or before its start.
+  assert.ok(
+    window.from.end * SWIPE_LETTERS - index <= SWIPE_EPS,
+    "Given the value held before a letter's slice, Then the letter is fully unfilled"
+  );
+  // The held "to" value renders the letter filled: its active edge covers the whole letter.
+  assert.ok(
+    window.to.start * SWIPE_LETTERS - index >= 1 - SWIPE_EPS,
+    "Given the value held after a letter's slice, Then the letter is fully filled"
+  );
+  const next = swipeWindows[index + 1];
+  if (next) {
+    assert.ok(next.delayMs >= window.delayMs - SWIPE_EPS, "Given consecutive letters, Then their slices advance");
+    assert.ok(
+      next.delayMs <= window.delayMs + window.durationMs + SWIPE_EPS,
+      "Given consecutive letters, Then their slices overlap so the sweep never gaps"
+    );
+  }
+});
+assert.equal(
+  computeLetterSwipeWindows({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  null,
+  "Given a non-linear ramp, When windows are computed, Then it defers to the single-property sweep"
+);
+assert.equal(
+  computeLetterSwipeWindows({ ...SWIPE_RAMP, startTo: "-0.4" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  null,
+  "Given a ramp that does not move forward, Then it defers to the single-property sweep"
+);
+assert.equal(
+  computeLetterSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
+  null,
+  "Given a word with no letters, Then there are no per-letter windows"
 );
 
 console.log(
