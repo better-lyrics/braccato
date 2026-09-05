@@ -14,6 +14,7 @@ import {
   relayout,
   resolveTickOptions,
   scheduleLyricPositionUpdate,
+  setupLineCullObserver,
   tickView,
 } from "./engine";
 import { asDocument, asElement, asFakeNode, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
@@ -791,6 +792,93 @@ assert.equal(
   0,
   "Given two views driven from build to destruction, When they finish, Then neither read an ambient global document or window"
 );
+
+// -- Off-screen line culling --------------------------------------------
+
+// A window that offers an IntersectionObserver skips the lines it reports off-screen and renders the
+// rest, and it never carries `content-visibility` on a line it has not been told is gone. A window
+// without one (every other view above) leaves every line rendered, which is why those views never
+// asserted on culling.
+
+const cullDocument = new FakeDocument();
+const cullWindow = new FakeWindow(PANEL_STYLE, { intersectionObserver: true });
+const cullHost = new FakeHost();
+const cullMount = cullDocument.createElement("div");
+const cullEngine = createAnimationEngineInstance(asDocument(cullDocument), asWindow(cullWindow), cullHost);
+
+setLyrics(cullEngine, asElement<HTMLElement>(cullMount), LINE_SYNCED_LYRICS, { loaderVisible: false, noLyrics: false });
+
+const cullLines = renderedLineElements(cullMount);
+const cullObserver = cullWindow.intersectionObservers.at(-1);
+assert(cullObserver, "Given a window offering an IntersectionObserver, When lyrics are set, Then one is created");
+assert.equal(
+  cullObserver.targets.length,
+  cullLines.length,
+  "Given lyrics are set, When the culling observer arms, Then it observes every line"
+);
+for (const line of cullLines) {
+  assert.notEqual(
+    line.style.getPropertyValue("contain-intrinsic-block-size"),
+    "",
+    "Given lyrics are set, When the observer arms, Then each line carries a skipped-size placeholder"
+  );
+  assert.equal(
+    line.style.getPropertyValue("content-visibility"),
+    "",
+    "Given lyrics are set, When no line has been reported off-screen, Then none is skipped"
+  );
+}
+
+cullObserver.report(cullLines[0], false);
+assert.equal(
+  cullLines[0].style.getPropertyValue("content-visibility"),
+  "auto",
+  "Given a line, When it is reported off-screen, Then it is skipped"
+);
+
+cullObserver.report(cullLines[0], true);
+assert.equal(
+  cullLines[0].style.getPropertyValue("content-visibility"),
+  "",
+  "Given a skipped line, When it is reported back on-screen, Then it renders again"
+);
+
+cullObserver.report(cullLines[1], true);
+assert.equal(
+  cullLines[1].style.getPropertyValue("content-visibility"),
+  "",
+  "Given an on-screen line, When it is reported, Then it is never skipped"
+);
+
+cullObserver.report(cullLines[2], false);
+clearLyrics(cullEngine);
+assert.equal(
+  cullObserver.disconnected,
+  true,
+  "Given a song with a culling observer, When it is cleared, Then the observer is disconnected"
+);
+assert.equal(
+  cullLines[2].style.getPropertyValue("content-visibility"),
+  "",
+  "Given a skipped line, When the song is cleared, Then it is un-skipped"
+);
+
+// A window without an IntersectionObserver leaves every line rendered rather than failing.
+const noCullDocument = new FakeDocument();
+const noCullWindow = new FakeWindow(PANEL_STYLE);
+const noCullEngine = createAnimationEngineInstance(asDocument(noCullDocument), asWindow(noCullWindow), new FakeHost());
+const noCullMount = noCullDocument.createElement("div");
+setLyrics(noCullEngine, asElement<HTMLElement>(noCullMount), LINE_SYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+assert.equal(
+  noCullWindow.intersectionObservers.length,
+  0,
+  "Given a window with no IntersectionObserver, When lyrics are set, Then culling arms nothing and the lines render"
+);
+setupLineCullObserver(noCullEngine); // safe to call directly with no observer support
+clearLyrics(noCullEngine);
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +

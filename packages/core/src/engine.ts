@@ -184,6 +184,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   pendingLineScroll: PendingLineScroll | null;
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
   visibleWillChangeElements: Set<HTMLElement>;
+  culledLineElements: Set<HTMLElement>;
+  lineCullObserver: IntersectionObserver | null;
   cachedDurations: Map<string, number>;
   cachedCSSValues: Map<string, string>;
   cachedAnimationSettings: AnimationSettings | null;
@@ -262,6 +264,8 @@ export function createAnimationEngineInstance(
     pendingLineScroll: null,
     lineScrollElementTokens: new WeakMap(),
     visibleWillChangeElements: new Set(),
+    culledLineElements: new Set(),
+    lineCullObserver: null,
     cachedDurations: new Map(),
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
@@ -277,6 +281,8 @@ export function createAnimationEngineInstance(
       engine.tabRendererResizeObserver?.disconnect();
       engine.tabRendererResizeObserver = null;
       engine.observedTabRenderer = null;
+      engine.lineCullObserver?.disconnect();
+      engine.lineCullObserver = null;
       stopPassiveScrollLoop(engine);
       cancelLyricPositionUpdate(engine);
     },
@@ -398,6 +404,9 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   dropPendingLineScroll(engine);
   clearLineScrollAnimations(engine);
   clearVisibleLyricWillChange(engine);
+  engine.lineCullObserver?.disconnect();
+  engine.lineCullObserver = null;
+  clearOffscreenLineCulling(engine);
   for (const line of engine.lines) {
     resetLineAnimationState(line);
     line.isSelected = false;
@@ -1960,6 +1969,80 @@ function clearVisibleLyricWillChange(engine: AnimationEngineInstance): void {
   engine.visibleWillChangeElements = new Set();
 }
 
+// One viewport of overscan on each side, so a line is rendered well before it can be scrolled into
+// view. Which lines are near the viewport is read from the browser's own intersection accounting
+// rather than computed from line positions and `scrollTop`: a transform-driven or scaled scroll (the
+// demo mounts the element that way) decouples layout coordinates from what is actually on screen, and
+// the intersection observer reports the truth in every mounting. Only lines this far out get
+// `content-visibility`, so nothing on screen ever carries its paint containment (which would clip the
+// glow/wave ink and force a per-line stacking context); `auto` keeps skipped lines findable and in
+// the accessibility tree.
+const LINE_CULL_ROOT_MARGIN = "100% 0px 100% 0px";
+
+function cullLine(element: HTMLElement): void {
+  element.style.setProperty("content-visibility", "auto");
+}
+
+function uncullLine(element: HTMLElement): void {
+  element.style.removeProperty("content-visibility");
+}
+
+function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {
+  for (const element of engine.culledLineElements) {
+    uncullLine(element);
+  }
+  engine.culledLineElements = new Set();
+}
+
+/**
+ * (Re)arms off-screen line culling for the current line set. Every line starts rendered; the observer
+ * then skips the ones outside the viewport and its overscan, and un-skips them again before they can
+ * be seen. Rebuilt rather than updated whenever the lines change or a relayout remeasures them, so the
+ * placeholder height a skipped line reports is always its freshly measured one. A host without
+ * `IntersectionObserver` keeps every line rendered, the same as before this existed.
+ */
+export function setupLineCullObserver(engine: AnimationEngineInstance): void {
+  engine.lineCullObserver?.disconnect();
+  clearOffscreenLineCulling(engine);
+
+  const ObserverConstructor = engine.window.IntersectionObserver;
+  if (typeof ObserverConstructor !== "function" || engine.lines.length === 0) {
+    engine.lineCullObserver = null;
+    return;
+  }
+
+  // Pin each line's skipped placeholder to the size it last took rendered, so skipping or un-skipping
+  // a line leaves the container's scroll height unchanged: a drift there reads to the engine as a user
+  // scroll and stops autoscroll. `auto` makes the browser reuse the line's real last-rendered box
+  // rather than the fallback (which, as a content-box value, would omit the line's padding); every
+  // line renders at least once before the observer can skip it, so the remembered size is always
+  // exact. `content-visibility` reads it only while skipped, so it is inert on rendered lines.
+  const restingHeights = engine.lines.map(line => line.lyricElement.offsetHeight);
+  engine.lines.forEach((line, index) => {
+    line.lyricElement.style.setProperty("contain-intrinsic-block-size", `auto ${restingHeights[index]}px`);
+  });
+
+  const observer = new ObserverConstructor(
+    entries => {
+      for (const entry of entries) {
+        const element = entry.target as HTMLElement;
+        if (entry.isIntersecting) {
+          if (engine.culledLineElements.delete(element)) uncullLine(element);
+        } else if (!engine.culledLineElements.has(element)) {
+          cullLine(element);
+          engine.culledLineElements.add(element);
+        }
+      }
+    },
+    { root: null, rootMargin: LINE_CULL_ROOT_MARGIN, threshold: 0 }
+  );
+
+  for (const line of engine.lines) {
+    observer.observe(line.lyricElement);
+  }
+  engine.lineCullObserver = observer;
+}
+
 function updateVisibleLyricWillChange(
   engine: AnimationEngineInstance,
   lines: LineScrollItem[],
@@ -2996,6 +3079,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
   engine.lyricWidth = lyricsElement.clientWidth;
   engine.lyricHeight = lyricsElement.clientHeight;
 
+  // Skipped lines report intrinsic size, so un-cull before the walk reads offsetTop/offsetHeight.
+  clearOffscreenLineCulling(engine);
+
   for (const line of engine.lines) {
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);
     line.position = bounds.y;
@@ -3004,6 +3090,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
       lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
     );
   }
+
+  // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
+  setupLineCullObserver(engine);
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();

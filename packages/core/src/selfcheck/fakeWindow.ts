@@ -129,6 +129,38 @@ function newResizeObserverClass(created: ResizeObserverRecord[]) {
   };
 }
 
+export interface IntersectionObserverRecord {
+  readonly disconnected: boolean;
+  readonly targets: readonly FakeNode[];
+  /** Reports a target crossing into or out of the viewport, which a browser would do off its scroll. */
+  report(target: FakeNode, isIntersecting: boolean): void;
+}
+
+// Optional, because the module feature-detects `IntersectionObserver` and does nothing without it, so
+// a window that leaves it off exercises the no-support path while one that opts in exercises culling.
+function newIntersectionObserverClass(created: IntersectionObserverRecord[]) {
+  return class FakeIntersectionObserver implements IntersectionObserverRecord {
+    disconnected = false;
+    readonly targets: FakeNode[] = [];
+
+    constructor(readonly notify: (entries: { target: FakeNode; isIntersecting: boolean }[]) => void) {
+      created.push(this);
+    }
+
+    observe(target: FakeNode): void {
+      this.targets.push(target);
+    }
+
+    disconnect(): void {
+      this.disconnected = true;
+    }
+
+    report(target: FakeNode, isIntersecting: boolean): void {
+      this.notify([{ target, isIntersecting }]);
+    }
+  };
+}
+
 /**
  * A window narrow enough to read, recording everything any self-check here asserts on. Nothing lays
  * anything out and nothing runs a frame on its own: what a browser would have done is done by
@@ -136,11 +168,15 @@ function newResizeObserverClass(created: ResizeObserverRecord[]) {
  *
  * @param styleValues - What `getPropertyValue` answers, which is the theme this window's document is
  *   carrying. Anything left out reads as a document with no such declaration.
+ * @param options - `intersectionObserver` opts the window into offering one, which the module
+ *   feature-detects to decide whether to cull off-screen lines.
  */
 export class FakeWindow {
   readonly mediaQueryLists = new Map<string, FakeMediaQueryList>();
   readonly resizeObservers: ResizeObserverRecord[] = [];
   readonly ResizeObserver = newResizeObserverClass(this.resizeObservers);
+  readonly intersectionObservers: IntersectionObserverRecord[] = [];
+  readonly IntersectionObserver?: ReturnType<typeof newIntersectionObserverClass>;
   readonly CustomEvent = FakeCustomEvent;
   readonly listeners = new Map<string, Set<() => void>>();
   readonly overflowByElement = new WeakMap<FakeNode, string>();
@@ -155,7 +191,14 @@ export class FakeWindow {
   readonly pendingFrames = new Map<number, FrameRequestCallback>();
   readonly cancelledFrames: number[] = [];
 
-  constructor(readonly styleValues: Record<string, string> = {}) {}
+  constructor(
+    readonly styleValues: Record<string, string> = {},
+    options: { intersectionObserver?: boolean } = {}
+  ) {
+    if (options.intersectionObserver) {
+      this.IntersectionObserver = newIntersectionObserverClass(this.intersectionObservers);
+    }
+  }
 
   get computedStyleReads(): number {
     return this.computedStyleTargets.length;
