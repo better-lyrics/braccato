@@ -177,6 +177,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   window: EngineWindow;
   host: LyricsRendererHost;
   cachedTabRendererHeight: number | null;
+  cachedMaxScrollTop: number | null;
+  cachedScrollTop: number | null;
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
   lineScrollAnimations: LineScrollAnimationRecord[];
@@ -257,6 +259,8 @@ export function createAnimationEngineInstance(
     passiveScrollAccumulatedTime: 0,
     passiveLastWallTime: 0,
     cachedTabRendererHeight: null,
+    cachedMaxScrollTop: null,
+    cachedScrollTop: null,
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
     lineScrollAnimations: [],
@@ -2571,10 +2575,12 @@ function passiveScrollEngine(engine: AnimationEngineInstance, isPlaying: boolean
 
   const prevScrollTop = tabRenderer.scrollTop;
   tabRenderer.scrollTop = targetScroll;
+  const appliedScrollTop = tabRenderer.scrollTop;
+  engine.cachedScrollTop = appliedScrollTop;
   // Only skip the next scroll event if scrollTop actually changed.
   // When it doesn't change (pause phases, sub-pixel rounding), no programmatic
   // scroll event fires, so setting skipScrolls would eat user scroll events instead.
-  if (tabRenderer.scrollTop !== prevScrollTop) {
+  if (appliedScrollTop !== prevScrollTop) {
     engine.skipScrolls = 1;
   }
 }
@@ -2592,12 +2598,24 @@ function setupTabRendererObserver(engine: AnimationEngineInstance, element: HTML
     dropPendingLineScroll(engine);
     if (element && element.isConnected) {
       engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
+      refreshScrollMetrics(engine, element);
     }
   });
 
   engine.tabRendererResizeObserver.observe(element);
   engine.observedTabRenderer = element;
   engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
+  refreshScrollMetrics(engine, element);
+}
+
+// The tick reads the scroll position and its bounds every frame. Reading them off the DOM there
+// forces a synchronous style/layout flush, because the frame's animations have already dirtied the
+// tree, so each read remeasures the active line. The engine owns the scroll position while it is
+// autoscrolling (it writes it) and the bounds only move on a resize or relayout, so both are cached
+// here and refreshed from the few places layout is measured on purpose, leaving the tick read-free.
+function refreshScrollMetrics(engine: AnimationEngineInstance, tabRenderer: HTMLElement): void {
+  engine.cachedMaxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
+  engine.cachedScrollTop = tabRenderer.scrollTop;
 }
 
 /**
@@ -2728,8 +2746,17 @@ export function tickView(
       setupTabRendererObserver(engine, tabRenderer);
     }
     const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
-    let scrollTop = tabRenderer.scrollTop;
-    const maxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
+    // While the user is scrolling, autoscroll is suspended and the DOM owns the position, so read it
+    // and refresh the cache. Otherwise the engine owns it: reuse the value it last wrote, so the tick
+    // never forces the style/layout flush a mid-frame DOM read would.
+    let scrollTop: number;
+    if (engine.scrollResumeTime >= now || engine.cachedScrollTop === null) {
+      scrollTop = tabRenderer.scrollTop;
+      engine.cachedScrollTop = scrollTop;
+    } else {
+      scrollTop = engine.cachedScrollTop;
+    }
+    const maxScrollTop = engine.cachedMaxScrollTop ?? Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
     if (animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
         engine,
@@ -3093,6 +3120,7 @@ export function tickView(
           scrollTop = scrollPos;
           engine.scrollPos = scrollTop;
           tabRenderer.scrollTop = scrollTop;
+          engine.cachedScrollTop = scrollTop;
           engine.skipScrolls += 1;
           engine.skipScrollsDecayTimes.push(Date.now() + 2000);
         } else if (engine.nextScrollAllowedTime - Date.now() < scrollTiming.queueScrollMs || timeJumped) {
@@ -3249,6 +3277,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
 
   // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
   setupLineCullObserver(engine);
+
+  const tabRenderer = engine.host.getScrollElement();
+  if (tabRenderer) refreshScrollMetrics(engine, tabRenderer);
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();
