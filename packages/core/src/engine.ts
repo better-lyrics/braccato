@@ -1748,7 +1748,6 @@ function isGlowRestingInvisible(glowTo: string): boolean {
   return match ? Number.parseFloat(match[1]) === 0 : false;
 }
 
-
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const prefersReducedMotion = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
   const scrollDurationMs = getCSSDurationWithFallback(
