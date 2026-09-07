@@ -198,6 +198,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
   visibleWillChangeElements: Set<HTMLElement>;
   culledLineElements: Set<HTMLElement>;
+  waveAnimationPool: Animation[];
   lineCullObserver: IntersectionObserver | null;
   cachedDurations: Map<string, number>;
   cachedCSSValues: Map<string, string>;
@@ -282,6 +283,7 @@ export function createAnimationEngineInstance(
     lineScrollElementTokens: new WeakMap(),
     visibleWillChangeElements: new Set(),
     culledLineElements: new Set(),
+    waveAnimationPool: [],
     lineCullObserver: null,
     cachedDurations: new Map(),
     cachedCSSValues: new Map(),
@@ -439,11 +441,14 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.lines = [];
   engine.cachedFooterItem = null;
   engine.lyricsContainer = null;
+  engine.waveAnimationPool.length = 0;
 }
 
 function resetPartAnimations(part: AnimationData): void {
   for (const animation of part.animations) {
     animation.cancel();
+    const pool = pooledWaveAnimations.get(animation);
+    if (pool) pool.push(animation);
   }
   part.animations = [];
 }
@@ -656,6 +661,43 @@ function trackLyricAnimationTiming(
   // Being tracked is what makes an animation the song's rather than the interface's, so it is also
   // what decides which ones follow the song's rate.
   animation.playbackRate = engine.playbackRate;
+  return animation;
+}
+
+// Per-letter wave animations are created ~150 at a time on every line activation, and their
+// keyframes are identical across letters (only the delay staggers), so recreating them each time is
+// pure churn. These maps let a finished line hand its wave animations back to its engine's pool
+// (keyed per animation so resetPartAnimations needs no engine reference), and a new line reuse them
+// by retargeting the existing Animation to the new letter instead of allocating a fresh one. The
+// keyframes are only re-parsed when the variant (emphasis/theme) actually changes, which is where
+// nearly all of the saving lives.
+const pooledWaveAnimations = new WeakMap<Animation, Animation[]>();
+const pooledWaveKeyframeSignatures = new WeakMap<Animation, string>();
+
+function acquireWaveAnimation(
+  engine: AnimationEngineInstance,
+  letterElement: HTMLElement,
+  keyframes: Keyframe[],
+  keyframeSignature: string,
+  timing: { duration: number; delay: number; fill: FillMode }
+): Animation {
+  const pool = engine.waveAnimationPool;
+  const pooled = pool[pool.length - 1];
+  const effect = pooled?.effect as KeyframeEffect | null | undefined;
+  if (pooled && effect && typeof effect.setKeyframes === "function") {
+    pool.pop();
+    effect.target = letterElement;
+    if (pooledWaveKeyframeSignatures.get(pooled) !== keyframeSignature) {
+      effect.setKeyframes(keyframes);
+      pooledWaveKeyframeSignatures.set(pooled, keyframeSignature);
+    }
+    effect.updateTiming(timing);
+    pooled.play();
+    return pooled;
+  }
+  const animation = letterElement.animate(keyframes, timing);
+  pooledWaveAnimations.set(animation, pool);
+  pooledWaveKeyframeSignatures.set(animation, keyframeSignature);
   return animation;
 }
 
@@ -1382,17 +1424,18 @@ function startWordAnimations(
       const staggerMs = timedDurationMs > 0 ? timedDurationMs / 2.5 / letterCount : 0;
       const cascadeDurationMs = config.letterWave.durationMs + (letterCount - 1) * staggerMs;
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
+      const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       for (const set of [part.letterElements, part.highlightLetterElements]) {
         set?.forEach((letterElement, index) => {
-          const options: KeyframeAnimationOptions = {
-            duration: config.letterWave.durationMs,
-            delay: index * staggerMs,
-            fill: "forwards",
-          };
-          const animation = trackLyricAnimationTiming(engine, letterElement.animate(floatKeyframes, options), {
-            appliedTimingOffsetMs,
-            offsetMs: 0,
-          });
+          const animation = trackLyricAnimationTiming(
+            engine,
+            acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
+              duration: config.letterWave.durationMs,
+              delay: index * staggerMs,
+              fill: "forwards",
+            }),
+            { appliedTimingOffsetMs, offsetMs: 0 }
+          );
           animation.currentTime = floatStartMs;
           wobbleAnimations.push(animation);
         });
