@@ -24,6 +24,7 @@ import {
   LINE_CLASS,
   PAUSED_CLASS,
   ROMANIZED_LYRICS_CLASS,
+  RTL_CLASS,
   TRANSLATED_LYRICS_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
@@ -1104,16 +1105,22 @@ function startRichSyncedHighlightAnimations(
         : null;
 
     if (windows && highlightLetters) {
+      const letterCount = highlightLetters.length;
+      const maskSpan = letterCount + 2;
+      const rtl = part.highlightElement.classList.contains(RTL_CLASS);
+      const maskPositionAt = (start: number, index: number): string => {
+        const q = (0.5 * maskSpan - (start * letterCount - index)) / (maskSpan - 1);
+        return `${(rtl ? 1 - q : q) * 100}% 0%`;
+      };
       windows.forEach((window, index) => {
+        const from = maskPositionAt(window.from.start, index);
+        const to = maskPositionAt(window.to.start, index);
         const animation = trackLyricAnimationTiming(
           engine,
           highlightLetters[index].animate(
             [
-              {
-                "--lyric-transition-amount-start": window.from.start,
-                "--lyric-transition-amount-end": window.from.end,
-              },
-              { "--lyric-transition-amount-start": window.to.start, "--lyric-transition-amount-end": window.to.end },
+              { maskPosition: from, WebkitMaskPosition: from },
+              { maskPosition: to, WebkitMaskPosition: to },
             ] as Keyframe[],
             { duration: window.durationMs, delay: window.delayMs, easing: "linear", fill: "both" }
           ),
@@ -1727,6 +1734,7 @@ function resolveGlowFilter(
   const radius = getCSSValue(engine, lyricsElement, `--blyrics-highlight-glow-radius-${suffix}`, radiusDefault);
   return `drop-shadow(0 0 ${radius} var(--blyrics-glow-color))`;
 }
+
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const prefersReducedMotion = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
