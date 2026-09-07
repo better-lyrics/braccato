@@ -555,6 +555,7 @@ interface AnimationConfig {
     glowMinDurationMs: number;
     glowEasing: string;
     glowContainerAlpha: number;
+    glowRestingInvisible: boolean;
   };
   word: {
     wobbleDurationMs: number;
@@ -1167,7 +1168,7 @@ function startRichSyncedHighlightAnimations(
       highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
-        fill: "forwards",
+        fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1209,7 +1210,7 @@ function startLineSyncedHighlightAnimations(
       highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
-        fill: "forwards",
+        fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1735,6 +1736,18 @@ function resolveGlowFilter(
   return `drop-shadow(0 0 ${radius} var(--blyrics-glow-color))`;
 }
 
+// A settled glow whose blur radius is 0 paints nothing, yet a fill:forwards drop-shadow keeps a live
+// render surface on every highlighted word for the rest of the line. When the resting glow is this
+// invisible form the animation can fill "none" instead, so the surface is released once the word
+// settles. Only the engine's own drop-shadow(0 0 <radius> ...) shape is judged; a theme override or a
+// non-zero resting radius stays on fill:forwards so its permanent glow is preserved unchanged.
+function isGlowRestingInvisible(glowTo: string): boolean {
+  const value = glowTo.trim();
+  if (value === "" || value === "none") return true;
+  const match = value.match(/^drop-shadow\(\s*0\s+0\s+(\S+)\s+var\(--blyrics-glow-color\)\)$/);
+  return match ? Number.parseFloat(match[1]) === 0 : false;
+}
+
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const prefersReducedMotion = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
@@ -1816,6 +1829,7 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       ),
       glowEasing: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-easing", "ease"),
       glowContainerAlpha: parseColorAlpha(getCSSValue(engine, lyricsElement, "--blyrics-glow-color", "")) ?? 1,
+      glowRestingInvisible: isGlowRestingInvisible(resolveGlowFilter(engine, lyricsElement, "to", "0")),
     },
     word: {
       wobbleDurationMs: getCSSDurationWithFallback(engine, lyricsElement, "--blyrics-wobble-duration", "1s"),

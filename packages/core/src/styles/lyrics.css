@@ -137,7 +137,6 @@
 			calc(100% * var(--lyric-transition-amount-end) + 1px)
 	);
 	background-clip: text;
-	filter: drop-shadow(0 0 0 var(--blyrics-glow-color));
 	opacity: 0;
 	pointer-events: none;
 	--lyric-transition-amount-start: var(
