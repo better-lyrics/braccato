@@ -107,6 +107,14 @@ const LINE_SCROLL_STYLE_SETTINGS = [
   registerLineScrollStyleSetting("--blyrics-line-scroll-below-translate-y-end", ""),
 ] as const;
 
+// The line-scroll translate defaults to the scroll delta at the start and zero at the end, which the
+// engine already knows in pixels, so it need not be read back from the DOM unless a theme overrides
+// one of these settings. Reading the override state off the registry keeps the fast path free of the
+// per-line write-then-getComputedStyle that would otherwise force a recalc on every line change.
+const LINE_SCROLL_TRANSLATE_SETTINGS = LINE_SCROLL_STYLE_SETTINGS.filter(([property]) =>
+  property.includes("translate-y")
+).map(([, setting]) => setting);
+
 const animationTimingLastLogTimes = new WeakMap<LineData, number>();
 
 // 0.5 means the selected lyric will be in the middle of the screen, 0 means top, 1 means bottom
@@ -180,6 +188,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   cachedTabRendererHeight: number | null;
   cachedMaxScrollTop: number | null;
   cachedScrollTop: number | null;
+  cachedFooterItem: LineScrollItem | null;
+  cachedLineScrollTiming: Map<string, LineScrollTiming>;
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
   lineScrollAnimations: LineScrollAnimationRecord[];
@@ -262,6 +272,8 @@ export function createAnimationEngineInstance(
     cachedTabRendererHeight: null,
     cachedMaxScrollTop: null,
     cachedScrollTop: null,
+    cachedFooterItem: null,
+    cachedLineScrollTiming: new Map(),
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
     lineScrollAnimations: [],
@@ -425,6 +437,7 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.passiveLastWallTime = 0;
   stopPassiveScrollLoop(engine);
   engine.lines = [];
+  engine.cachedFooterItem = null;
   engine.lyricsContainer = null;
 }
 
@@ -1584,6 +1597,7 @@ export function clearStyleCaches(engine: AnimationEngineInstance): void {
   engine.cachedDurations.clear();
   engine.cachedCSSValues.clear();
   engine.cachedAnimationSettings = null;
+  engine.cachedLineScrollTiming.clear();
 }
 
 function getCSSValue(
@@ -1747,7 +1761,6 @@ function isGlowRestingInvisible(glowTo: string): boolean {
   const match = value.match(/^drop-shadow\(\s*0\s+0\s+(\S+)\s+var\(--blyrics-glow-color\)\)$/);
   return match ? Number.parseFloat(match[1]) === 0 : false;
 }
-
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const prefersReducedMotion = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
@@ -2090,6 +2103,16 @@ interface ResolvedLineScroll extends PreparedLineScroll {
   endTranslate: string;
 }
 
+// The duration and easings a line scrolls with depend only on its side and its distance from the
+// active line, not on the pixel delta, so they are memoised per (side, |relativeIndex|) and reused
+// until a theme change clears the caches. Skipping the resolve is what keeps the tick from writing
+// the inherited line-scroll variables on every visible line and then forcing a full-subtree recalc.
+interface LineScrollTiming {
+  durationMs: number;
+  startEasing: string;
+  endEasing: string;
+}
+
 interface LineScrollPlan {
   items: ResolvedLineScroll[];
 }
@@ -2250,19 +2273,22 @@ function updateVisibleLyricWillChange(
   engine.visibleWillChangeElements = nextVisibleElements;
 }
 
-function getLineScrollItems(lines: LineData[], lyricsElement: HTMLElement): LineScrollItem[] {
-  const footer = lyricsElement.querySelector(`:scope > .${FOOTER_CLASS}`) as HTMLElement | null;
-  if (!footer) return lines;
+// The footer's bounds are cached at relayout beside the line positions rather than remeasured here.
+// The tick calls this inside the scroll commit, after its own class writes have dirtied style, so a
+// fresh `getBoundingClientRect` would force a synchronous recalc of the whole visible subtree every
+// line change. `measureFooterItem` refreshes the cache whenever the line positions themselves are.
+function getLineScrollItems(engine: AnimationEngineInstance, lines: LineData[]): LineScrollItem[] {
+  return engine.cachedFooterItem ? [...lines, engine.cachedFooterItem] : lines;
+}
 
+function measureFooterItem(engine: AnimationEngineInstance, lyricsElement: HTMLElement): void {
+  const footer = lyricsElement.querySelector(`:scope > .${FOOTER_CLASS}`) as HTMLElement | null;
+  if (!footer) {
+    engine.cachedFooterItem = null;
+    return;
+  }
   const footerBounds = getRelativeLayoutBounds(lyricsElement, footer);
-  return [
-    ...lines,
-    {
-      lyricElement: footer,
-      position: footerBounds.y,
-      height: footerBounds.height,
-    },
-  ];
+  engine.cachedFooterItem = { lyricElement: footer, position: footerBounds.y, height: footerBounds.height };
 }
 
 function prepareLineScrollOffsets(
@@ -2280,82 +2306,121 @@ function prepareLineScrollOffsets(
   }
 
   const scrollDistancePx = Math.abs(scrollDeltaPx);
-  const prepared: PreparedLineScroll[] = [];
+  const translateThemed = LINE_SCROLL_TRANSLATE_SETTINGS.some(setting => setting.isManuallySet());
+  const defaultStartTranslate = `0px ${scrollDeltaPx}px`;
 
   // Preserve the original windowing exactly: only lines intersecting the
   // union of the old and new viewports receive scroll animations.
+  const requests: {
+    item: PreparedLineScroll;
+    index: number;
+    relativeIndex: number;
+    timingKey: string;
+    timing: LineScrollTiming | undefined;
+  }[] = [];
   for (let index = 0; index < lines.length; index++) {
     if (!isLineVisibleDuringScroll(lines[index], fromScrollTop, toScrollTop, viewportHeight)) {
       continue;
     }
-
     const lineElement = lines[index].lyricElement;
     const relativeIndex = index - activeLineIndex;
     const side = lineScrollSide(relativeIndex, scrollDeltaPx);
+    const token = ++engine.lineScrollAnimationToken;
+    engine.lineScrollElementTokens.set(lineElement, token);
+    const item: PreparedLineScroll = { lineElement, side, token };
+    const timingKey = `${side}|${Math.abs(relativeIndex)}`;
+    requests.push({ item, index, relativeIndex, timingKey, timing: engine.cachedLineScrollTiming.get(timingKey) });
+  }
 
+  // The plumbing variables only need to reach the DOM for a line whose timing is not cached yet, or
+  // for every line when a theme drives the translate off them. Every other scroll leaves the visible
+  // lines untouched, so the tick's later reads no longer force a recalc of their subtrees.
+  const linesToWrite = requests.filter(request => translateThemed || !request.timing);
+  for (const { item, index, relativeIndex } of linesToWrite) {
+    const lineElement = item.lineElement;
     lineElement.style.setProperty(LINE_SCROLL_INDEX_PROPERTY, String(index));
     lineElement.style.setProperty(LINE_SCROLL_ACTIVE_INDEX_PROPERTY, String(activeLineIndex));
     lineElement.style.setProperty(LINE_SCROLL_RELATIVE_INDEX_PROPERTY, String(relativeIndex));
     lineElement.style.setProperty(LINE_SCROLL_ABS_RELATIVE_INDEX_PROPERTY, String(Math.abs(relativeIndex)));
-    lineElement.style.setProperty(LINE_SCROLL_SIDE_PROPERTY, side);
+    lineElement.style.setProperty(LINE_SCROLL_SIDE_PROPERTY, item.side);
     lineElement.style.setProperty(LINE_SCROLL_DELTA_PROPERTY, `${scrollDeltaPx}px`);
     lineElement.style.setProperty(LINE_SCROLL_DISTANCE_PROPERTY, `${scrollDistancePx}px`);
     setLineScrollStyleProperties(lineElement);
-    const token = ++engine.lineScrollAnimationToken;
-    engine.lineScrollElementTokens.set(lineElement, token);
-
-    prepared.push({ lineElement, side, token });
   }
 
-  const durations = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "transition-duration",
-    item => lineScrollDurationProperty(item.side, config.lineScroll.durationMs, config.lineScroll.differentialEffects),
-    style => {
-      const durationMs = toMs(style.transitionDuration.split(",")[0].trim());
-      return durationMs > 0 ? durationMs : config.lineScroll.durationMs;
-    }
-  );
-  const startEasings = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "transition-timing-function",
-    item =>
-      lineScrollEasingProperty(item.side, "start", config.lineScroll.easing, config.lineScroll.differentialEffects),
-    style => style.transitionTimingFunction.trim() || config.lineScroll.easing
-  );
-  const endEasings = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "transition-timing-function",
-    item => lineScrollEasingProperty(item.side, "end", config.lineScroll.easing, config.lineScroll.differentialEffects),
-    style => style.transitionTimingFunction.trim() || config.lineScroll.easing
-  );
-  const startTranslates = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "translate",
-    item => lineScrollTranslate(item.side, "start", config.lineScroll.differentialEffects),
-    style => normalizedTranslate(style.translate)
-  );
-  const endTranslates = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "translate",
-    item => lineScrollTranslate(item.side, "end", config.lineScroll.differentialEffects),
-    style => normalizedTranslate(style.translate)
-  );
+  const misses = requests.filter(request => !request.timing);
+  if (misses.length > 0) {
+    const missItems = misses.map(request => request.item);
+    const durations = batchResolveLineScrollProperty(
+      engine,
+      missItems,
+      "transition-duration",
+      item =>
+        lineScrollDurationProperty(item.side, config.lineScroll.durationMs, config.lineScroll.differentialEffects),
+      style => {
+        const durationMs = toMs(style.transitionDuration.split(",")[0].trim());
+        return durationMs > 0 ? durationMs : config.lineScroll.durationMs;
+      }
+    );
+    const startEasings = batchResolveLineScrollProperty(
+      engine,
+      missItems,
+      "transition-timing-function",
+      item =>
+        lineScrollEasingProperty(item.side, "start", config.lineScroll.easing, config.lineScroll.differentialEffects),
+      style => style.transitionTimingFunction.trim() || config.lineScroll.easing
+    );
+    const endEasings = batchResolveLineScrollProperty(
+      engine,
+      missItems,
+      "transition-timing-function",
+      item =>
+        lineScrollEasingProperty(item.side, "end", config.lineScroll.easing, config.lineScroll.differentialEffects),
+      style => style.transitionTimingFunction.trim() || config.lineScroll.easing
+    );
+    misses.forEach((request, resolveIndex) => {
+      const timing: LineScrollTiming = {
+        durationMs: durations[resolveIndex],
+        startEasing: startEasings[resolveIndex],
+        endEasing: endEasings[resolveIndex],
+      };
+      engine.cachedLineScrollTiming.set(request.timingKey, timing);
+      request.timing = timing;
+    });
+  }
+
+  let startTranslates: string[] | null = null;
+  let endTranslates: string[] | null = null;
+  if (translateThemed) {
+    const items = requests.map(request => request.item);
+    startTranslates = batchResolveLineScrollProperty(
+      engine,
+      items,
+      "translate",
+      item => lineScrollTranslate(item.side, "start", config.lineScroll.differentialEffects),
+      style => normalizedTranslate(style.translate)
+    );
+    endTranslates = batchResolveLineScrollProperty(
+      engine,
+      items,
+      "translate",
+      item => lineScrollTranslate(item.side, "end", config.lineScroll.differentialEffects),
+      style => normalizedTranslate(style.translate)
+    );
+  }
 
   return {
-    items: prepared.map((item, index) => ({
-      ...item,
-      durationMs: durations[index],
-      startEasing: startEasings[index],
-      endEasing: endEasings[index],
-      startTranslate: startTranslates[index],
-      endTranslate: endTranslates[index],
-    })),
+    items: requests.map((request, requestIndex) => {
+      const timing = request.timing as LineScrollTiming;
+      return {
+        ...request.item,
+        durationMs: timing.durationMs,
+        startEasing: timing.startEasing,
+        endEasing: timing.endEasing,
+        startTranslate: startTranslates ? startTranslates[requestIndex] : defaultStartTranslate,
+        endTranslate: endTranslates ? endTranslates[requestIndex] : "0px 0px",
+      };
+    }),
   };
 }
 
@@ -3101,7 +3166,7 @@ export function tickView(
         updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
         prepareUpcomingLineScroll(
           engine,
-          getLineScrollItems(lines, lyricsElement),
+          getLineScrollItems(engine, lines),
           lastActiveLyric,
           scrollPos - scrollTop,
           scrollTop,
@@ -3122,7 +3187,7 @@ export function tickView(
             const scrollDeltaPx = scrollPos - scrollTop;
             if (animationConfig.enabled.scroll) {
               updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
-              const lineScrollItems = getLineScrollItems(lines, lyricsElement);
+              const lineScrollItems = getLineScrollItems(engine, lines);
               commitOrPrepareLineScroll(
                 engine,
                 lineScrollItems,
@@ -3296,6 +3361,8 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
       lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
     );
   }
+
+  measureFooterItem(engine, lyricsElement);
 
   // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
   setupLineCullObserver(engine);
