@@ -30,6 +30,7 @@ import {
   WORD_CLASS,
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
+  WORD_HIGHLIGHT_LETTERED_CLASS,
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
 import { getSeekTimeFromClick } from "./seek";
@@ -361,8 +362,12 @@ function createTimedWordSpan(
 
     if (perLetter) {
       const collected = appendLetters(doc, wordElement, part.words);
-      if (wordElement === span) letters = collected;
-      else highlightLetters = collected;
+      if (wordElement === span) {
+        letters = collected;
+      } else {
+        highlightLetters = collected;
+        wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
+      }
     } else {
       appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
     }

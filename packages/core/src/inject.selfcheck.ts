@@ -8,6 +8,7 @@ import {
   WORD_CLASS,
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
+  WORD_HIGHLIGHT_LETTERED_CLASS,
 } from "./constants";
 import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
@@ -116,6 +117,11 @@ assert.equal(
   3,
   "Given three timed words, When the line is built, Then every word has the same real highlight target"
 );
+assert.equal(
+  highlights.some(node => node.classList.contains(WORD_HIGHLIGHT_LETTERED_CLASS)),
+  false,
+  "Given letter wave off, When a highlight word is built, Then it stays unlettered and keeps its swipe gradient"
+);
 assert.ok(
   wrappedHighlight?.parentNode?.classList.contains(WORD_GROUP_CLASS),
   "Given a wrapping highlight, When it is built, Then its matching highlight group owns it"
@@ -211,6 +217,19 @@ assert.equal(
   waveNodes.some(node => node.name === "wbr"),
   false,
   "Given letter wave on, When a word is built, Then the wrap-break path does not also run"
+);
+
+const waveHighlights = waveNodes.filter(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
+assert.ok(
+  waveHighlights.length > 0 && waveHighlights.every(node => node.classList.contains(WORD_HIGHLIGHT_LETTERED_CLASS)),
+  "Given letter wave on, When a highlight word is split into letters, Then it carries the lettered class the swipe-off rule selects"
+);
+assert.equal(
+  waveNodes.some(
+    node => node.classList.contains(WORD_HIGHLIGHT_LETTERED_CLASS) && !node.classList.contains(WORD_HIGHLIGHT_CLASS)
+  ),
+  false,
+  "Given letter wave on, When words are built, Then the lettered class marks only the highlight run"
 );
 
 setThemeSettings(new Map());
