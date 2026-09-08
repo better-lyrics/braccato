@@ -109,8 +109,7 @@ export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
-  // Set when this word's resolved glow color renders nothing, so the per-frame blur is skipped.
-  // Resolved per word because themes vary the glow color per word (e.g. only long words glow).
+  // Set when the word's resolved glow renders nothing, so its per-frame blur is skipped.
   glowSuppressed?: boolean;
 }
 
@@ -321,10 +320,9 @@ function appendLetters(doc: Document, wordElement: HTMLElement, text: string): H
   // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
   // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
   wordElement.style.setProperty("--mask-fade", `${(10 * chars.length) / (chars.length + 2)}%`);
-  return chars.map((char, index) => {
+  return chars.map(char => {
     const letter = doc.createElement("span");
     letter.classList.add(LETTER_CLASS);
-    letter.style.setProperty("--letter-index", String(index));
     letter.textContent = char;
     wordElement.appendChild(letter);
     return letter;

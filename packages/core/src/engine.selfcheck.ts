@@ -13,6 +13,7 @@ import {
   hasRenderedLines,
   noteUserScroll,
   parseColorAlpha,
+  planLetterMaskSweep,
   relayout,
   resolveTickOptions,
   scheduleLyricPositionUpdate,
@@ -797,10 +798,7 @@ assert.equal(
 
 // -- Off-screen line culling --------------------------------------------
 
-// A window that offers an IntersectionObserver skips the lines it reports off-screen and renders the
-// rest, and it never carries `content-visibility` on a line it has not been told is gone. A window
-// without one (every other view above) leaves every line rendered, which is why those views never
-// asserted on culling.
+// A window offering an IntersectionObserver skips off-screen lines; one without leaves all rendered.
 
 const cullDocument = new FakeDocument();
 const cullWindow = new FakeWindow(PANEL_STYLE, { intersectionObserver: true });
@@ -930,6 +928,52 @@ assert.equal(
   computeLetterSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
   null,
   "Given a word with no letters, Then there are no per-letter windows"
+);
+
+// planLetterMaskSweep hands every letter-split word a reveal, even where computeLetterSwipeWindows
+// bails: the whole-word gradient is off for letter words, so without the fallback they snap to fully
+// highlighted instead of sweeping.
+const linearSweep = planLetterMaskSweep(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
+assert.equal(linearSweep.length, SWIPE_LETTERS, "Given a linear ramp, Then every letter gets a mask sweep");
+assert.ok(
+  linearSweep.every(sweep => sweep.easing === "linear" && sweep.keyframes.length === 2),
+  "Given a linear ramp, Then each letter rides the short windowed plan"
+);
+
+for (const easing of ["ease", "cubic-bezier(0.4, 0, 0.2, 1)"]) {
+  const sweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
+  assert.equal(sweep.length, SWIPE_LETTERS, "Given a non-linear ramp, When planned, Then every letter still reveals");
+  assert.ok(
+    sweep.every(entry => entry.easing === easing && entry.durationMs === SWIPE_DURATION_MS && entry.delayMs === 0),
+    "Given a non-linear ramp, Then each letter runs the whole duration under the theme easing"
+  );
+  assert.ok(
+    sweep.every(entry => entry.keyframes[0].offset === 0 && entry.keyframes.at(-1)?.offset === 1),
+    "Given a non-linear ramp, Then each letter's reveal spans the whole timeline"
+  );
+  assert.ok(
+    sweep.every(
+      (entry, index) => entry.keyframes.at(-1)?.maskPosition === linearSweep[index].keyframes.at(-1)?.maskPosition
+    ),
+    "Given a non-linear ramp, Then each letter ends at the same fully-revealed mask as the linear plan, not swept past"
+  );
+  assert.ok(
+    sweep.every((entry, index) => entry.keyframes[0].maskPosition === linearSweep[index].keyframes[0].maskPosition),
+    "Given a non-linear ramp, Then each letter starts hidden, the same as the linear plan"
+  );
+}
+
+assert.deepEqual(
+  planLetterMaskSweep(SWIPE_RAMP, 0, SWIPE_DURATION_MS, false),
+  [],
+  "Given a word with no letters, Then there is nothing to sweep"
+);
+
+const ltrSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
+const rtlSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, true);
+assert.ok(
+  ltrSweep.some((entry, index) => entry.keyframes[0].maskPosition !== rtlSweep[index].keyframes[0].maskPosition),
+  "Given RTL, Then the mask sweeps from the mirrored edge"
 );
 
 // Glow alpha parsing: the engine skips a word's per-frame blur only when its resolved glow color

@@ -107,10 +107,7 @@ const LINE_SCROLL_STYLE_SETTINGS = [
   registerLineScrollStyleSetting("--blyrics-line-scroll-below-translate-y-end", ""),
 ] as const;
 
-// The line-scroll translate defaults to the scroll delta at the start and zero at the end, which the
-// engine already knows in pixels, so it need not be read back from the DOM unless a theme overrides
-// one of these settings. Reading the override state off the registry keeps the fast path free of the
-// per-line write-then-getComputedStyle that would otherwise force a recalc on every line change.
+// Tracked so the tick can skip the per-line translate write-then-read unless a theme overrides it.
 const LINE_SCROLL_TRANSLATE_SETTINGS = LINE_SCROLL_STYLE_SETTINGS.filter(([property]) =>
   property.includes("translate-y")
 ).map(([, setting]) => setting);
@@ -664,13 +661,8 @@ function trackLyricAnimationTiming(
   return animation;
 }
 
-// Per-letter wave animations are created ~150 at a time on every line activation, and their
-// keyframes are identical across letters (only the delay staggers), so recreating them each time is
-// pure churn. These maps let a finished line hand its wave animations back to its engine's pool
-// (keyed per animation so resetPartAnimations needs no engine reference), and a new line reuse them
-// by retargeting the existing Animation to the new letter instead of allocating a fresh one. The
-// keyframes are only re-parsed when the variant (emphasis/theme) actually changes, which is where
-// nearly all of the saving lives.
+// Finished per-letter wave animations are pooled and retargeted onto new letters, since recreating
+// ~150 identical ones per line activation is pure churn.
 const pooledWaveAnimations = new WeakMap<Animation, Animation[]>();
 const pooledWaveKeyframeSignatures = new WeakMap<Animation, string>();
 
@@ -1085,12 +1077,7 @@ export interface SwipeRamp {
   endTo: string;
 }
 
-// The per-letter reveal is one continuous gradient the letters tile through `--letters` and
-// `--letter-index`. Driven from a single inherited property it repaints every letter each frame,
-// including the ones already filled or still empty; only the one or two under the moving edge are
-// actually changing. Each window hands a letter its own slice of the sweep so the rest hold a
-// finished animation, which no longer ticks. Null when the sweep is not a forward linear ramp, and
-// the single-property path stays exact there.
+// null unless the ramp is linear and forward; planLetterMaskSweep sweeps the whole word instead there.
 export function computeLetterSwipeWindows(
   swipe: SwipeRamp,
   letterCount: number,
@@ -1127,6 +1114,63 @@ export function computeLetterSwipeWindows(
   return windows;
 }
 
+export interface LetterMaskKeyframe {
+  offset: number;
+  maskPosition: string;
+}
+
+export interface LetterMaskSweep {
+  keyframes: LetterMaskKeyframe[];
+  delayMs: number;
+  durationMs: number;
+  easing: string;
+}
+
+// Per-letter mask reveal. A linear forward ramp keeps the short windowed animations so a settled letter
+// holds a finished one; any other easing runs the same geometry over the whole duration, letting the
+// theme easing warp when each letter reveals, so it ends revealed rather than swept past.
+export function planLetterMaskSweep(
+  swipe: SwipeRamp,
+  letterCount: number,
+  swipeDurationMs: number,
+  rtl: boolean
+): LetterMaskSweep[] {
+  if (letterCount <= 0) return [];
+  const windows = computeLetterSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
+  if (!windows) return [];
+
+  const maskSpan = letterCount + 2;
+  const maskPositionAt = (start: number, index: number): string => {
+    const q = (0.5 * maskSpan - (start * letterCount - index)) / (maskSpan - 1);
+    return `${(rtl ? 1 - q : q) * 100}% 0%`;
+  };
+  const linear = swipe.easing === "linear";
+  const durationMs = swipeDurationMs > 0 ? swipeDurationMs : 1;
+
+  return windows.map((window, index) => {
+    const from = maskPositionAt(window.from.start, index);
+    const to = maskPositionAt(window.to.start, index);
+    if (linear) {
+      return {
+        keyframes: [
+          { offset: 0, maskPosition: from },
+          { offset: 1, maskPosition: to },
+        ],
+        delayMs: window.delayMs,
+        durationMs: window.durationMs,
+        easing: "linear",
+      };
+    }
+    const revealStart = clamp(window.delayMs / durationMs, 0, 1);
+    const revealEnd = clamp((window.delayMs + window.durationMs) / durationMs, 0, 1);
+    const keyframes: LetterMaskKeyframe[] = [{ offset: 0, maskPosition: from }];
+    if (revealStart > 0) keyframes.push({ offset: revealStart, maskPosition: from });
+    if (revealEnd > revealStart) keyframes.push({ offset: revealEnd, maskPosition: to });
+    if (revealEnd < 1) keyframes.push({ offset: 1, maskPosition: to });
+    return { keyframes, delayMs: 0, durationMs, easing: swipe.easing };
+  });
+}
+
 function startRichSyncedHighlightAnimations(
   engine: AnimationEngineInstance,
   part: PartData,
@@ -1145,40 +1189,29 @@ function startRichSyncedHighlightAnimations(
     const swipeTiming = { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs };
     const swipeCurrentTimeMs = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
     const highlightLetters = part.highlightLetterElements;
-    const windows =
-      highlightLetters && highlightLetters.length > 0
-        ? computeLetterSwipeWindows(
-            {
-              easing: config.highlight.swipeEasing,
-              startFrom: config.highlight.swipeStartFrom,
-              startTo: config.highlight.swipeStartTo,
-              endFrom: config.highlight.swipeEndFrom,
-              endTo: config.highlight.swipeEndTo,
-            },
-            highlightLetters.length,
-            swipeDurationMs
-          )
-        : null;
-
-    if (windows && highlightLetters) {
-      const letterCount = highlightLetters.length;
-      const maskSpan = letterCount + 2;
-      const rtl = part.highlightElement.classList.contains(RTL_CLASS);
-      const maskPositionAt = (start: number, index: number): string => {
-        const q = (0.5 * maskSpan - (start * letterCount - index)) / (maskSpan - 1);
-        return `${(rtl ? 1 - q : q) * 100}% 0%`;
-      };
-      windows.forEach((window, index) => {
-        const from = maskPositionAt(window.from.start, index);
-        const to = maskPositionAt(window.to.start, index);
+    if (highlightLetters && highlightLetters.length > 0) {
+      const sweeps = planLetterMaskSweep(
+        {
+          easing: config.highlight.swipeEasing,
+          startFrom: config.highlight.swipeStartFrom,
+          startTo: config.highlight.swipeStartTo,
+          endFrom: config.highlight.swipeEndFrom,
+          endTo: config.highlight.swipeEndTo,
+        },
+        highlightLetters.length,
+        swipeDurationMs,
+        part.highlightElement.classList.contains(RTL_CLASS)
+      );
+      sweeps.forEach((sweep, index) => {
         const animation = trackLyricAnimationTiming(
           engine,
           highlightLetters[index].animate(
-            [
-              { maskPosition: from, WebkitMaskPosition: from },
-              { maskPosition: to, WebkitMaskPosition: to },
-            ] as Keyframe[],
-            { duration: window.durationMs, delay: window.delayMs, easing: "linear", fill: "both" }
+            sweep.keyframes.map(frame => ({
+              offset: frame.offset,
+              maskPosition: frame.maskPosition,
+              WebkitMaskPosition: frame.maskPosition,
+            })) as Keyframe[],
+            { duration: sweep.durationMs, delay: sweep.delayMs, easing: sweep.easing, fill: "both" }
           ),
           swipeTiming
         );
@@ -1734,9 +1767,7 @@ function alphaToken(token: string): number {
   return clamp(value, 0, 1);
 }
 
-// Reads the alpha out of a resolved CSS color so the engine can tell a glow that renders nothing from
-// one that does not. Returns null for an unrecognized format, which the caller treats as opaque so a
-// visible glow is never mistaken for an empty one.
+// null for an unrecognized format, which the caller treats as opaque so a visible glow is never dropped.
 export function parseColorAlpha(value: string): number | null {
   const color = value.trim().toLowerCase();
   if (color === "") return null;
@@ -1762,10 +1793,8 @@ export function parseColorAlpha(value: string): number | null {
   return null;
 }
 
-// Themes move the glow color per word: sustain hides it on most words but keeps it on long ones. When
-// the container's own glow already renders nothing, resolve each word's real color so the empty ones
-// drop their blur while any word a theme lit up keeps it untouched. When the container glow is
-// visible, nothing is suppressed and no per-word style is read.
+// Per-word glow is resolved only when the container glow already renders nothing, so an empty word
+// drops its blur while a word a theme lit up keeps it.
 function resolveLineGlowSuppression(
   engine: AnimationEngineInstance,
   lineData: LineData,
@@ -1793,11 +1822,8 @@ function resolveGlowFilter(
   return `drop-shadow(0 0 ${radius} var(--blyrics-glow-color))`;
 }
 
-// A settled glow whose blur radius is 0 paints nothing, yet a fill:forwards drop-shadow keeps a live
-// render surface on every highlighted word for the rest of the line. When the resting glow is this
-// invisible form the animation can fill "none" instead, so the surface is released once the word
-// settles. Only the engine's own drop-shadow(0 0 <radius> ...) shape is judged; a theme override or a
-// non-zero resting radius stays on fill:forwards so its permanent glow is preserved unchanged.
+// Only the engine's own drop-shadow(0 0 <radius> ...) resting shape counts, so a theme override or a
+// non-zero radius keeps its permanent glow on fill:forwards.
 function isGlowRestingInvisible(glowTo: string): boolean {
   const value = glowTo.trim();
   if (value === "" || value === "none") return true;
@@ -2146,10 +2172,8 @@ interface ResolvedLineScroll extends PreparedLineScroll {
   endTranslate: string;
 }
 
-// The duration and easings a line scrolls with depend only on its side and its distance from the
-// active line, not on the pixel delta, so they are memoised per (side, |relativeIndex|) and reused
-// until a theme change clears the caches. Skipping the resolve is what keeps the tick from writing
-// the inherited line-scroll variables on every visible line and then forcing a full-subtree recalc.
+// Memoised per (side, |relativeIndex|) because the scroll duration and easings depend only on those,
+// not on the pixel delta.
 interface LineScrollTiming {
   durationMs: number;
   startEasing: string;
@@ -2217,14 +2241,8 @@ function clearVisibleLyricWillChange(engine: AnimationEngineInstance): void {
   engine.visibleWillChangeElements = new Set();
 }
 
-// One viewport of overscan on each side, so a line is rendered well before it can be scrolled into
-// view. Which lines are near the viewport is read from the browser's own intersection accounting
-// rather than computed from line positions and `scrollTop`: a transform-driven or scaled scroll (the
-// demo mounts the element that way) decouples layout coordinates from what is actually on screen, and
-// the intersection observer reports the truth in every mounting. Only lines this far out get
-// `content-visibility`, so nothing on screen ever carries its paint containment (which would clip the
-// glow/wave ink and force a per-line stacking context); `auto` keeps skipped lines findable and in
-// the accessibility tree.
+// Near-viewport lines come from the intersection observer with one viewport of overscan, not from
+// scrollTop, because a scaled/transformed scroll decouples layout coords from what is on screen.
 const LINE_CULL_ROOT_MARGIN = "100% 0px 100% 0px";
 
 function cullLine(element: HTMLElement): void {
@@ -2242,13 +2260,8 @@ function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {
   engine.culledLineElements = new Set();
 }
 
-/**
- * (Re)arms off-screen line culling for the current line set. Every line starts rendered; the observer
- * then skips the ones outside the viewport and its overscan, and un-skips them again before they can
- * be seen. Rebuilt rather than updated whenever the lines change or a relayout remeasures them, so the
- * placeholder height a skipped line reports is always its freshly measured one. A host without
- * `IntersectionObserver` keeps every line rendered, the same as before this existed.
- */
+// Rebuilt rather than updated on every line change or relayout, so a skipped line's placeholder height
+// is always freshly measured. Without IntersectionObserver every line stays rendered.
 export function setupLineCullObserver(engine: AnimationEngineInstance): void {
   engine.lineCullObserver?.disconnect();
   clearOffscreenLineCulling(engine);
@@ -2259,12 +2272,8 @@ export function setupLineCullObserver(engine: AnimationEngineInstance): void {
     return;
   }
 
-  // Pin each line's skipped placeholder to the size it last took rendered, so skipping or un-skipping
-  // a line leaves the container's scroll height unchanged: a drift there reads to the engine as a user
-  // scroll and stops autoscroll. `auto` makes the browser reuse the line's real last-rendered box
-  // rather than the fallback (which, as a content-box value, would omit the line's padding); every
-  // line renders at least once before the observer can skip it, so the remembered size is always
-  // exact. `content-visibility` reads it only while skipped, so it is inert on rendered lines.
+  // Pin each line's skipped placeholder to its last rendered size, so skipping a line never shifts the
+  // container's scroll height, which the engine would misread as a user scroll.
   const restingHeights = engine.lines.map(line => line.lyricElement.offsetHeight);
   engine.lines.forEach((line, index) => {
     line.lyricElement.style.setProperty("contain-intrinsic-block-size", `auto ${restingHeights[index]}px`);
@@ -2316,10 +2325,8 @@ function updateVisibleLyricWillChange(
   engine.visibleWillChangeElements = nextVisibleElements;
 }
 
-// The footer's bounds are cached at relayout beside the line positions rather than remeasured here.
-// The tick calls this inside the scroll commit, after its own class writes have dirtied style, so a
-// fresh `getBoundingClientRect` would force a synchronous recalc of the whole visible subtree every
-// line change. `measureFooterItem` refreshes the cache whenever the line positions themselves are.
+// Footer bounds come from the relayout-time cache, not a getBoundingClientRect here, which would force
+// a synchronous recalc mid-tick after the scroll commit dirtied style.
 function getLineScrollItems(engine: AnimationEngineInstance, lines: LineData[]): LineScrollItem[] {
   return engine.cachedFooterItem ? [...lines, engine.cachedFooterItem] : lines;
 }
@@ -2375,9 +2382,8 @@ function prepareLineScrollOffsets(
     requests.push({ item, index, relativeIndex, timingKey, timing: engine.cachedLineScrollTiming.get(timingKey) });
   }
 
-  // The plumbing variables only need to reach the DOM for a line whose timing is not cached yet, or
-  // for every line when a theme drives the translate off them. Every other scroll leaves the visible
-  // lines untouched, so the tick's later reads no longer force a recalc of their subtrees.
+  // The line-scroll vars reach the DOM only for an uncached line, or every line when a theme drives the
+  // translate off them, so an otherwise-cached scroll leaves the visible lines untouched.
   const linesToWrite = requests.filter(request => translateThemed || !request.timing);
   for (const { item, index, relativeIndex } of linesToWrite) {
     const lineElement = item.lineElement;
@@ -2738,11 +2744,8 @@ function setupTabRendererObserver(engine: AnimationEngineInstance, element: HTML
   refreshScrollMetrics(engine, element);
 }
 
-// The tick reads the scroll position and its bounds every frame. Reading them off the DOM there
-// forces a synchronous style/layout flush, because the frame's animations have already dirtied the
-// tree, so each read remeasures the active line. The engine owns the scroll position while it is
-// autoscrolling (it writes it) and the bounds only move on a resize or relayout, so both are cached
-// here and refreshed from the few places layout is measured on purpose, leaving the tick read-free.
+// Scroll position and bounds are cached here (and refreshed where layout is measured on purpose) so
+// the tick never reads them off the DOM, which would force a synchronous layout flush mid-frame.
 function refreshScrollMetrics(engine: AnimationEngineInstance, tabRenderer: HTMLElement): void {
   engine.cachedMaxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
   engine.cachedScrollTop = tabRenderer.scrollTop;
@@ -2876,9 +2879,8 @@ export function tickView(
       setupTabRendererObserver(engine, tabRenderer);
     }
     const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
-    // While the user is scrolling, autoscroll is suspended and the DOM owns the position, so read it
-    // and refresh the cache. Otherwise the engine owns it: reuse the value it last wrote, so the tick
-    // never forces the style/layout flush a mid-frame DOM read would.
+    // Read the DOM position only while the user scrolls (they own it then); otherwise reuse the cached
+    // value the engine last wrote, so the tick never forces a mid-frame layout flush.
     let scrollTop: number;
     if (engine.scrollResumeTime >= now || engine.cachedScrollTop === null) {
       scrollTop = tabRenderer.scrollTop;
