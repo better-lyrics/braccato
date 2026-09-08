@@ -11,7 +11,7 @@
 // size they were measured at, and the scrolls to swallow before the view has settled.
 
 import { LINE_CLASS, LYRICS_CLASS, RTL_CLASS } from "./constants";
-import type { AnimationEngineInstance } from "./engine";
+import { type AnimationEngineInstance, setupLineCullObserver } from "./engine";
 import {
   addSeekHandler,
   applyDirection,
@@ -136,4 +136,5 @@ export function setLyrics(
   // sizes it by.
   engine.lyricWidth = container.clientWidth;
   engine.lyricHeight = container.clientHeight;
+  setupLineCullObserver(engine);
 }

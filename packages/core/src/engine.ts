@@ -24,6 +24,7 @@ import {
   LINE_CLASS,
   PAUSED_CLASS,
   ROMANIZED_LYRICS_CLASS,
+  RTL_CLASS,
   TRANSLATED_LYRICS_CLASS,
   USER_SCROLLING_CLASS,
 } from "./constants";
@@ -106,6 +107,11 @@ const LINE_SCROLL_STYLE_SETTINGS = [
   registerLineScrollStyleSetting("--blyrics-line-scroll-below-translate-y-end", ""),
 ] as const;
 
+// Tracked so the tick can skip the per-line translate write-then-read unless a theme overrides it.
+const LINE_SCROLL_TRANSLATE_SETTINGS = LINE_SCROLL_STYLE_SETTINGS.filter(([property]) =>
+  property.includes("translate-y")
+).map(([, setting]) => setting);
+
 const animationTimingLastLogTimes = new WeakMap<LineData, number>();
 
 // 0.5 means the selected lyric will be in the middle of the screen, 0 means top, 1 means bottom
@@ -177,6 +183,10 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   window: EngineWindow;
   host: LyricsRendererHost;
   cachedTabRendererHeight: number | null;
+  cachedMaxScrollTop: number | null;
+  cachedScrollTop: number | null;
+  cachedFooterItem: LineScrollItem | null;
+  cachedLineScrollTiming: Map<string, LineScrollTiming>;
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
   lineScrollAnimations: LineScrollAnimationRecord[];
@@ -184,6 +194,9 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   pendingLineScroll: PendingLineScroll | null;
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
   visibleWillChangeElements: Set<HTMLElement>;
+  culledLineElements: Set<HTMLElement>;
+  waveAnimationPool: Animation[];
+  lineCullObserver: IntersectionObserver | null;
   cachedDurations: Map<string, number>;
   cachedCSSValues: Map<string, string>;
   cachedAnimationSettings: AnimationSettings | null;
@@ -255,6 +268,10 @@ export function createAnimationEngineInstance(
     passiveScrollAccumulatedTime: 0,
     passiveLastWallTime: 0,
     cachedTabRendererHeight: null,
+    cachedMaxScrollTop: null,
+    cachedScrollTop: null,
+    cachedFooterItem: null,
+    cachedLineScrollTiming: new Map(),
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
     lineScrollAnimations: [],
@@ -262,6 +279,9 @@ export function createAnimationEngineInstance(
     pendingLineScroll: null,
     lineScrollElementTokens: new WeakMap(),
     visibleWillChangeElements: new Set(),
+    culledLineElements: new Set(),
+    waveAnimationPool: [],
+    lineCullObserver: null,
     cachedDurations: new Map(),
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
@@ -277,6 +297,8 @@ export function createAnimationEngineInstance(
       engine.tabRendererResizeObserver?.disconnect();
       engine.tabRendererResizeObserver = null;
       engine.observedTabRenderer = null;
+      engine.lineCullObserver?.disconnect();
+      engine.lineCullObserver = null;
       stopPassiveScrollLoop(engine);
       cancelLyricPositionUpdate(engine);
     },
@@ -398,6 +420,9 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   dropPendingLineScroll(engine);
   clearLineScrollAnimations(engine);
   clearVisibleLyricWillChange(engine);
+  engine.lineCullObserver?.disconnect();
+  engine.lineCullObserver = null;
+  clearOffscreenLineCulling(engine);
   for (const line of engine.lines) {
     resetLineAnimationState(line);
     line.isSelected = false;
@@ -411,12 +436,16 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.passiveLastWallTime = 0;
   stopPassiveScrollLoop(engine);
   engine.lines = [];
+  engine.cachedFooterItem = null;
   engine.lyricsContainer = null;
+  engine.waveAnimationPool.length = 0;
 }
 
 function resetPartAnimations(part: AnimationData): void {
   for (const animation of part.animations) {
     animation.cancel();
+    const pool = pooledWaveAnimations.get(animation);
+    if (pool) pool.push(animation);
   }
   part.animations = [];
 }
@@ -540,6 +569,8 @@ interface AnimationConfig {
     glowDurationRatio: number;
     glowMinDurationMs: number;
     glowEasing: string;
+    glowContainerAlpha: number;
+    glowRestingInvisible: boolean;
   };
   word: {
     wobbleDurationMs: number;
@@ -627,6 +658,38 @@ function trackLyricAnimationTiming(
   // Being tracked is what makes an animation the song's rather than the interface's, so it is also
   // what decides which ones follow the song's rate.
   animation.playbackRate = engine.playbackRate;
+  return animation;
+}
+
+// Finished per-letter wave animations are pooled and retargeted onto new letters, since recreating
+// ~150 identical ones per line activation is pure churn.
+const pooledWaveAnimations = new WeakMap<Animation, Animation[]>();
+const pooledWaveKeyframeSignatures = new WeakMap<Animation, string>();
+
+function acquireWaveAnimation(
+  engine: AnimationEngineInstance,
+  letterElement: HTMLElement,
+  keyframes: Keyframe[],
+  keyframeSignature: string,
+  timing: { duration: number; delay: number; fill: FillMode }
+): Animation {
+  const pool = engine.waveAnimationPool;
+  const pooled = pool[pool.length - 1];
+  const effect = pooled?.effect as KeyframeEffect | null | undefined;
+  if (pooled && effect && typeof effect.setKeyframes === "function") {
+    pool.pop();
+    effect.target = letterElement;
+    if (pooledWaveKeyframeSignatures.get(pooled) !== keyframeSignature) {
+      effect.setKeyframes(keyframes);
+      pooledWaveKeyframeSignatures.set(pooled, keyframeSignature);
+    }
+    effect.updateTiming(timing);
+    pooled.play();
+    return pooled;
+  }
+  const animation = letterElement.animate(keyframes, timing);
+  pooledWaveAnimations.set(animation, pool);
+  pooledWaveKeyframeSignatures.set(animation, keyframeSignature);
   return animation;
 }
 
@@ -999,6 +1062,115 @@ function fadeOutTextKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
+export interface LetterSwipeWindow {
+  delayMs: number;
+  durationMs: number;
+  from: { start: number; end: number };
+  to: { start: number; end: number };
+}
+
+export interface SwipeRamp {
+  easing: string;
+  startFrom: string;
+  startTo: string;
+  endFrom: string;
+  endTo: string;
+}
+
+// null unless the ramp is linear and forward; planLetterMaskSweep sweeps the whole word instead there.
+export function computeLetterSwipeWindows(
+  swipe: SwipeRamp,
+  letterCount: number,
+  swipeDurationMs: number
+): LetterSwipeWindow[] | null {
+  if (swipe.easing !== "linear" || swipeDurationMs <= 0 || letterCount <= 0) {
+    return null;
+  }
+
+  const startFrom = Number.parseFloat(swipe.startFrom);
+  const startTo = Number.parseFloat(swipe.startTo);
+  const endFrom = Number.parseFloat(swipe.endFrom);
+  const endTo = Number.parseFloat(swipe.endTo);
+  if (![startFrom, startTo, endFrom, endTo].every(Number.isFinite) || startTo <= startFrom || endTo <= endFrom) {
+    return null;
+  }
+
+  const startAt = (timeMs: number): number => startFrom + ((startTo - startFrom) * timeMs) / swipeDurationMs;
+  const endAt = (timeMs: number): number => endFrom + ((endTo - endFrom) * timeMs) / swipeDurationMs;
+  const timeWhereEnd = (value: number): number => (swipeDurationMs * (value - endFrom)) / (endTo - endFrom);
+  const timeWhereStart = (value: number): number => (swipeDurationMs * (value - startFrom)) / (startTo - startFrom);
+
+  const windows: LetterSwipeWindow[] = [];
+  for (let index = 0; index < letterCount; index++) {
+    const beginMs = clamp(timeWhereEnd(index / letterCount), 0, swipeDurationMs);
+    const finishMs = clamp(timeWhereStart((index + 1) / letterCount), 0, swipeDurationMs);
+    windows.push({
+      delayMs: beginMs,
+      durationMs: Math.max(finishMs - beginMs, 1),
+      from: { start: startAt(beginMs), end: endAt(beginMs) },
+      to: { start: startAt(finishMs), end: endAt(finishMs) },
+    });
+  }
+  return windows;
+}
+
+export interface LetterMaskKeyframe {
+  offset: number;
+  maskPosition: string;
+}
+
+export interface LetterMaskSweep {
+  keyframes: LetterMaskKeyframe[];
+  delayMs: number;
+  durationMs: number;
+  easing: string;
+}
+
+// Per-letter mask reveal. A linear forward ramp keeps the short windowed animations so a settled letter
+// holds a finished one; any other easing runs the same geometry over the whole duration, letting the
+// theme easing warp when each letter reveals, so it ends revealed rather than swept past.
+export function planLetterMaskSweep(
+  swipe: SwipeRamp,
+  letterCount: number,
+  swipeDurationMs: number,
+  rtl: boolean
+): LetterMaskSweep[] {
+  if (letterCount <= 0) return [];
+  const windows = computeLetterSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
+  if (!windows) return [];
+
+  const maskSpan = letterCount + 2;
+  const maskPositionAt = (start: number, index: number): string => {
+    const q = (0.5 * maskSpan - (start * letterCount - index)) / (maskSpan - 1);
+    return `${(rtl ? 1 - q : q) * 100}% 0%`;
+  };
+  const linear = swipe.easing === "linear";
+  const durationMs = swipeDurationMs > 0 ? swipeDurationMs : 1;
+
+  return windows.map((window, index) => {
+    const from = maskPositionAt(window.from.start, index);
+    const to = maskPositionAt(window.to.start, index);
+    if (linear) {
+      return {
+        keyframes: [
+          { offset: 0, maskPosition: from },
+          { offset: 1, maskPosition: to },
+        ],
+        delayMs: window.delayMs,
+        durationMs: window.durationMs,
+        easing: "linear",
+      };
+    }
+    const revealStart = clamp(window.delayMs / durationMs, 0, 1);
+    const revealEnd = clamp((window.delayMs + window.durationMs) / durationMs, 0, 1);
+    const keyframes: LetterMaskKeyframe[] = [{ offset: 0, maskPosition: from }];
+    if (revealStart > 0) keyframes.push({ offset: revealStart, maskPosition: from });
+    if (revealEnd > revealStart) keyframes.push({ offset: revealEnd, maskPosition: to });
+    if (revealEnd < 1) keyframes.push({ offset: 1, maskPosition: to });
+    return { keyframes, delayMs: 0, durationMs, easing: swipe.easing };
+  });
+}
+
 function startRichSyncedHighlightAnimations(
   engine: AnimationEngineInstance,
   part: PartData,
@@ -1014,17 +1186,52 @@ function startRichSyncedHighlightAnimations(
 
   let swipeAnimation: Animation | undefined;
   if (config.enabled.highlightSwipe) {
-    swipeAnimation = trackLyricAnimationTiming(
-      engine,
-      highlight.animate(activeTextGradientKeyframes(config), {
-        duration: swipeDurationMs,
-        easing: config.highlight.swipeEasing,
-        fill: "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs }
-    );
-    swipeAnimation.currentTime = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
-    animations.push(swipeAnimation);
+    const swipeTiming = { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs };
+    const swipeCurrentTimeMs = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
+    const highlightLetters = part.highlightLetterElements;
+    if (highlightLetters && highlightLetters.length > 0) {
+      const sweeps = planLetterMaskSweep(
+        {
+          easing: config.highlight.swipeEasing,
+          startFrom: config.highlight.swipeStartFrom,
+          startTo: config.highlight.swipeStartTo,
+          endFrom: config.highlight.swipeEndFrom,
+          endTo: config.highlight.swipeEndTo,
+        },
+        highlightLetters.length,
+        swipeDurationMs,
+        part.highlightElement.classList.contains(RTL_CLASS)
+      );
+      sweeps.forEach((sweep, index) => {
+        const animation = trackLyricAnimationTiming(
+          engine,
+          highlightLetters[index].animate(
+            sweep.keyframes.map(frame => ({
+              offset: frame.offset,
+              maskPosition: frame.maskPosition,
+              WebkitMaskPosition: frame.maskPosition,
+            })) as Keyframe[],
+            { duration: sweep.durationMs, delay: sweep.delayMs, easing: sweep.easing, fill: "both" }
+          ),
+          swipeTiming
+        );
+        animation.currentTime = swipeCurrentTimeMs;
+        if (index === 0) swipeAnimation = animation;
+        animations.push(animation);
+      });
+    } else {
+      swipeAnimation = trackLyricAnimationTiming(
+        engine,
+        highlight.animate(activeTextGradientKeyframes(config), {
+          duration: swipeDurationMs,
+          easing: config.highlight.swipeEasing,
+          fill: "forwards",
+        }),
+        swipeTiming
+      );
+      swipeAnimation.currentTime = swipeCurrentTimeMs;
+      animations.push(swipeAnimation);
+    }
   }
 
   const opacityAnimation = trackLyricAnimationTiming(
@@ -1043,13 +1250,13 @@ function startRichSyncedHighlightAnimations(
   animations.push(opacityAnimation);
 
   let glowAnimation: Animation | undefined;
-  if (config.enabled.highlightGlow) {
+  if (config.enabled.highlightGlow && !part.glowSuppressed) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
       highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
-        fill: "forwards",
+        fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1085,13 +1292,13 @@ function startLineSyncedHighlightAnimations(
   animations.push(opacityAnimation);
 
   let glowAnimation: Animation | undefined;
-  if (config.enabled.highlightGlow) {
+  if (config.enabled.highlightGlow && !part.glowSuppressed) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
       highlight.animate(activeTextGlowKeyframes(config), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
-        fill: "forwards",
+        fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1250,17 +1457,18 @@ function startWordAnimations(
       const staggerMs = timedDurationMs > 0 ? timedDurationMs / 2.5 / letterCount : 0;
       const cascadeDurationMs = config.letterWave.durationMs + (letterCount - 1) * staggerMs;
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
+      const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       for (const set of [part.letterElements, part.highlightLetterElements]) {
         set?.forEach((letterElement, index) => {
-          const options: KeyframeAnimationOptions = {
-            duration: config.letterWave.durationMs,
-            delay: index * staggerMs,
-            fill: "forwards",
-          };
-          const animation = trackLyricAnimationTiming(engine, letterElement.animate(floatKeyframes, options), {
-            appliedTimingOffsetMs,
-            offsetMs: 0,
-          });
+          const animation = trackLyricAnimationTiming(
+            engine,
+            acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
+              duration: config.letterWave.durationMs,
+              delay: index * staggerMs,
+              fill: "forwards",
+            }),
+            { appliedTimingOffsetMs, offsetMs: 0 }
+          );
           animation.currentTime = floatStartMs;
           wobbleAnimations.push(animation);
         });
@@ -1284,6 +1492,7 @@ function startLineAnimations(
     return;
   }
 
+  resolveLineGlowSuppression(engine, lineData, config);
   for (const part of lineData.parts) {
     startWordAnimations(engine, part, config, currentTime, appliedTimingOffsetMs);
   }
@@ -1464,6 +1673,7 @@ export function clearStyleCaches(engine: AnimationEngineInstance): void {
   engine.cachedDurations.clear();
   engine.cachedCSSValues.clear();
   engine.cachedAnimationSettings = null;
+  engine.cachedLineScrollTiming.clear();
 }
 
 function getCSSValue(
@@ -1548,6 +1758,58 @@ function getCSSOffset(
 // the color left as a literal var lets the Web Animations API resolve it against each animated
 // word instead. A theme that sets the full filter var still wins, but its color resolves once
 // at the container (globally), as before.
+// A glow whose resolved color falls below half a quantization step stays invisible even after the
+// blur spreads it, so the per-frame drop-shadow can be skipped with no pixel changing.
+const GLOW_INVISIBLE_ALPHA = 0.5 / 255;
+
+function alphaToken(token: string): number {
+  const value = token.endsWith("%") ? Number.parseFloat(token) / 100 : Number.parseFloat(token);
+  return clamp(value, 0, 1);
+}
+
+// null for an unrecognized format, which the caller treats as opaque so a visible glow is never dropped.
+export function parseColorAlpha(value: string): number | null {
+  const color = value.trim().toLowerCase();
+  if (color === "") return null;
+  if (color === "transparent") return 0;
+
+  const slashAlpha = color.match(/\/\s*([0-9]*\.?[0-9]+%?)\s*\)\s*$/);
+  if (slashAlpha) return alphaToken(slashAlpha[1]);
+
+  const commaAlpha = color.match(/^(?:rgba|hsla)\([^)]*,\s*([0-9]*\.?[0-9]+%?)\s*\)$/);
+  if (commaAlpha) return alphaToken(commaAlpha[1]);
+
+  const hex = color.match(/^#([0-9a-f]{4}|[0-9a-f]{8})$/);
+  if (hex) {
+    const digits = hex[1];
+    const alphaHex = digits.length === 8 ? digits.slice(6) : digits.slice(3).repeat(2);
+    return Number.parseInt(alphaHex, 16) / 255;
+  }
+
+  const opaqueFunction = /^(?:rgb|hsl|hwb|lab|lch|oklab|oklch|color)\(/.test(color);
+  const opaqueHex = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(color);
+  const namedColor = /^[a-z]+$/.test(color);
+  if (opaqueFunction || opaqueHex || namedColor) return 1;
+  return null;
+}
+
+// Per-word glow is resolved only when the container glow already renders nothing, so an empty word
+// drops its blur while a word a theme lit up keeps it.
+function resolveLineGlowSuppression(
+  engine: AnimationEngineInstance,
+  lineData: LineData,
+  config: AnimationConfig
+): void {
+  if (config.highlight.glowContainerAlpha >= GLOW_INVISIBLE_ALPHA) {
+    for (const part of lineData.parts) part.glowSuppressed = false;
+    return;
+  }
+  for (const part of lineData.parts) {
+    const color = engine.window.getComputedStyle(part.highlightElement).getPropertyValue("--blyrics-glow-color");
+    part.glowSuppressed = (parseColorAlpha(color) ?? 1) < GLOW_INVISIBLE_ALPHA;
+  }
+}
+
 function resolveGlowFilter(
   engine: AnimationEngineInstance,
   lyricsElement: HTMLElement,
@@ -1558,6 +1820,15 @@ function resolveGlowFilter(
   if (override) return override;
   const radius = getCSSValue(engine, lyricsElement, `--blyrics-highlight-glow-radius-${suffix}`, radiusDefault);
   return `drop-shadow(0 0 ${radius} var(--blyrics-glow-color))`;
+}
+
+// Only the engine's own drop-shadow(0 0 <radius> ...) resting shape counts, so a theme override or a
+// non-zero radius keeps its permanent glow on fill:forwards.
+function isGlowRestingInvisible(glowTo: string): boolean {
+  const value = glowTo.trim();
+  if (value === "" || value === "none") return true;
+  const match = value.match(/^drop-shadow\(\s*0\s+0\s+(\S+)\s+var\(--blyrics-glow-color\)\)$/);
+  return match ? Number.parseFloat(match[1]) === 0 : false;
 }
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
@@ -1639,6 +1910,8 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
         "1.2s"
       ),
       glowEasing: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-easing", "ease"),
+      glowContainerAlpha: parseColorAlpha(getCSSValue(engine, lyricsElement, "--blyrics-glow-color", "")) ?? 1,
+      glowRestingInvisible: isGlowRestingInvisible(resolveGlowFilter(engine, lyricsElement, "to", "0")),
     },
     word: {
       wobbleDurationMs: getCSSDurationWithFallback(engine, lyricsElement, "--blyrics-wobble-duration", "1s"),
@@ -1899,6 +2172,14 @@ interface ResolvedLineScroll extends PreparedLineScroll {
   endTranslate: string;
 }
 
+// Memoised per (side, |relativeIndex|) because the scroll duration and easings depend only on those,
+// not on the pixel delta.
+interface LineScrollTiming {
+  durationMs: number;
+  startEasing: string;
+  endEasing: string;
+}
+
 interface LineScrollPlan {
   items: ResolvedLineScroll[];
 }
@@ -1960,6 +2241,65 @@ function clearVisibleLyricWillChange(engine: AnimationEngineInstance): void {
   engine.visibleWillChangeElements = new Set();
 }
 
+// Near-viewport lines come from the intersection observer with one viewport of overscan, not from
+// scrollTop, because a scaled/transformed scroll decouples layout coords from what is on screen.
+const LINE_CULL_ROOT_MARGIN = "100% 0px 100% 0px";
+
+function cullLine(element: HTMLElement): void {
+  element.style.setProperty("content-visibility", "auto");
+}
+
+function uncullLine(element: HTMLElement): void {
+  element.style.removeProperty("content-visibility");
+}
+
+function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {
+  for (const element of engine.culledLineElements) {
+    uncullLine(element);
+  }
+  engine.culledLineElements = new Set();
+}
+
+// Rebuilt rather than updated on every line change or relayout, so a skipped line's placeholder height
+// is always freshly measured. Without IntersectionObserver every line stays rendered.
+export function setupLineCullObserver(engine: AnimationEngineInstance): void {
+  engine.lineCullObserver?.disconnect();
+  clearOffscreenLineCulling(engine);
+
+  const ObserverConstructor = engine.window.IntersectionObserver;
+  if (typeof ObserverConstructor !== "function" || engine.lines.length === 0) {
+    engine.lineCullObserver = null;
+    return;
+  }
+
+  // Pin each line's skipped placeholder to its last rendered size, so skipping a line never shifts the
+  // container's scroll height, which the engine would misread as a user scroll.
+  const restingHeights = engine.lines.map(line => line.lyricElement.offsetHeight);
+  engine.lines.forEach((line, index) => {
+    line.lyricElement.style.setProperty("contain-intrinsic-block-size", `auto ${restingHeights[index]}px`);
+  });
+
+  const observer = new ObserverConstructor(
+    entries => {
+      for (const entry of entries) {
+        const element = entry.target as HTMLElement;
+        if (entry.isIntersecting) {
+          if (engine.culledLineElements.delete(element)) uncullLine(element);
+        } else if (!engine.culledLineElements.has(element)) {
+          cullLine(element);
+          engine.culledLineElements.add(element);
+        }
+      }
+    },
+    { root: null, rootMargin: LINE_CULL_ROOT_MARGIN, threshold: 0 }
+  );
+
+  for (const line of engine.lines) {
+    observer.observe(line.lyricElement);
+  }
+  engine.lineCullObserver = observer;
+}
+
 function updateVisibleLyricWillChange(
   engine: AnimationEngineInstance,
   lines: LineScrollItem[],
@@ -1985,19 +2325,20 @@ function updateVisibleLyricWillChange(
   engine.visibleWillChangeElements = nextVisibleElements;
 }
 
-function getLineScrollItems(lines: LineData[], lyricsElement: HTMLElement): LineScrollItem[] {
-  const footer = lyricsElement.querySelector(`:scope > .${FOOTER_CLASS}`) as HTMLElement | null;
-  if (!footer) return lines;
+// Footer bounds come from the relayout-time cache, not a getBoundingClientRect here, which would force
+// a synchronous recalc mid-tick after the scroll commit dirtied style.
+function getLineScrollItems(engine: AnimationEngineInstance, lines: LineData[]): LineScrollItem[] {
+  return engine.cachedFooterItem ? [...lines, engine.cachedFooterItem] : lines;
+}
 
+function measureFooterItem(engine: AnimationEngineInstance, lyricsElement: HTMLElement): void {
+  const footer = lyricsElement.querySelector(`:scope > .${FOOTER_CLASS}`) as HTMLElement | null;
+  if (!footer) {
+    engine.cachedFooterItem = null;
+    return;
+  }
   const footerBounds = getRelativeLayoutBounds(lyricsElement, footer);
-  return [
-    ...lines,
-    {
-      lyricElement: footer,
-      position: footerBounds.y,
-      height: footerBounds.height,
-    },
-  ];
+  engine.cachedFooterItem = { lyricElement: footer, position: footerBounds.y, height: footerBounds.height };
 }
 
 function prepareLineScrollOffsets(
@@ -2015,82 +2356,120 @@ function prepareLineScrollOffsets(
   }
 
   const scrollDistancePx = Math.abs(scrollDeltaPx);
-  const prepared: PreparedLineScroll[] = [];
+  const translateThemed = LINE_SCROLL_TRANSLATE_SETTINGS.some(setting => setting.isManuallySet());
+  const defaultStartTranslate = `0px ${scrollDeltaPx}px`;
 
   // Preserve the original windowing exactly: only lines intersecting the
   // union of the old and new viewports receive scroll animations.
+  const requests: {
+    item: PreparedLineScroll;
+    index: number;
+    relativeIndex: number;
+    timingKey: string;
+    timing: LineScrollTiming | undefined;
+  }[] = [];
   for (let index = 0; index < lines.length; index++) {
     if (!isLineVisibleDuringScroll(lines[index], fromScrollTop, toScrollTop, viewportHeight)) {
       continue;
     }
-
     const lineElement = lines[index].lyricElement;
     const relativeIndex = index - activeLineIndex;
     const side = lineScrollSide(relativeIndex, scrollDeltaPx);
+    const token = ++engine.lineScrollAnimationToken;
+    engine.lineScrollElementTokens.set(lineElement, token);
+    const item: PreparedLineScroll = { lineElement, side, token };
+    const timingKey = `${side}|${Math.abs(relativeIndex)}`;
+    requests.push({ item, index, relativeIndex, timingKey, timing: engine.cachedLineScrollTiming.get(timingKey) });
+  }
 
+  // The line-scroll vars reach the DOM only for an uncached line, or every line when a theme drives the
+  // translate off them, so an otherwise-cached scroll leaves the visible lines untouched.
+  const linesToWrite = requests.filter(request => translateThemed || !request.timing);
+  for (const { item, index, relativeIndex } of linesToWrite) {
+    const lineElement = item.lineElement;
     lineElement.style.setProperty(LINE_SCROLL_INDEX_PROPERTY, String(index));
     lineElement.style.setProperty(LINE_SCROLL_ACTIVE_INDEX_PROPERTY, String(activeLineIndex));
     lineElement.style.setProperty(LINE_SCROLL_RELATIVE_INDEX_PROPERTY, String(relativeIndex));
     lineElement.style.setProperty(LINE_SCROLL_ABS_RELATIVE_INDEX_PROPERTY, String(Math.abs(relativeIndex)));
-    lineElement.style.setProperty(LINE_SCROLL_SIDE_PROPERTY, side);
+    lineElement.style.setProperty(LINE_SCROLL_SIDE_PROPERTY, item.side);
     lineElement.style.setProperty(LINE_SCROLL_DELTA_PROPERTY, `${scrollDeltaPx}px`);
     lineElement.style.setProperty(LINE_SCROLL_DISTANCE_PROPERTY, `${scrollDistancePx}px`);
     setLineScrollStyleProperties(lineElement);
-    const token = ++engine.lineScrollAnimationToken;
-    engine.lineScrollElementTokens.set(lineElement, token);
-
-    prepared.push({ lineElement, side, token });
   }
 
-  const durations = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "transition-duration",
-    item => lineScrollDurationProperty(item.side, config.lineScroll.durationMs, config.lineScroll.differentialEffects),
-    style => {
-      const durationMs = toMs(style.transitionDuration.split(",")[0].trim());
-      return durationMs > 0 ? durationMs : config.lineScroll.durationMs;
-    }
-  );
-  const startEasings = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "transition-timing-function",
-    item =>
-      lineScrollEasingProperty(item.side, "start", config.lineScroll.easing, config.lineScroll.differentialEffects),
-    style => style.transitionTimingFunction.trim() || config.lineScroll.easing
-  );
-  const endEasings = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "transition-timing-function",
-    item => lineScrollEasingProperty(item.side, "end", config.lineScroll.easing, config.lineScroll.differentialEffects),
-    style => style.transitionTimingFunction.trim() || config.lineScroll.easing
-  );
-  const startTranslates = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "translate",
-    item => lineScrollTranslate(item.side, "start", config.lineScroll.differentialEffects),
-    style => normalizedTranslate(style.translate)
-  );
-  const endTranslates = batchResolveLineScrollProperty(
-    engine,
-    prepared,
-    "translate",
-    item => lineScrollTranslate(item.side, "end", config.lineScroll.differentialEffects),
-    style => normalizedTranslate(style.translate)
-  );
+  const misses = requests.filter(request => !request.timing);
+  if (misses.length > 0) {
+    const missItems = misses.map(request => request.item);
+    const durations = batchResolveLineScrollProperty(
+      engine,
+      missItems,
+      "transition-duration",
+      item =>
+        lineScrollDurationProperty(item.side, config.lineScroll.durationMs, config.lineScroll.differentialEffects),
+      style => {
+        const durationMs = toMs(style.transitionDuration.split(",")[0].trim());
+        return durationMs > 0 ? durationMs : config.lineScroll.durationMs;
+      }
+    );
+    const startEasings = batchResolveLineScrollProperty(
+      engine,
+      missItems,
+      "transition-timing-function",
+      item =>
+        lineScrollEasingProperty(item.side, "start", config.lineScroll.easing, config.lineScroll.differentialEffects),
+      style => style.transitionTimingFunction.trim() || config.lineScroll.easing
+    );
+    const endEasings = batchResolveLineScrollProperty(
+      engine,
+      missItems,
+      "transition-timing-function",
+      item =>
+        lineScrollEasingProperty(item.side, "end", config.lineScroll.easing, config.lineScroll.differentialEffects),
+      style => style.transitionTimingFunction.trim() || config.lineScroll.easing
+    );
+    misses.forEach((request, resolveIndex) => {
+      const timing: LineScrollTiming = {
+        durationMs: durations[resolveIndex],
+        startEasing: startEasings[resolveIndex],
+        endEasing: endEasings[resolveIndex],
+      };
+      engine.cachedLineScrollTiming.set(request.timingKey, timing);
+      request.timing = timing;
+    });
+  }
+
+  let startTranslates: string[] | null = null;
+  let endTranslates: string[] | null = null;
+  if (translateThemed) {
+    const items = requests.map(request => request.item);
+    startTranslates = batchResolveLineScrollProperty(
+      engine,
+      items,
+      "translate",
+      item => lineScrollTranslate(item.side, "start", config.lineScroll.differentialEffects),
+      style => normalizedTranslate(style.translate)
+    );
+    endTranslates = batchResolveLineScrollProperty(
+      engine,
+      items,
+      "translate",
+      item => lineScrollTranslate(item.side, "end", config.lineScroll.differentialEffects),
+      style => normalizedTranslate(style.translate)
+    );
+  }
 
   return {
-    items: prepared.map((item, index) => ({
-      ...item,
-      durationMs: durations[index],
-      startEasing: startEasings[index],
-      endEasing: endEasings[index],
-      startTranslate: startTranslates[index],
-      endTranslate: endTranslates[index],
-    })),
+    items: requests.map((request, requestIndex) => {
+      const timing = request.timing as LineScrollTiming;
+      return {
+        ...request.item,
+        durationMs: timing.durationMs,
+        startEasing: timing.startEasing,
+        endEasing: timing.endEasing,
+        startTranslate: startTranslates ? startTranslates[requestIndex] : defaultStartTranslate,
+        endTranslate: endTranslates ? endTranslates[requestIndex] : "0px 0px",
+      };
+    }),
   };
 }
 
@@ -2332,10 +2711,12 @@ function passiveScrollEngine(engine: AnimationEngineInstance, isPlaying: boolean
 
   const prevScrollTop = tabRenderer.scrollTop;
   tabRenderer.scrollTop = targetScroll;
+  const appliedScrollTop = tabRenderer.scrollTop;
+  engine.cachedScrollTop = appliedScrollTop;
   // Only skip the next scroll event if scrollTop actually changed.
   // When it doesn't change (pause phases, sub-pixel rounding), no programmatic
   // scroll event fires, so setting skipScrolls would eat user scroll events instead.
-  if (tabRenderer.scrollTop !== prevScrollTop) {
+  if (appliedScrollTop !== prevScrollTop) {
     engine.skipScrolls = 1;
   }
 }
@@ -2353,12 +2734,21 @@ function setupTabRendererObserver(engine: AnimationEngineInstance, element: HTML
     dropPendingLineScroll(engine);
     if (element && element.isConnected) {
       engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
+      refreshScrollMetrics(engine, element);
     }
   });
 
   engine.tabRendererResizeObserver.observe(element);
   engine.observedTabRenderer = element;
   engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
+  refreshScrollMetrics(engine, element);
+}
+
+// Scroll position and bounds are cached here (and refreshed where layout is measured on purpose) so
+// the tick never reads them off the DOM, which would force a synchronous layout flush mid-frame.
+function refreshScrollMetrics(engine: AnimationEngineInstance, tabRenderer: HTMLElement): void {
+  engine.cachedMaxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
+  engine.cachedScrollTop = tabRenderer.scrollTop;
 }
 
 /**
@@ -2489,8 +2879,16 @@ export function tickView(
       setupTabRendererObserver(engine, tabRenderer);
     }
     const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
-    let scrollTop = tabRenderer.scrollTop;
-    const maxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
+    // Read the DOM position only while the user scrolls (they own it then); otherwise reuse the cached
+    // value the engine last wrote, so the tick never forces a mid-frame layout flush.
+    let scrollTop: number;
+    if (engine.scrollResumeTime >= now || engine.cachedScrollTop === null) {
+      scrollTop = tabRenderer.scrollTop;
+      engine.cachedScrollTop = scrollTop;
+    } else {
+      scrollTop = engine.cachedScrollTop;
+    }
+    const maxScrollTop = engine.cachedMaxScrollTop ?? Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
     if (animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
         engine,
@@ -2813,7 +3211,7 @@ export function tickView(
         updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
         prepareUpcomingLineScroll(
           engine,
-          getLineScrollItems(lines, lyricsElement),
+          getLineScrollItems(engine, lines),
           lastActiveLyric,
           scrollPos - scrollTop,
           scrollTop,
@@ -2834,7 +3232,7 @@ export function tickView(
             const scrollDeltaPx = scrollPos - scrollTop;
             if (animationConfig.enabled.scroll) {
               updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
-              const lineScrollItems = getLineScrollItems(lines, lyricsElement);
+              const lineScrollItems = getLineScrollItems(engine, lines);
               commitOrPrepareLineScroll(
                 engine,
                 lineScrollItems,
@@ -2854,6 +3252,7 @@ export function tickView(
           scrollTop = scrollPos;
           engine.scrollPos = scrollTop;
           tabRenderer.scrollTop = scrollTop;
+          engine.cachedScrollTop = scrollTop;
           engine.skipScrolls += 1;
           engine.skipScrollsDecayTimes.push(Date.now() + 2000);
         } else if (engine.nextScrollAllowedTime - Date.now() < scrollTiming.queueScrollMs || timeJumped) {
@@ -2996,6 +3395,9 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
   engine.lyricWidth = lyricsElement.clientWidth;
   engine.lyricHeight = lyricsElement.clientHeight;
 
+  // Skipped lines report intrinsic size, so un-cull before the walk reads offsetTop/offsetHeight.
+  clearOffscreenLineCulling(engine);
+
   for (const line of engine.lines) {
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);
     line.position = bounds.y;
@@ -3004,6 +3406,14 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
       lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
     );
   }
+
+  measureFooterItem(engine, lyricsElement);
+
+  // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
+  setupLineCullObserver(engine);
+
+  const tabRenderer = engine.host.getScrollElement();
+  if (tabRenderer) refreshScrollMetrics(engine, tabRenderer);
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();

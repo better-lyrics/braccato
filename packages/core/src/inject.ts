@@ -109,6 +109,8 @@ export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
+  // Set when the word's resolved glow renders nothing, so its per-frame blur is skipped.
+  glowSuppressed?: boolean;
 }
 
 export type LineData = {
@@ -315,10 +317,12 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, th
 function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
   const chars = [...text];
   wordElement.style.setProperty("--letters", String(chars.length));
-  return chars.map((char, index) => {
+  // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
+  // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
+  wordElement.style.setProperty("--mask-fade", `${(10 * chars.length) / (chars.length + 2)}%`);
+  return chars.map(char => {
     const letter = doc.createElement("span");
     letter.classList.add(LETTER_CLASS);
-    letter.style.setProperty("--letter-index", String(index));
     letter.textContent = char;
     wordElement.appendChild(letter);
     return letter;
