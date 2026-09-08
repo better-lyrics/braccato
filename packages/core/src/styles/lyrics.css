@@ -160,7 +160,7 @@
 	display: inline-block;
 }
 
-.blyrics-word-highlight:has(.blyrics--letter) {
+.blyrics-word-highlight.blyrics-word-highlight--lettered {
 	background-image: none;
 }
 
