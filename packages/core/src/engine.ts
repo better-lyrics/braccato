@@ -2879,16 +2879,14 @@ export function tickView(
       setupTabRendererObserver(engine, tabRenderer);
     }
     const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
-    // Read the DOM position only while the user scrolls (they own it then); otherwise reuse the cached
-    // value the engine last wrote, so the tick never forces a mid-frame layout flush.
-    let scrollTop: number;
-    if (engine.scrollResumeTime >= now || engine.cachedScrollTop === null) {
-      scrollTop = tabRenderer.scrollTop;
-      engine.cachedScrollTop = scrollTop;
-    } else {
-      scrollTop = engine.cachedScrollTop;
-    }
-    const maxScrollTop = engine.cachedMaxScrollTop ?? Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
+    // Read scroll position and bounds live here, before the loop below writes any class change, so the
+    // read costs no mid-frame reflow. Translation injection, re-measure, font load and layout shifts
+    // move scrollTop and scrollHeight without resizing the container, so the ResizeObserver never fires
+    // and a cached value would go stale and desync autoscroll until the user scrolled.
+    let scrollTop = tabRenderer.scrollTop;
+    engine.cachedScrollTop = scrollTop;
+    const maxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
+    engine.cachedMaxScrollTop = maxScrollTop;
     if (animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
         engine,
