@@ -183,8 +183,6 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   window: EngineWindow;
   host: LyricsRendererHost;
   cachedTabRendererHeight: number | null;
-  cachedMaxScrollTop: number | null;
-  cachedScrollTop: number | null;
   cachedFooterItem: LineScrollItem | null;
   cachedLineScrollTiming: Map<string, LineScrollTiming>;
   tabRendererResizeObserver: ResizeObserver | null;
@@ -268,8 +266,6 @@ export function createAnimationEngineInstance(
     passiveScrollAccumulatedTime: 0,
     passiveLastWallTime: 0,
     cachedTabRendererHeight: null,
-    cachedMaxScrollTop: null,
-    cachedScrollTop: null,
     cachedFooterItem: null,
     cachedLineScrollTiming: new Map(),
     tabRendererResizeObserver: null,
@@ -2712,7 +2708,6 @@ function passiveScrollEngine(engine: AnimationEngineInstance, isPlaying: boolean
   const prevScrollTop = tabRenderer.scrollTop;
   tabRenderer.scrollTop = targetScroll;
   const appliedScrollTop = tabRenderer.scrollTop;
-  engine.cachedScrollTop = appliedScrollTop;
   // Only skip the next scroll event if scrollTop actually changed.
   // When it doesn't change (pause phases, sub-pixel rounding), no programmatic
   // scroll event fires, so setting skipScrolls would eat user scroll events instead.
@@ -2734,21 +2729,12 @@ function setupTabRendererObserver(engine: AnimationEngineInstance, element: HTML
     dropPendingLineScroll(engine);
     if (element && element.isConnected) {
       engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
-      refreshScrollMetrics(engine, element);
     }
   });
 
   engine.tabRendererResizeObserver.observe(element);
   engine.observedTabRenderer = element;
   engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
-  refreshScrollMetrics(engine, element);
-}
-
-// Scroll position and bounds are cached here (and refreshed where layout is measured on purpose) so
-// the tick never reads them off the DOM, which would force a synchronous layout flush mid-frame.
-function refreshScrollMetrics(engine: AnimationEngineInstance, tabRenderer: HTMLElement): void {
-  engine.cachedMaxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
-  engine.cachedScrollTop = tabRenderer.scrollTop;
 }
 
 /**
@@ -2879,14 +2865,9 @@ export function tickView(
       setupTabRendererObserver(engine, tabRenderer);
     }
     const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
-    // Read scroll position and bounds live here, before the loop below writes any class change, so the
-    // read costs no mid-frame reflow. Translation injection, re-measure, font load and layout shifts
-    // move scrollTop and scrollHeight without resizing the container, so the ResizeObserver never fires
-    // and a cached value would go stale and desync autoscroll until the user scrolled.
+    // Read before the loop's class writes so this layout read is batched and forces no mid-frame reflow.
     let scrollTop = tabRenderer.scrollTop;
-    engine.cachedScrollTop = scrollTop;
     const maxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
-    engine.cachedMaxScrollTop = maxScrollTop;
     if (animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
         engine,
@@ -3250,7 +3231,6 @@ export function tickView(
           scrollTop = scrollPos;
           engine.scrollPos = scrollTop;
           tabRenderer.scrollTop = scrollTop;
-          engine.cachedScrollTop = scrollTop;
           engine.skipScrolls += 1;
           engine.skipScrollsDecayTimes.push(Date.now() + 2000);
         } else if (engine.nextScrollAllowedTime - Date.now() < scrollTiming.queueScrollMs || timeJumped) {
@@ -3409,9 +3389,6 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
 
   // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
   setupLineCullObserver(engine);
-
-  const tabRenderer = engine.host.getScrollElement();
-  if (tabRenderer) refreshScrollMetrics(engine, tabRenderer);
 
   engine.wasUserScrolling = true; // trigger rescrolls
   engine.host.debug?.resize();
