@@ -2268,6 +2268,9 @@ export function setupLineCullObserver(engine: AnimationEngineInstance): void {
     return;
   }
 
+  // Scroll anchoring would compensate residual cull height-shifts with a scroll the engine misreads as the user's (Firefox); the engine owns scrollTop, so disable it.
+  engine.host.getScrollElement()?.style.setProperty("overflow-anchor", "none");
+
   // Pin each line's skipped placeholder to its last rendered size, so skipping a line never shifts the
   // container's scroll height, which the engine would misread as a user scroll.
   const restingHeights = engine.lines.map(line => line.lyricElement.offsetHeight);

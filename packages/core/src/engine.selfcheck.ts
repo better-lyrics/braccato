@@ -62,6 +62,13 @@ const PLAYBACK_TIME_S = 0.2;
 // browser does: silently, which is what a module aiming past the end of its content relies on.
 class FakeScrollElement {
   private currentScrollTop = 0;
+  private readonly styleProperties: Record<string, string> = {};
+  readonly style = {
+    setProperty: (name: string, value: string): void => {
+      this.styleProperties[name] = value;
+    },
+    getPropertyValue: (name: string): string => this.styleProperties[name] ?? "",
+  };
 
   constructor(
     readonly viewportHeight: number,
@@ -816,6 +823,11 @@ assert.equal(
   cullLines.length,
   "Given lyrics are set, When the culling observer arms, Then it observes every line"
 );
+assert.equal(
+  cullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
+  "none",
+  "Given culling arms, When the observer is set up, Then scroll anchoring is disabled on the container so a cull height-shift cannot fire a scroll the engine misreads as the user's"
+);
 for (const line of cullLines) {
   assert.notEqual(
     line.style.getPropertyValue("contain-intrinsic-block-size"),
@@ -866,7 +878,8 @@ assert.equal(
 // A window without an IntersectionObserver leaves every line rendered rather than failing.
 const noCullDocument = new FakeDocument();
 const noCullWindow = new FakeWindow(PANEL_STYLE);
-const noCullEngine = createAnimationEngineInstance(asDocument(noCullDocument), asWindow(noCullWindow), new FakeHost());
+const noCullHost = new FakeHost();
+const noCullEngine = createAnimationEngineInstance(asDocument(noCullDocument), asWindow(noCullWindow), noCullHost);
 const noCullMount = noCullDocument.createElement("div");
 setLyrics(noCullEngine, asElement<HTMLElement>(noCullMount), LINE_SYNCED_LYRICS, {
   loaderVisible: false,
@@ -876,6 +889,11 @@ assert.equal(
   noCullWindow.intersectionObservers.length,
   0,
   "Given a window with no IntersectionObserver, When lyrics are set, Then culling arms nothing and the lines render"
+);
+assert.equal(
+  noCullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
+  "",
+  "Given no IntersectionObserver, When culling cannot arm, Then anchoring is left untouched because no cull height-shift occurs"
 );
 setupLineCullObserver(noCullEngine); // safe to call directly with no observer support
 clearLyrics(noCullEngine);
