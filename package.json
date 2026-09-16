@@ -13,12 +13,15 @@
 		"test:watch": "turbo test:watch",
 		"clean": "turbo clean && rm -rf node_modules",
 		"format": "biome format --write .",
+		"changeset": "changeset",
+		"version-packages": "changeset version",
 		"release": "bash scripts/release.sh",
 		"package": "tsx tooling/build-package.ts",
 		"selfcheck": "tsx tooling/run-selfchecks.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
+		"@changesets/cli": "^3.0.3",
 		"@types/node": "^22.10.2",
 		"tsx": "^4.23.1",
 		"turbo": "^2.3.3",
