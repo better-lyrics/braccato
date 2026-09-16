@@ -5,8 +5,8 @@ const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset"
 const TIME_TAG_REGEX = /\[(\d+:\d+\.\d+)\]/g;
 const ENHANCED_WORD_REGEX = /<(\d+:\d+\.\d+)>/g;
 const ID_TAG_REGEX = /^\[(\w+):(.*)\]$/;
-// LySy enhanced LRC encodes background vocals as a trailing [bg:(...)] group; the same A2 word form
-// lives inside, wrapped in parens the display never wants.
+// LySy enhanced LRC encodes background vocals as a trailing [bg:...] group. The [bg:] marker is
+// format and comes off; whatever the source wrote inside, parens included, passes through untouched.
 const BG_MARKER_REGEX = /\[bg:(.*)\]\s*$/;
 
 function parseTime(timeStr: string | number | undefined): number {
@@ -78,7 +78,7 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 
 		const bgMatch = lyricPart.match(BG_MARKER_REGEX);
 		const leadText = bgMatch ? lyricPart.slice(0, bgMatch.index) : lyricPart;
-		const bgText = bgMatch ? bgMatch[1].replace(/[()]/g, "") : null;
+		const bgText = bgMatch ? bgMatch[1] : null;
 
 		const leadFragments = leadText.split(ENHANCED_WORD_REGEX);
 
