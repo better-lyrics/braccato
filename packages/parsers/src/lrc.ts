@@ -5,6 +5,9 @@ const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset"
 const TIME_TAG_REGEX = /\[(\d+:\d+\.\d+)\]/g;
 const ENHANCED_WORD_REGEX = /<(\d+:\d+\.\d+)>/g;
 const ID_TAG_REGEX = /^\[(\w+):(.*)\]$/;
+// LySy enhanced LRC encodes background vocals as a trailing [bg:(...)] group; the same A2 word form
+// lives inside, wrapped in parens the display never wants.
+const BG_MARKER_REGEX = /\[bg:(.*)\]\s*$/;
 
 function parseTime(timeStr: string | number | undefined): number {
 	if (!timeStr) return 0;
@@ -73,36 +76,45 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 		let lastTime: number | null = null;
 		let plainText = "";
 
-		const fragments = lyricPart.split(ENHANCED_WORD_REGEX);
+		const bgMatch = lyricPart.match(BG_MARKER_REGEX);
+		const leadText = bgMatch ? lyricPart.slice(0, bgMatch.index) : lyricPart;
+		const bgText = bgMatch ? bgMatch[1].replace(/[()]/g, "") : null;
+
+		const leadFragments = leadText.split(ENHANCED_WORD_REGEX);
 
 		// Musixmatch wraps each word with paired <ts>, separated by whitespace-only "gap" fragments;
 		// canonical LRC has none.
-		const isMusixmatchStyle = fragments.some(
-			(f, i) => i % 2 === 0 && i > 0 && i < fragments.length - 1 && f.length > 0 && f.trim() === "",
+		const isMusixmatchStyle = leadFragments.some(
+			(f, i) => i % 2 === 0 && i > 0 && i < leadFragments.length - 1 && f.length > 0 && f.trim() === "",
 		);
 
-		fragments.forEach((rawFragment, index) => {
-			if (index % 2 === 0) {
-				let fragment = rawFragment;
-				if (isMusixmatchStyle) {
-					const trimmed = fragment.trim();
-					fragment = trimmed === "" && fragment.length > 0 ? " " : trimmed;
+		const consumeSegment = (segmentText: string, isBackground: boolean) => {
+			segmentText.split(ENHANCED_WORD_REGEX).forEach((rawFragment, index) => {
+				if (index % 2 === 0) {
+					let fragment = rawFragment;
+					if (isMusixmatchStyle) {
+						const trimmed = fragment.trim();
+						fragment = trimmed === "" && fragment.length > 0 ? " " : trimmed;
+					}
+					plainText += fragment;
+					// Every fragment but the one before the first timestamp belongs to the part that the
+					// preceding timestamp opened, whatever time that timestamp states.
+					if (parts.length > 0) {
+						parts[parts.length - 1].words += fragment;
+					}
+				} else {
+					const startTime = parseTime(rawFragment);
+					if (lastTime !== null && parts.length > 0) {
+						parts[parts.length - 1].durationMs = startTime - lastTime;
+					}
+					parts.push({ startTimeMs: startTime, words: "", durationMs: 0, isBackground });
+					lastTime = startTime;
 				}
-				plainText += fragment;
-				// Every fragment but the one before the first timestamp belongs to the part that the
-				// preceding timestamp opened, whatever time that timestamp states.
-				if (parts.length > 0) {
-					parts[parts.length - 1].words += fragment;
-				}
-			} else {
-				const startTime = parseTime(rawFragment);
-				if (lastTime !== null && parts.length > 0) {
-					parts[parts.length - 1].durationMs = startTime - lastTime;
-				}
-				parts.push({ startTimeMs: startTime, words: "", durationMs: 0 });
-				lastTime = startTime;
-			}
-		});
+			});
+		};
+
+		consumeSegment(leadText, false);
+		if (bgText !== null) consumeSegment(bgText, true);
 
 		const duration = lineEndTime - lineStartTime;
 
