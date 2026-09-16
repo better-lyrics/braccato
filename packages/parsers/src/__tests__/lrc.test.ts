@@ -289,7 +289,7 @@ describe("LRCParser", () => {
 		const line =
 			"[01:09.858]<01:09.858>We <01:10.182>rise <01:12.830>throne<01:13.201> [bg:<01:13.887>(Throne, <01:14.238><01:14.544>throne, <01:14.944><01:15.282>throne)<01:15.679>]";
 
-		it("flags [bg:...] words as background and strips the wrapper", () => {
+		it("flags [bg:...] words as background and keeps the source parens", () => {
 			const parts = parseLRC(line, 120000)[0].parts!;
 			const lead = parts.filter((p) => !p.isBackground);
 			const bg = parts.filter((p) => p.isBackground);
@@ -297,19 +297,19 @@ describe("LRCParser", () => {
 			expect(lead.map((p) => p.words)).toEqual(["We ", "rise ", "throne", " "]);
 			expect(lead.every((p) => p.isBackground === false)).toBe(true);
 
-			expect(bg.filter((p) => p.words.trim()).map((p) => p.words)).toEqual(["Throne, ", "throne, ", "throne"]);
+			expect(bg.filter((p) => p.words.trim()).map((p) => p.words)).toEqual(["(Throne, ", "throne, ", "throne)"]);
 			expect(bg.every((p) => p.isBackground === true)).toBe(true);
 
 			for (const part of parts) {
-				expect(part.words).not.toMatch(/[[\]()]/);
+				expect(part.words).not.toMatch(/[[\]]/);
 			}
 		});
 
-		it("keeps background text in line words without wrapper syntax", () => {
+		it("keeps background text and its parens in line words, without the [bg:] marker", () => {
 			const parsed = parseLRC(line, 120000)[0];
 
-			expect(parsed.words).toBe("We rise throne Throne, throne, throne");
-			expect(parsed.words).not.toMatch(/[[\]()]/);
+			expect(parsed.words).toBe("We rise throne (Throne, throne, throne)");
+			expect(parsed.words).not.toMatch(/[[\]]/);
 		});
 
 		it("carries per-word timing for the background row", () => {
@@ -317,9 +317,9 @@ describe("LRCParser", () => {
 			const bg = parts.filter((p) => p.isBackground && p.words.trim());
 
 			expect(bg.map((p) => ({ words: p.words, startTimeMs: p.startTimeMs, durationMs: p.durationMs }))).toEqual([
-				{ words: "Throne, ", startTimeMs: 73887, durationMs: 351 },
+				{ words: "(Throne, ", startTimeMs: 73887, durationMs: 351 },
 				{ words: "throne, ", startTimeMs: 74544, durationMs: 400 },
-				{ words: "throne", startTimeMs: 75282, durationMs: 397 },
+				{ words: "throne)", startTimeMs: 75282, durationMs: 397 },
 			]);
 		});
 	});
