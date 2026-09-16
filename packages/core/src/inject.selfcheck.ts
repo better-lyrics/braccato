@@ -1,7 +1,11 @@
 import { strict as assert } from "node:assert";
 import {
+  BACKGROUND_LINE_CLASS,
+  BACKGROUND_LYRIC_CLASS,
+  BIDI_RUN_CLASS,
   HIGHLIGHT_RUN_CLASS,
   LETTER_CLASS,
+  LINE_MAIN_CLASS,
   LYRICS_CLASS,
   ROMANIZED_LYRICS_CLASS,
   TRANSLATED_LYRICS_CLASS,
@@ -300,5 +304,203 @@ assert.equal(
   0,
   "Given a build and two clicks, When both finish, Then the ambient global document was never read"
 );
+
+// -- Background word spacing --------------------------------------------
+
+function buildSpacingLine(
+  parts: LyricPart[],
+  options?: { splitBackgroundLine: boolean }
+): { root: FakeNode; line: ReturnType<typeof newLineData> } {
+  const localDoc = new FakeDocument();
+  const root = localDoc.createElement("div");
+  const target = asElement<HTMLElement>(root);
+  const line = newLineData(target, 0, 2000);
+  createLyricsLine(asDocument(localDoc), parts, line, target, options);
+  return { root, line };
+}
+
+const isBlank = (node: FakeNode): boolean => node.textContent.length > 0 && node.textContent.trim() === "";
+const backgroundLineOf = (root: FakeNode): FakeNode | undefined =>
+  collectTree(root).find(node => node.classList.contains(BACKGROUND_LINE_CLASS));
+const wrappedSpacesIn = (root: FakeNode): FakeNode[] =>
+  collectTree(root).filter(
+    node => node.name === "span" && node.classList.contains(BACKGROUND_LYRIC_CLASS) && isBlank(node)
+  );
+const bareSpacesIn = (root: FakeNode): FakeNode[] =>
+  collectTree(root).filter(node => node.kind === "text" && isBlank(node));
+
+// Happy path: one gap between two background words, wrapped in the content run and its highlight run.
+{
+  const { root } = buildSpacingLine([
+    { startTimeMs: 0, words: "main phrase", durationMs: 400 },
+    { startTimeMs: 800, words: "back vocal", durationMs: 400, isBackground: true },
+  ]);
+  const backgroundLine = backgroundLineOf(root);
+  assert.ok(
+    backgroundLine !== undefined,
+    "Given a background part, When the line is built, Then it has a background line"
+  );
+  assert.equal(
+    wrappedSpacesIn(backgroundLine).length,
+    2,
+    "Given two background words, When the line is built, Then the gap is a sized span in the content run and its highlight run"
+  );
+  assert.equal(
+    bareSpacesIn(backgroundLine).length,
+    0,
+    "Given a background run, When it is built, Then no whitespace is left as a full-size bare text node"
+  );
+
+  const mainLine = collectTree(root).find(node => node.classList.contains(LINE_MAIN_CLASS));
+  assert.ok(
+    mainLine !== undefined && bareSpacesIn(mainLine).length >= 1,
+    "Given a main run, When it is built, Then its word spacing stays a bare text node at the full line size"
+  );
+  assert.equal(
+    wrappedSpacesIn(mainLine).length,
+    0,
+    "Given a main run, When it is built, Then none of its spacing is wrapped in the background size"
+  );
+}
+
+// Count and symmetry: three background words leave two gaps, mirrored across both runs.
+{
+  const { root } = buildSpacingLine([
+    { startTimeMs: 0, words: "hold", durationMs: 200 },
+    { startTimeMs: 200, words: "the line here", durationMs: 600, isBackground: true },
+  ]);
+  const backgroundLine = backgroundLineOf(root);
+  assert.ok(
+    backgroundLine !== undefined,
+    "Given three background words, When the line is built, Then it has a background line"
+  );
+  const contentRun = collectTree(backgroundLine).find(
+    node => node.classList.contains(BIDI_RUN_CLASS) && !node.classList.contains(HIGHLIGHT_RUN_CLASS)
+  );
+  const highlightRun = collectTree(backgroundLine).find(node => node.classList.contains(HIGHLIGHT_RUN_CLASS));
+  assert.ok(
+    contentRun !== undefined && highlightRun !== undefined,
+    "Given a background line, When built, Then it holds a content run and a highlight run"
+  );
+  assert.equal(
+    wrappedSpacesIn(contentRun).length,
+    2,
+    "Given three background words, When built, Then the content run has one sized span per gap"
+  );
+  assert.equal(
+    wrappedSpacesIn(highlightRun).length,
+    wrappedSpacesIn(contentRun).length,
+    "Given a background line, When built, Then the highlight run mirrors the content run's spacing exactly"
+  );
+}
+
+// Edge: a single background word has no gap, so nothing is wrapped and nothing is left bare either.
+{
+  const { root } = buildSpacingLine([
+    { startTimeMs: 0, words: "lead", durationMs: 200 },
+    { startTimeMs: 200, words: "solo", durationMs: 200, isBackground: true },
+  ]);
+  const backgroundLine = backgroundLineOf(root);
+  assert.ok(
+    backgroundLine !== undefined,
+    "Given a single background word, When the line is built, Then it still has a background line"
+  );
+  assert.equal(
+    wrappedSpacesIn(backgroundLine).length,
+    0,
+    "Given a single background word, When built, Then there is no gap to size"
+  );
+  assert.equal(
+    bareSpacesIn(backgroundLine).length,
+    0,
+    "Given a single background word, When built, Then no leading space is emitted before it"
+  );
+}
+
+// Regression: the wrapped space stays real whitespace, so the browser still collapses and trims it at a wrap.
+{
+  const { root } = buildSpacingLine([
+    { startTimeMs: 0, words: "x", durationMs: 100 },
+    { startTimeMs: 100, words: "back   vocal", durationMs: 400, isBackground: true },
+  ]);
+  const spaces = wrappedSpacesIn(backgroundLineOf(root) as FakeNode);
+  assert.ok(spaces.length > 0, "Given a background gap, When built, Then it is a wrapped span");
+  assert.ok(
+    spaces.every(node => node.textContent === "   "),
+    "Given a multi-space background gap, When built, Then the wrapped span holds the source whitespace verbatim, not a margin"
+  );
+}
+
+// Invariants: the wrapped space is a plain sizing node, no word, timing or direction, so nothing animates it.
+{
+  const { root, line } = buildSpacingLine([{ startTimeMs: 0, words: "one two", durationMs: 400, isBackground: true }]);
+  const spaces = wrappedSpacesIn(backgroundLineOf(root) as FakeNode);
+  assert.ok(spaces.length > 0, "Given a background gap, When built, Then it is a wrapped span");
+  assert.ok(
+    spaces.every(
+      node =>
+        !node.classList.contains(WORD_CLASS) &&
+        !node.classList.contains(WORD_GROUP_CLASS) &&
+        !node.classList.contains(WORD_HIGHLIGHT_CLASS)
+    ),
+    "Given a wrapped space, When built, Then it is neither a word, a word group, nor a highlight"
+  );
+  assert.ok(
+    spaces.every(
+      node =>
+        node.dataset.time === undefined && node.dataset.duration === undefined && node.dataset.content === undefined
+    ),
+    "Given a wrapped space, When built, Then it carries none of the timing a word does"
+  );
+  assert.ok(
+    spaces.every(node => node.dir === ""),
+    "Given a wrapped space, When built, Then it sets no direction and cannot open a bidi isolate"
+  );
+  assert.equal(
+    line.parts.length,
+    2,
+    "Given two background words split by a space, When built, Then only the words become parts and the space adds none"
+  );
+  assert.equal(
+    collectTree(root).filter(node => node.classList.contains(WORD_HIGHLIGHT_CLASS)).length,
+    2,
+    "Given two background words, When built, Then there is one highlight target per word and none for the space"
+  );
+}
+
+// Inline background (unsplit line): the words share the main run, so their spacing stays a bare text node.
+{
+  const { root } = buildSpacingLine(
+    [
+      { startTimeMs: 0, words: "romanized", durationMs: 200 },
+      { startTimeMs: 200, words: "echo here", durationMs: 400, isBackground: true },
+    ],
+    { splitBackgroundLine: false }
+  );
+  assert.equal(
+    backgroundLineOf(root),
+    undefined,
+    "Given an unsplit line, When built, Then no separate background line is created"
+  );
+  assert.equal(
+    wrappedSpacesIn(root).length,
+    0,
+    "Given inline background words, When built, Then their spacing is not wrapped in the background size"
+  );
+  assert.ok(
+    bareSpacesIn(root).length >= 1,
+    "Given inline background words, When built, Then their spacing stays a bare text node in the shared run"
+  );
+}
+
+// Bidi: an RTL background gap is a directionless span, so the run ordering matches the old bare text node.
+{
+  const { root } = buildSpacingLine([{ startTimeMs: 0, words: "مرحبا صديقي", durationMs: 400, isBackground: true }]);
+  const spaces = wrappedSpacesIn(backgroundLineOf(root) as FakeNode);
+  assert.ok(
+    spaces.length > 0 && spaces.every(node => node.dir === ""),
+    "Given an RTL background gap, When built, Then it is a directionless wrapped span"
+  );
+}
 
 console.log(`Renderer builder self-check passed across ${doc.calls.length} built node(s)`);
