@@ -442,6 +442,15 @@ function createHighlightRun(doc: Document, text: string): HTMLSpanElement {
   return run;
 }
 
+// A background gap must carry the background size too, or it renders full-size and the gap looks oversized.
+function createSpaceNode(doc: Document, text: string, isBackground: boolean): Node {
+  if (!isBackground) return doc.createTextNode(text);
+  const span = doc.createElement("span");
+  span.classList.add(BACKGROUND_LYRIC_CLASS);
+  span.textContent = text;
+  return span;
+}
+
 export function createLyricsLine(
   doc: Document,
   parts: LyricPart[],
@@ -487,8 +496,8 @@ export function createLyricsLine(
       const highlightRun = shouldUseBackgroundLine ? backgroundHighlightRun : mainHighlightRun;
       const pendingSpace = shouldUseBackgroundLine ? pendingBackgroundSpace : pendingForegroundSpace;
       if (target.childNodes.length > 0 && pendingSpace.length > 0) {
-        target.appendChild(doc.createTextNode(pendingSpace));
-        highlightRun.appendChild(doc.createTextNode(pendingSpace));
+        target.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
+        highlightRun.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
       }
       const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
       target.appendChild(lyricGroup);
