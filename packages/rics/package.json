@@ -10,6 +10,7 @@
 		"directory": "packages/rics"
 	},
 	"homepage": "https://braccato.boidu.dev",
+	"bugs": "https://github.com/better-lyrics/braccato/issues",
 	"keywords": ["rics", "css", "preprocessor"],
 	"sideEffects": false,
 	"main": "dist/index.js",
