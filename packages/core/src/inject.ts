@@ -579,7 +579,8 @@ export function injectRomanization(
   } else {
     romanizedLine.textContent = text;
   }
-  lyricElement.appendChild(romanizedLine);
+  const translation = lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`);
+  lyricElement.insertBefore(romanizedLine, translation);
 }
 
 export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string) {

@@ -503,4 +503,42 @@ const bareSpacesIn = (root: FakeNode): FakeNode[] =>
   );
 }
 
+// -- Decorators keep a fixed order no matter which lands first --------------------------------------------
+{
+  const orderOf = (first: "romanization" | "translation"): { romanization: number; translation: number } => {
+    const localDoc = new FakeDocument();
+    const root = localDoc.createElement("div");
+    const target = asElement<HTMLElement>(root);
+    const line = newLineData(target, 0, 400);
+    const romanize = () => injectRomanization(asDocument(localDoc), target, line, "sekai");
+    const translate = () => injectTranslation(asDocument(localDoc), target, "world");
+    if (first === "translation") {
+      translate();
+      romanize();
+    } else {
+      romanize();
+      translate();
+    }
+    const decorators = collectTree(root).filter(
+      node => node.classList.contains(ROMANIZED_LYRICS_CLASS) || node.classList.contains(TRANSLATED_LYRICS_CLASS)
+    );
+    return {
+      romanization: decorators.findIndex(node => node.classList.contains(ROMANIZED_LYRICS_CLASS)),
+      translation: decorators.findIndex(node => node.classList.contains(TRANSLATED_LYRICS_CLASS)),
+    };
+  };
+
+  const romanizationFirst = orderOf("romanization");
+  assert.ok(
+    romanizationFirst.romanization < romanizationFirst.translation,
+    "Given romanization injected before translation, When both are placed, Then romanization sits above translation"
+  );
+
+  const translationFirst = orderOf("translation");
+  assert.ok(
+    translationFirst.romanization < translationFirst.translation,
+    "Given translation injected before romanization, When both are placed, Then romanization still sits above translation"
+  );
+}
+
 console.log(`Renderer builder self-check passed across ${doc.calls.length} built node(s)`);
