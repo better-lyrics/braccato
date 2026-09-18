@@ -213,6 +213,31 @@ The split multiplies the DOM per character and reruns the karaoke sweep per lett
 does not want the cost turns it off with `/* blyrics-letter-wave = false; */`. `blyrics-letter-wave`
 reloads the lines when it changes, the way every build-time setting does.
 
+### Word state
+
+The renderer writes `data-word-state` on every word as the song crosses it, so a theme can tell a
+word being sung from one already sung or one not yet reached. It carries `upcoming` before the word
+starts, `active` while it is being sung, and `past` once it has finished, and it is written on both
+layers of a word, the base `.blyrics--word` and its highlight overlay, so a theme can key either. A
+word stays `active` for exactly as long as it is sung, so a transition on the flip is the whole of a
+per-word karaoke effect, the one ramansg/Max-Performance built before the swept overlay.
+
+```css
+.blyrics--word {
+  color: var(--blyrics-lyric-inactive-color);
+  transition: color 180ms ease;
+}
+
+.blyrics--word[data-word-state="active"],
+.blyrics--word[data-word-state="past"] {
+  color: var(--blyrics-lyric-active-color);
+}
+```
+
+It is written only when a word's state changes rather than every frame, so selecting on it costs a
+theme nothing per tick. A line synced word, which has no duration of its own, is `active` from its
+start until the next word begins.
+
 ### Class names
 
 These are published API rather than implementation. Renaming one costs a migration rather than a

@@ -9,6 +9,7 @@
 // this page, and it is long enough that inlining it here would bury the other two. It lives beside
 // this file and arrives as a string, which is the same thing the other two are.
 
+import karaoke from "./theme-karaoke.css?raw";
 import sustain from "./theme-sustain.css?raw";
 
 export const THEMES = [
@@ -62,6 +63,12 @@ export const THEMES = [
     title: "Sustain",
     summary: "Depth by distance, and lines that sit where the singer puts them.",
     css: sustain,
+  },
+  {
+    id: "karaoke",
+    title: "Karaoke",
+    summary: "Words rise in as they are sung and settle dim, the reveal style written against data-word-state.",
+    css: karaoke,
   },
   {
     id: "spotlight",
