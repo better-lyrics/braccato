@@ -236,6 +236,37 @@ assert.equal(
   "Given letter wave on, When words are built, Then the lettered class marks only the highlight run"
 );
 
+function lettersOf(words: string): string[] {
+  const localDoc = new FakeDocument();
+  const root = localDoc.createElement("div");
+  const target = asElement<HTMLElement>(root);
+  const line = newLineData(target, 0, 400);
+  createLyricsLine(asDocument(localDoc), [{ startTimeMs: 0, words, durationMs: 400 }], line, target);
+  const nodes = collectTree(root);
+  const word = nodes.find(
+    node => node.classList.contains(WORD_CLASS) && !node.classList.contains(WORD_HIGHLIGHT_CLASS)
+  );
+  return nodes
+    .filter(node => node.classList.contains(LETTER_CLASS) && node.parentNode === word)
+    .map(node => node.textContent);
+}
+
+assert.deepEqual(
+  lettersOf("मैं"),
+  ["मैं"],
+  "Given a Devanagari word, When letter wave splits it, Then a consonant and its matras stay one grapheme span"
+);
+assert.deepEqual(
+  lettersOf("আমি"),
+  ["আ", "মি"],
+  "Given a Bengali word, When letter wave splits it, Then each consonant keeps its vowel sign in one span"
+);
+assert.deepEqual(
+  lettersOf("👨‍👩‍👧"),
+  ["👨‍👩‍👧"],
+  "Given a ZWJ emoji sequence, When letter wave splits it, Then it stays one grapheme span"
+);
+
 setThemeSettings(new Map());
 
 // -- A line click calls seek, not a document --------------------------------------------
