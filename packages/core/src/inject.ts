@@ -44,6 +44,8 @@ let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
 let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 const RTL_SCRIPT_REGEX = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}]/u;
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -316,7 +318,7 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, th
 }
 
 function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
-  const chars = [...text];
+  const chars = [...graphemeSegmenter.segment(text)].map(segment => segment.segment);
   wordElement.style.setProperty("--letters", String(chars.length));
   // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
   // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
