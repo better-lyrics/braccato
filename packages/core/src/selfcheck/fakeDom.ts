@@ -228,6 +228,20 @@ export class FakeNode {
     return child;
   }
 
+  insertBefore(child: FakeNode, reference: FakeNode | null): FakeNode {
+    if (reference === null) return this.appendChild(child);
+    const position = this.childNodes.indexOf(reference);
+    if (position === -1) {
+      throw new Error("insertBefore was given a reference node that is not a child");
+    }
+    const incoming = child.kind === "fragment" ? child.childNodes.splice(0) : [child];
+    for (const node of incoming) {
+      node.parentNode = this;
+    }
+    this.childNodes.splice(position, 0, ...incoming);
+    return child;
+  }
+
   remove(): void {
     const siblings = this.parentNode?.childNodes;
     if (!siblings) return;

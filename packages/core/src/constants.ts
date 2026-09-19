@@ -18,6 +18,12 @@ export const PAUSED_CLASS = "blyrics--paused" as const;
 export const ZERO_DURATION_ANIMATION_CLASS = "blyrics-zero-dur-animate" as const;
 export const USER_SCROLLING_CLASS = "blyrics-user-scrolling" as const;
 
+export const WORD_STATE_ATTR = "data-word-state" as const;
+export const WORD_STATE_UPCOMING = "upcoming" as const;
+export const WORD_STATE_ACTIVE = "active" as const;
+export const WORD_STATE_PAST = "past" as const;
+export type WordState = typeof WORD_STATE_UPCOMING | typeof WORD_STATE_ACTIVE | typeof WORD_STATE_PAST;
+
 // -- Line and word variants --------------------------------------------
 
 export const BACKGROUND_LYRIC_CLASS = "blyrics-background-lyric" as const;

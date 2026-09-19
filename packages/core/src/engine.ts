@@ -27,6 +27,11 @@ import {
   RTL_CLASS,
   TRANSLATED_LYRICS_CLASS,
   USER_SCROLLING_CLASS,
+  WORD_STATE_ACTIVE,
+  WORD_STATE_ATTR,
+  WORD_STATE_PAST,
+  WORD_STATE_UPCOMING,
+  type WordState,
 } from "./constants";
 import type { AnimationData, LineData, PartData } from "./inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
@@ -491,6 +496,25 @@ function clearLineStateClasses(lineData: LineData): void {
   lineData.lyricElement.classList.remove(ANIMATING_CLASS);
   for (const part of [lineData, ...lineData.parts]) {
     togglePartClass(part, PAUSED_CLASS, false);
+  }
+}
+
+export function updateWordStates(lineData: LineData, currentTime: number): void {
+  const parts = lineData.parts;
+  const lineEndTime = lineData.time + lineData.duration;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const endTime = part.duration > 0 ? part.time + part.duration : (parts[i + 1]?.time ?? lineEndTime);
+    let state: WordState = WORD_STATE_PAST;
+    if (currentTime < part.time) {
+      state = WORD_STATE_UPCOMING;
+    } else if (currentTime < endTime) {
+      state = WORD_STATE_ACTIVE;
+    }
+    if (part.wordState === state) continue;
+    part.wordState = state;
+    part.lyricElement.setAttribute(WORD_STATE_ATTR, state);
+    part.highlightElement.setAttribute(WORD_STATE_ATTR, state);
   }
 }
 
@@ -2944,6 +2968,8 @@ export function tickView(
           if (isPlaying) lineData.isAnimating = false; // reset the animation against current media time
         }
 
+        updateWordStates(lineData, currentTime);
+
         const nativeTimingSample = lineNativeTimingSample(lineData, currentTime);
         let usedNativeTimingSampleForDrift = false;
         lineData.accumulatedOffsetMs = lineData.accumulatedOffsetMs / ANIMATION_TIMING_ACCUMULATION_DECAY;
@@ -3017,6 +3043,7 @@ export function tickView(
           }
           lineData.isSelected = false;
           clearLineStateClasses(lineData);
+          updateWordStates(lineData, currentTime);
         } else if (hasLineAnimations(lineData) && (timeJumped || currentTime > staleAnimationEndTime)) {
           logAnimationCleanup(
             engine,
@@ -3027,6 +3054,9 @@ export function tickView(
             staleAnimationEndTime
           );
           resetLineAnimationState(lineData);
+        }
+        if (timeJumped) {
+          updateWordStates(lineData, currentTime);
         }
       }
       return true;

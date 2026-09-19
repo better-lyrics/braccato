@@ -31,6 +31,9 @@ import {
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
   WORD_HIGHLIGHT_LETTERED_CLASS,
+  WORD_STATE_ATTR,
+  WORD_STATE_UPCOMING,
+  type WordState,
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
 import { getSeekTimeFromClick } from "./seek";
@@ -112,6 +115,7 @@ export interface PartData extends AnimationData {
   highlightLetterElements?: HTMLElement[];
   // Set when the word's resolved glow renders nothing, so its per-frame blur is skipped.
   glowSuppressed?: boolean;
+  wordState: WordState;
 }
 
 export type LineData = {
@@ -170,6 +174,7 @@ function newPartData(
     letterElements,
     highlightLetterElements,
     animations: [],
+    wordState: WORD_STATE_UPCOMING,
   };
 }
 
@@ -374,6 +379,7 @@ function createTimedWordSpan(
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
     wordElement.dataset.content = part.words;
+    wordElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
     wordElement.style.setProperty("--blyrics-duration", part.durationMs + "ms");
   }
   return { span, highlight, letters, highlightLetters };
@@ -573,7 +579,8 @@ export function injectRomanization(
   } else {
     romanizedLine.textContent = text;
   }
-  lyricElement.appendChild(romanizedLine);
+  const translation = lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`);
+  lyricElement.insertBefore(romanizedLine, translation);
 }
 
 export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string) {

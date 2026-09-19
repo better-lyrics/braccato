@@ -1,0 +1,54 @@
+/* blyrics-target-scroll-pos-ratio = 0.5; */
+/* blyrics-letter-wave = false; */
+
+.blyrics-container {
+  --blyrics-font-weight: 700;
+  --blyrics-lyric-active-color: oklch(0.96 0.09 96);
+  --blyrics-animate-word-wobble: 0;
+  --blyrics-animate-highlight-swipe: 0;
+  --blyrics-animate-line-scale: 0;
+}
+
+.blyrics-container:not(.blyrics-user-scrolling) > .blyrics--line {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.blyrics-container:not(.blyrics-user-scrolling) > .blyrics--line:is(.blyrics--active, .blyrics--animating) {
+  opacity: 1;
+}
+
+.blyrics-word-highlight {
+  display: none;
+}
+
+.blyrics--word {
+  color: var(--blyrics-lyric-active-color);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.blyrics--word[data-word-state="active"] {
+  opacity: 1;
+  animation: karaoke-rise 320ms ease-out;
+}
+
+.blyrics--word[data-word-state="past"] {
+  opacity: 0.7;
+}
+
+.blyrics-user-scrolling .blyrics--word {
+  opacity: 1 !important;
+}
+
+@keyframes karaoke-rise {
+  0% {
+    transform: translate(0) scale(1);
+  }
+  30% {
+    transform: translateY(-0.15em) translateX(0.15em) scale(1.035);
+  }
+  100% {
+    transform: translate(0) scale(1);
+  }
+}
