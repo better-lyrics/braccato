@@ -34,10 +34,12 @@ class LanguageDocument extends FakeDocument {
 
 for (const language of ["ja", "zh-Hant", "ko-KR"]) {
   const doc = new LanguageDocument();
+  let measurements = 0;
   const renderer = createLyricsRenderer({
     document: asDocument(doc),
     window: asWindow(new FakeWindow()),
     mount: asElement<HTMLElement>(doc.createElement("div")),
+    host: { debug: { beginFrame: () => null, resize: () => measurements++ } },
   });
   renderer.setLyrics(lyrics(["海の声", han]));
   assert.deepEqual(
@@ -60,6 +62,9 @@ for (const language of ["ja", "zh-Hant", "ko-KR"]) {
   assert.equal(line.lyricElement.lang, "ja-JP");
   assert.equal(romanized.lang, "ja-Latn");
   assert.equal(translated.lang, "zh-TW", "late detection does not relabel translations");
+  const measuredBeforeRepeat = measurements;
+  renderer.setLanguage("ja_JP");
+  assert.equal(measurements, measuredBeforeRepeat, "equivalent language updates do not re-measure the song");
 
   renderer.setLanguage(null);
   assert.equal(line.lyricElement.lang, "", "clearing language does not retain a previous hint");

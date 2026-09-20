@@ -371,7 +371,9 @@ MIT. See `LICENSE`.
 Pass the source BCP 47 language to `renderer.setLyrics(lyrics, { language: "ja" })`
 (or `element.lyricsOptions = { language: "ja" }` before assigning lyrics). If language detection
 finishes later, `renderer.setLanguage("ja")` updates the existing lines and their measurements
-without replacing their DOM or animations. Omitting the language on a new song clears the old hint.
+without replacing their DOM or animations. Repeating the same language (including equivalent spellings
+such as `ja-JP` and `ja_JP`) does not write to the DOM or measure again. Omitting the language on a
+new song clears the old hint.
 
 The renderer preserves Chinese script/region tags and uses kana or Hangul as a fallback when
 metadata is missing or contradicts the text. Han characters alone cannot identify a language;

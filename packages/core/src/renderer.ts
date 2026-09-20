@@ -32,7 +32,7 @@ import {
 import type { LineData } from "./inject";
 import { parseThemeConfig, setThemeSettings } from "./themeSettings";
 import type { Lyric, LyricsRenderer, LyricsRendererHost, LyricsRendererOptions } from "./types";
-import { applyLyricLanguage, resolveLyricLanguages } from "./language";
+import { applyLyricLanguage, normalizeLanguage, resolveLyricLanguages } from "./language";
 import { setLyrics as buildLyricsView } from "./view";
 
 /**
@@ -171,6 +171,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
   let createdThemeStyleElement: HTMLElement | null = null;
   let isDestroyed = false;
   let currentLyrics: readonly Lyric[] = [];
+  let currentLanguage = "";
 
   const { host, forgetScrollElement } = withHostDefaults(rendererOptions.host, rendererWindow, () => mount);
   const engine = createAnimationEngineInstance(rendererDocument, rendererWindow, host);
@@ -207,6 +208,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     engine.lyricsContainer?.remove();
     clearLyrics(engine);
     currentLyrics = [];
+    currentLanguage = "";
   }
 
   /**
@@ -301,12 +303,15 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
         noLyrics: options?.noLyrics ?? false,
       });
       currentLyrics = lyrics;
+      currentLanguage = normalizeLanguage(options?.language);
       measure();
       if (engine.lyricsContainer) observeContainer(engine.lyricsContainer);
     },
     setLanguage(language) {
-      if (isDestroyed) return;
-      const languages = resolveLyricLanguages(currentLyrics, language);
+      const normalized = normalizeLanguage(language);
+      if (isDestroyed || currentLyrics.length === 0 || normalized === currentLanguage) return;
+      currentLanguage = normalized;
+      const languages = resolveLyricLanguages(currentLyrics, normalized);
       getRenderedLines(engine).forEach((line, index) => applyLyricLanguage(line.lyricElement, languages[index]));
       measure();
     },
