@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><script>
+const params=new URLSearchParams(location.search);const version=params.get('version');document.documentElement.lang=params.get('host');
+for(const href of ['/'+version+'-core/styles/variables.css','/'+version+'-core/styles/lyrics.css',version==='before'?'/before-misc.css':'/public/css/blyrics/misc.css','/public/fonts/fonts.css','https://fonts.googleapis.com/css2?family=Noto+Sans:wght@700&family=Noto+Sans+HK:wght@700&family=Noto+Sans+JP:wght@700&family=Noto+Sans+KR:wght@700&family=Noto+Sans+SC:wght@700&family=Noto+Sans+TC:wght@700&display=swap']){const link=document.createElement('link');link.rel='stylesheet';link.href=href;document.head.append(link);}
+</script><style>
+:root { --blyrics-font-size: 76px; --blyrics-translated-font-size: 64px; --blyrics-lyric-inactive-color: #172535; --blyrics-translated-color: #172535; --blyrics-line-height: 1.2; --blyrics-scale: 1; }
+* { box-sizing: border-box; } body { margin: 0; color: #172535; font-family: Arial, sans-serif; }
+.row { margin: 0 24px; padding: 17px 0 16px; border-bottom: 1px solid #e5e9ee; } .row:last-child { border-bottom: 0; }
+h3 { font: 700 15px Arial, sans-serif; margin: 0 0 10px; } .font-evidence { font: 12px/1.5 monospace; color: #526273; margin: 10px 0 0; }
+.blyrics-container { padding: 0 !important; margin: 0 !important; transform: none !important; }
+.blyrics-container > div { padding: 0 !important; margin: 0 !important; transform: none !important; }
+.blyrics--line, .blyrics--word, .blyrics--translated, .blyrics--romanized { animation: none !important; transition: none !important; }
+.blyrics--line { content-visibility: visible !important; }
+.contexts { padding: 25px 25px 0; } .contexts .blyrics--romanized { font-size: 27px; font-weight: 500; margin: 12px 0 25px; color: #526273; }
+.contexts .blyrics--translated { margin-top: 14px; } .role { font: 700 13px Arial, sans-serif; color: #526273; margin: 20px 0 12px; }
+.document-language { font: 12px monospace; padding: 10px 12px; background: #f2f4f7; border-radius: 5px; margin-bottom: 20px; }
+</style></head><body><script type="module">
+const {createLyricsRenderer,injectRomanization,injectTranslation}=await import('/'+version+'-core/index.js');
+const contexts=params.has('contexts');window.proofSamples=[];
+const fixtures=contexts?[['Japanese original','ja','海の声']]:[['Japanese','ja','刃直海角骨入'],['Korean','ko-KR','刃直海角骨入'],['Simplified Chinese','zh-CN','刃直海角骨入'],['Traditional Chinese · Taiwan','zh-TW','刃直海角骨入'],['Traditional Chinese · Hong Kong','zh-HK','刃直海角骨入']];
+if(contexts){document.body.className='contexts';const info=document.createElement('div');info.className='document-language';info.textContent='Document UI language: '+document.documentElement.lang;document.body.append(info);}
+for(const [label,language,words] of fixtures){const row=document.createElement('section');row.className=contexts?'':'row';const heading=document.createElement('h3');heading.textContent=label+' · '+language;const mount=document.createElement('div');const info=document.createElement('div');info.className='font-evidence';row.append(heading,mount,info);document.body.append(row);
+const renderer=createLyricsRenderer({document,window,mount});renderer.setLyrics([{words,startTimeMs:0,durationMs:0}],version==='after'?{language}:{});
+const line=renderer.lines[0];const original=line.lyricElement.querySelector('.blyrics-line-main .blyrics-bidi-run:not(.blyrics-highlight-run) .blyrics--word');original.id='glyph-'+window.proofSamples.length;
+window.proofSamples.push({id:original.id,role:label,language,original:true});info.id='evidence-'+original.id;
+if(contexts){injectRomanization(document,line.lyricElement,line,'umi no koe');if(version==='after')injectTranslation(document,line.lyricElement,'海之聲','zh-TW');else injectTranslation(document,line.lyricElement,'海之聲');const translation=line.lyricElement.querySelector('.blyrics--translated');translation.id='translation';const translationHeading=document.createElement('div');translationHeading.className='role';translationHeading.textContent='Traditional Chinese translation · zh-TW';line.lyricElement.insertBefore(translationHeading,translation);window.proofSamples.push({id:'translation',role:'Translation',language:'zh-TW',original:false});const translationInfo=document.createElement('div');translationInfo.className='font-evidence';translationInfo.id='evidence-translation';line.lyricElement.append(translationInfo);line.lyricElement.insertBefore(info,line.lyricElement.querySelector('.blyrics--romanized'));const romanized=line.lyricElement.querySelector('.blyrics--romanized');const tag=document.createElement('div');tag.className='font-evidence';tag.textContent='Romanization lang: '+(romanized.getAttribute('lang')||'(inherited '+document.documentElement.lang+')');romanized.after(tag);}
+}
+await Promise.all([...document.querySelectorAll('link[rel=stylesheet]')].map(link=>link.sheet?Promise.resolve():new Promise((resolve,reject)=>{link.addEventListener('load',resolve,{once:true});link.addEventListener('error',()=>reject(Error('Stylesheet failed: '+link.href)),{once:true});})));
+await Promise.all(['HK','JP','KR','SC','TC'].map(region=>document.fonts.load('700 76px "Noto Sans '+region+'"','刃直海角骨入海の声海之聲')));await document.fonts.ready;
+window.proofReady=true;
+</script></body></html>

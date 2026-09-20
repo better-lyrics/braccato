@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CJK glyph regression — before and after</title><style>
+* { box-sizing: border-box; } body { margin: 0; background: #f2f3f6; color: #182333; font-family: Arial, sans-serif; padding: 36px 42px 28px; }
+header { margin-bottom: 26px; } .eyebrow { color: #526273; font: 700 13px Arial; letter-spacing: 1.5px; margin-bottom: 12px; }
+h1 { font-size: 36px; letter-spacing: -1px; margin: 0 0 12px; } p { margin: 0; font-size: 16px; line-height: 1.5; color: #526273; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; } .grid.contexts { grid-template-columns: 1fr 1fr 1fr; }
+.card { border: 1px solid #d5dce3; background: white; border-radius: 12px; overflow: hidden; }
+.card h2 { font-size: 19px; margin: 0; padding: 19px 24px 7px; } .card p { padding: 0 24px 18px; font-size: 14px; border-bottom: 1px solid #dce1e7; }
+.before h2 { color: #a3293f; } .after h2 { color: #176d52; }
+iframe { display: block; width: 100%; border: 0; height: 820px; } .contexts iframe { height: 560px; }
+footer { font-size: 12px; line-height: 1.6; margin-top: 20px; color: #526273; } code { font-family: monospace; }
+</style></head><body><header><div class="eyebrow">BETTER LYRICS #876 · BRACCATO #30 + BETTER LYRICS #878</div><h1 id="title">Same characters. Correct regional glyphs.</h1><p id="description">Actual Braccato output using the extension’s font CSS. Each row receives the same six Unicode characters.</p></header><main class="grid" id="grid"></main><footer>Reproducible browser fixture · Chrome · Real renderer + downloaded Noto web fonts · Font labels verified with Chrome’s rendered-font inspector.<br>Before: @braccato/core 1.7.0 + Better Lyrics 2330e50c · After: Braccato 50822b7 + Better Lyrics 2a8aaeb1 · Not a live YouTube Music screenshot.</footer><script>
+const contexts=new URLSearchParams(location.search).has('contexts');
+const cards=contexts?[['before','Before','Original and translation share HK glyphs','en'],['after','After · main window','Japanese source and Traditional Chinese translation','en'],['after','After · floating document','Same payload, independent document with Chinese UI','zh-CN']]:[['before','Before','Regional font preference ignores the lyric language','en'],['after','After','Each line uses its own regional Noto subset','en']];
+if(contexts){document.querySelector('#grid').classList.add('contexts');document.querySelector('#title').textContent='Source and translation keep their own language.';document.querySelector('#description').textContent='The same lyric payload rendered in two independent documents, with English and Chinese UI languages.';}
+for(const [version,title,description,host] of cards){const card=document.createElement('section');card.className='card '+version;const h=document.createElement('h2');h.textContent=title;const p=document.createElement('p');p.textContent=description;const iframe=document.createElement('iframe');iframe.src='/frame.html?version='+version+'&host='+host+(contexts?'&contexts=1':'');card.append(h,p,iframe);document.querySelector('#grid').append(card);}
+</script></body></html>

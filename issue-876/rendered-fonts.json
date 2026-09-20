@@ -1,0 +1,226 @@
+[
+  {
+    "contexts": false,
+    "frameIndex": 0,
+    "sample": {
+      "id": "glyph-0",
+      "role": "Japanese",
+      "language": "ja",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": false,
+    "frameIndex": 0,
+    "sample": {
+      "id": "glyph-1",
+      "role": "Korean",
+      "language": "ko-KR",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": false,
+    "frameIndex": 0,
+    "sample": {
+      "id": "glyph-2",
+      "role": "Simplified Chinese",
+      "language": "zh-CN",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": false,
+    "frameIndex": 0,
+    "sample": {
+      "id": "glyph-3",
+      "role": "Traditional Chinese · Taiwan",
+      "language": "zh-TW",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": false,
+    "frameIndex": 0,
+    "sample": {
+      "id": "glyph-4",
+      "role": "Traditional Chinese · Hong Kong",
+      "language": "zh-HK",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": false,
+    "frameIndex": 1,
+    "sample": {
+      "id": "glyph-0",
+      "role": "Japanese",
+      "language": "ja",
+      "original": true
+    },
+    "actual": "Noto Sans JP",
+    "expected": "Noto Sans JP",
+    "language": "ja",
+    "inherited": false
+  },
+  {
+    "contexts": false,
+    "frameIndex": 1,
+    "sample": {
+      "id": "glyph-1",
+      "role": "Korean",
+      "language": "ko-KR",
+      "original": true
+    },
+    "actual": "Noto Sans KR",
+    "expected": "Noto Sans KR",
+    "language": "ko-KR",
+    "inherited": false
+  },
+  {
+    "contexts": false,
+    "frameIndex": 1,
+    "sample": {
+      "id": "glyph-2",
+      "role": "Simplified Chinese",
+      "language": "zh-CN",
+      "original": true
+    },
+    "actual": "Noto Sans SC",
+    "expected": "Noto Sans SC",
+    "language": "zh-CN",
+    "inherited": false
+  },
+  {
+    "contexts": false,
+    "frameIndex": 1,
+    "sample": {
+      "id": "glyph-3",
+      "role": "Traditional Chinese · Taiwan",
+      "language": "zh-TW",
+      "original": true
+    },
+    "actual": "Noto Sans TC",
+    "expected": "Noto Sans TC",
+    "language": "zh-TW",
+    "inherited": false
+  },
+  {
+    "contexts": false,
+    "frameIndex": 1,
+    "sample": {
+      "id": "glyph-4",
+      "role": "Traditional Chinese · Hong Kong",
+      "language": "zh-HK",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "zh-HK",
+    "inherited": false
+  },
+  {
+    "contexts": true,
+    "frameIndex": 0,
+    "sample": {
+      "id": "glyph-0",
+      "role": "Japanese original",
+      "language": "ja",
+      "original": true
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": true,
+    "frameIndex": 0,
+    "sample": {
+      "id": "translation",
+      "role": "Translation",
+      "language": "zh-TW",
+      "original": false
+    },
+    "actual": "Noto Sans HK",
+    "expected": "Noto Sans HK",
+    "language": "en",
+    "inherited": true
+  },
+  {
+    "contexts": true,
+    "frameIndex": 1,
+    "sample": {
+      "id": "glyph-0",
+      "role": "Japanese original",
+      "language": "ja",
+      "original": true
+    },
+    "actual": "Noto Sans JP",
+    "expected": "Noto Sans JP",
+    "language": "ja",
+    "inherited": false
+  },
+  {
+    "contexts": true,
+    "frameIndex": 1,
+    "sample": {
+      "id": "translation",
+      "role": "Translation",
+      "language": "zh-TW",
+      "original": false
+    },
+    "actual": "Noto Sans TC",
+    "expected": "Noto Sans TC",
+    "language": "zh-TW",
+    "inherited": false
+  },
+  {
+    "contexts": true,
+    "frameIndex": 2,
+    "sample": {
+      "id": "glyph-0",
+      "role": "Japanese original",
+      "language": "ja",
+      "original": true
+    },
+    "actual": "Noto Sans JP",
+    "expected": "Noto Sans JP",
+    "language": "ja",
+    "inherited": false
+  },
+  {
+    "contexts": true,
+    "frameIndex": 2,
+    "sample": {
+      "id": "translation",
+      "role": "Translation",
+      "language": "zh-TW",
+      "original": false
+    },
+    "actual": "Noto Sans TC",
+    "expected": "Noto Sans TC",
+    "language": "zh-TW",
+    "inherited": false
+  }
+]
