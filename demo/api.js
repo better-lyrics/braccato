@@ -96,7 +96,7 @@ export const PROPERTIES = [
   },
   {
     member: "lyricsOptions",
-    type: "{ loaderVisible, noLyrics }",
+    type: "{ loaderVisible?, noLyrics?, language? }",
     writable: true,
     summary:
       "How the lines are built. noLyrics marks a message as a placeholder rather than a song, which is what keeps passive scrolling from drifting it across the view for the length of the track.",
@@ -335,7 +335,8 @@ export const THEME_SETTINGS = [
 export const CUSTOM_PROPERTIES = [
   {
     property: "--blyrics-font-family",
-    summary: "Names a real fallback, so a page that loads no fonts still gets one.",
+    summary:
+      "Overrides the default font stack. The default resolves separately for each lyric and translation language.",
   },
   { property: "--blyrics-font-size", summary: "Everything else is sized off it, including the instrumental dots." },
   { property: "--blyrics-line-height", summary: "Unitless, so it follows the font size." },

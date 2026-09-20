@@ -76,7 +76,7 @@ connects, and everything it was handed by then is applied at once.
 | Property        | Attribute      | Type                                | Default  | Description                                                                                                                              |
 | --------------- | -------------- | ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `lyrics`        |                | `Lyric[] \| null`                   | `null`   | The song. Null means it was never given one, and an empty array clears the view, so there is a way to say both.                            |
-| `lyricsOptions` |                | `{ loaderVisible?, noLyrics? }`     | `{}`     | How the lines are built. `noLyrics` marks a message as a placeholder rather than a song, which keeps passive scrolling from drifting it.   |
+| `lyricsOptions` |                | `{ loaderVisible?, noLyrics?, language? }`     | `{}`     | How the lines are built. `noLyrics` marks a message as a placeholder rather than a song, which keeps passive scrolling from drifting it.   |
 | `source`        | `source`       | `string \| HTMLMediaElement \| null` | `null`  | A selector or the media element itself. See Following a media element.                                                                     |
 | `mediaElement`  |                | `HTMLMediaElement \| null` (get)    | `null`   | What `source` resolved to. Null while disconnected, and null for a selector that missed.                                                   |
 | `currentTime`   | `current-time` | `number`                            | `0`      | Playback position in **seconds**. Writing it renders the view again, so whoever holds the clock drives the lyrics by writing this.        |
@@ -365,3 +365,26 @@ repository and run `pnpm -C demo dev`, then open `http://localhost:5173/`.
 ## Licence
 
 MIT. See `LICENSE`.
+
+### Content language and CJK fonts
+
+Pass the source BCP 47 language to `renderer.setLyrics(lyrics, { language: "ja" })`
+(or `element.lyricsOptions = { language: "ja" }` before assigning lyrics). If language detection
+finishes later, `renderer.setLanguage("ja")` updates the existing lines and their measurements
+without replacing their DOM or animations. Omitting the language on a new song clears the old hint.
+
+The renderer preserves Chinese script/region tags and uses kana or Hangul as a fallback when
+metadata is missing or contradicts the text. Han characters alone cannot identify a language;
+untagged Han-only lyrics remain unknown. Translation and romanization settings are not needed
+for this local inference.
+
+Use `injectTranslation(document, lineElement, text, "zh-Hant")` to label a translation separately
+from its source. The language argument is optional; unknown translations get `lang=""` so they
+do not inherit the original lyrics' language. Romanizations use the source language with `Latn`.
+
+Default font stacks now resolve on each lyric and decoration instead of only at the root. Hosts
+loading regional CJK web fonts should set `--noto-sans-universal` on these elements according to
+`:lang()`: a Japanese line and its Chinese translation can then choose different font subsets.
+`--blyrics-font-family` and `--blyrics-translated-font-family` remain explicit theme overrides.
+They are unset by default; custom CSS that reads them directly should use
+`var(--blyrics-font-family, var(--blyrics-default-font-family))` for the default stack.

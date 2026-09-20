@@ -31,7 +31,8 @@ import {
 } from "./engine";
 import type { LineData } from "./inject";
 import { parseThemeConfig, setThemeSettings } from "./themeSettings";
-import type { LyricsRenderer, LyricsRendererHost, LyricsRendererOptions } from "./types";
+import type { Lyric, LyricsRenderer, LyricsRendererHost, LyricsRendererOptions } from "./types";
+import { applyLyricLanguage, resolveLyricLanguages } from "./language";
 import { setLyrics as buildLyricsView } from "./view";
 
 /**
@@ -169,6 +170,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
   // Only the theme element this renderer created, which is the only one it may take away again.
   let createdThemeStyleElement: HTMLElement | null = null;
   let isDestroyed = false;
+  let currentLyrics: readonly Lyric[] = [];
 
   const { host, forgetScrollElement } = withHostDefaults(rendererOptions.host, rendererWindow, () => mount);
   const engine = createAnimationEngineInstance(rendererDocument, rendererWindow, host);
@@ -204,6 +206,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     stopObservingContainer();
     engine.lyricsContainer?.remove();
     clearLyrics(engine);
+    currentLyrics = [];
   }
 
   /**
@@ -293,11 +296,19 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
       mount = nextMount;
 
       buildLyricsView(engine, nextMount, lyrics, {
+        language: options?.language,
         loaderVisible: options?.loaderVisible ?? false,
         noLyrics: options?.noLyrics ?? false,
       });
+      currentLyrics = lyrics;
       measure();
       if (engine.lyricsContainer) observeContainer(engine.lyricsContainer);
+    },
+    setLanguage(language) {
+      if (isDestroyed) return;
+      const languages = resolveLyricLanguages(currentLyrics, language);
+      getRenderedLines(engine).forEach((line, index) => applyLyricLanguage(line.lyricElement, languages[index]));
+      measure();
     },
     setTheme(css) {
       if (isDestroyed) return false;

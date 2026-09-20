@@ -12,6 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
+import { normalizeLanguage } from "./language";
 import {
   BACKGROUND_LINE_CLASS,
   BACKGROUND_LYRIC_CLASS,
@@ -574,6 +575,8 @@ export function injectRomanization(
   const romanizedLine = doc.createElement("div");
   romanizedLine.classList.add(ROMANIZED_LYRICS_CLASS, CONTENT_LINE_CLASS);
   romanizedLine.dir = "auto";
+  const language = normalizeLanguage(lyricElement.lang);
+  romanizedLine.lang = `${language ? new Intl.Locale(language).language : "und"}-Latn`;
   applyDirection(romanizedLine, text);
 
   if (timedRomanization && timedRomanization.length > 0 && !disableRichsync.getBooleanValue()) {
@@ -585,12 +588,13 @@ export function injectRomanization(
   lyricElement.insertBefore(romanizedLine, translation);
 }
 
-export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string) {
+export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string, language?: string | null) {
   if (lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`)) return;
 
   const translatedLine = doc.createElement("div");
   translatedLine.classList.add(TRANSLATED_LYRICS_CLASS, CONTENT_LINE_CLASS);
   translatedLine.dir = "auto";
+  translatedLine.lang = normalizeLanguage(language);
   applyDirection(translatedLine, text);
   translatedLine.textContent = text;
   lyricElement.appendChild(translatedLine);

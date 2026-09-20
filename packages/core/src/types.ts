@@ -131,6 +131,8 @@ export interface LyricsRenderer {
    * front of it.
    */
   setLyrics(lyrics: Lyric[], options?: Partial<SetLyricsOptions> & { mount?: HTMLElement }): void;
+  /** Updates a late-detected source language and layout without rebuilding lines or animations. */
+  setLanguage(language?: string | null): void;
   /**
    * Applies a compiled theme. The `blyrics-*` configuration in its comments becomes the module's
    * theme settings, and the stylesheet itself is applied to the document this renderer builds in.
