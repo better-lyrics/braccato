@@ -1,0 +1,98 @@
+[
+  {
+    "browser": "Firefox",
+    "version": "155.0",
+    "state": "before",
+    "width": 600,
+    "contentWidth": 322.683349609375,
+    "highlightWidth": 0,
+    "contentHeight": 17.599990844726562,
+    "highlightHeight": 140.8000030517578,
+    "maxDelta": 267.66664123535156,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Firefox",
+    "version": "155.0",
+    "state": "before",
+    "width": 280,
+    "contentWidth": 223,
+    "highlightWidth": 0,
+    "contentHeight": 35.19999694824219,
+    "highlightHeight": 140.8000030517578,
+    "maxDelta": 186.96665954589844,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Firefox",
+    "version": "155.0",
+    "state": "after",
+    "width": 600,
+    "contentWidth": 322.683349609375,
+    "highlightWidth": 322.683349609375,
+    "contentHeight": 17.599990844726562,
+    "highlightHeight": 17.599990844726562,
+    "maxDelta": 0,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Firefox",
+    "version": "155.0",
+    "state": "after",
+    "width": 280,
+    "contentWidth": 223,
+    "highlightWidth": 223,
+    "contentHeight": 35.19999694824219,
+    "highlightHeight": 35.19999694824219,
+    "maxDelta": 0,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Chromium",
+    "version": "153.0.8010.12",
+    "state": "before",
+    "width": 600,
+    "contentWidth": 322.875,
+    "highlightWidth": 322.875,
+    "contentHeight": 17.59375,
+    "highlightHeight": 17.59375,
+    "maxDelta": 0,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Chromium",
+    "version": "153.0.8010.12",
+    "state": "before",
+    "width": 280,
+    "contentWidth": 223,
+    "highlightWidth": 223,
+    "contentHeight": 35.1875,
+    "highlightHeight": 35.1875,
+    "maxDelta": 0,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Chromium",
+    "version": "153.0.8010.12",
+    "state": "after",
+    "width": 600,
+    "contentWidth": 322.875,
+    "highlightWidth": 322.875,
+    "contentHeight": 17.59375,
+    "highlightHeight": 17.59375,
+    "maxDelta": 0,
+    "activeHighlights": 9
+  },
+  {
+    "browser": "Chromium",
+    "version": "153.0.8010.12",
+    "state": "after",
+    "width": 280,
+    "contentWidth": 223,
+    "highlightWidth": 223,
+    "contentHeight": 35.1875,
+    "highlightHeight": 35.1875,
+    "maxDelta": 0,
+    "activeHighlights": 9
+  }
+]
