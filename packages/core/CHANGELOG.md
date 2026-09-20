@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.8.0
+
+### Minor Changes
+
+- a6fa236: Tag original lyrics, translations, and romanizations with their language so CJK glyph selection does not inherit the host UI language. Add a source language option, live language updates, and an optional translation language argument. Resolve default font fallbacks at each language boundary while retaining theme font overrides.
+
 ## 1.7.1
 
 ### Patch Changes
