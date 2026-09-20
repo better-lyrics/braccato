@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.7.1
+
+### Patch Changes
+
+- b511064: Fix timed romanization highlights collapsing to zero width and wrapping over subsequent lines in Firefox by keeping their positioned container block-level.
+
 ## 1.7.0
 
 ### Minor Changes
