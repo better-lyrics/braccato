@@ -244,10 +244,6 @@
 	width: fit-content;
 }
 
-.blyrics--romanized .blyrics-line-main {
-	display: inline;
-}
-
 .blyrics-rtl {
 	direction: rtl;
 }
