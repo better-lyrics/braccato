@@ -143,7 +143,7 @@
 	--blyrics-background-blur: 100px;
 	--blyrics-background-saturate: 2;
 
-	/* Lyric Transition Properties */
+	/* Lyric Transition Properties: visual fallback only; no scroll cooldown or lookahead coupling. */
 	--blyrics-lyric-scroll-duration: var(
 		--blyrics-lyric-transition-duration,
 		650ms

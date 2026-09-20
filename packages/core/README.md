@@ -150,6 +150,29 @@ stylesheet must not be able to configure the module by accident. An empty theme 
 back to its default. The stylesheet itself goes into the document head under the
 `blyrics-custom-style` id.
 
+### Autoscroll grouping and animation
+
+`blyrics-early-scroll-consider-s` is a comment setting with an independent default of `0.54`
+seconds. When a lyric reaches its scroll time, the renderer includes nearby upcoming lines in
+its target calculation. Entering the lookahead window alone does not scroll. A line already
+included in a committed scroll does not scroll again when its own time arrives. Seeking,
+resuming autoscroll and relayout can still reposition the view.
+
+```css
+/* blyrics-early-scroll-consider-s = 0.54; */
+/* blyrics-line-scroll-duration = 750ms; */
+```
+
+New groups scroll immediately. Previous per-line `translate` animations continue and compose
+additively, so their duration does not block the next scroll. The line-scroll duration knobs
+control visual motion. `--blyrics-lyric-scroll-duration` remains a fallback animation duration
+and the container's CSS transform transition duration; it no longer controls scheduling or
+lookahead. `blyrics-queue-scroll-ms` is ignored, and no timing equation needs balancing.
+
+Themes that previously relied on duration-derived lookahead should set their preferred
+`blyrics-early-scroll-consider-s` explicitly. The default remains close to the former default
+of approximately `0.54s`, but a custom animation duration no longer changes grouping.
+
 There is no `longWordThreshold`, `lineSyncedDelay` or `disableRichsync` property. Those are theme
 settings (`blyrics-long-word-threshold`, `blyrics-line-synced-animation-delay`,
 `blyrics-disable-richsync`), read from the stylesheet you already hand over. A theme that set one
