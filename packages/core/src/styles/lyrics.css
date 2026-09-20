@@ -21,8 +21,6 @@
 	padding-bottom: calc(var(--blyrics-padding-bottom));
 	padding-top: 2rem;
 	position: relative !important;
-	transition: transform var(--blyrics-lyric-scroll-duration)
-		var(--blyrics-lyric-scroll-timing-function) 0s;
 	will-change: transform;
 	z-index: 1;
 }

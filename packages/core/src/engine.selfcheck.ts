@@ -174,18 +174,18 @@ const NO_LYRICS_PLACEHOLDER: Lyric[] = [{ startTimeMs: 0, durationMs: 0, words: 
 // The same properties, answered differently by each document. The style caches are keyed by
 // property name alone, so a cache shared between instances would hand one view the other's values.
 const SCROLL_TIMING_OFFSET_PROPERTY = "--blyrics-scroll-timing-offset";
-const SCROLL_DURATION_PROPERTY = "--blyrics-lyric-scroll-duration";
+const SCROLL_EASING_PROPERTY = "--blyrics-lyric-scroll-timing-function";
 const ANIMATE_SCROLL_PROPERTY = "--blyrics-animate-scroll";
 
 const PANEL_STYLE: Record<string, string> = {
   [SCROLL_TIMING_OFFSET_PROPERTY]: "20ms",
-  [SCROLL_DURATION_PROPERTY]: "400ms",
+  [SCROLL_EASING_PROPERTY]: "ease-in",
   [ANIMATE_SCROLL_PROPERTY]: "1",
 };
 
 const FLOATING_STYLE: Record<string, string> = {
   [SCROLL_TIMING_OFFSET_PROPERTY]: "-70ms",
-  [SCROLL_DURATION_PROPERTY]: "900ms",
+  [SCROLL_EASING_PROPERTY]: "cubic-bezier(0.1, 0.2, 0.3, 0.4)",
   [ANIMATE_SCROLL_PROPERTY]: "0",
 };
 
@@ -438,39 +438,39 @@ assert.equal(
 );
 
 assert.equal(
-  panelEngine.cachedCSSValues.get(SCROLL_DURATION_PROPERTY),
-  "400ms",
+  panelEngine.cachedCSSValues.get(SCROLL_EASING_PROPERTY),
+  "ease-in",
   "Given two documents answering one property differently, When both views tick, Then each cached its own document's value"
 );
 
 assert.equal(
-  floatingEngine.cachedCSSValues.get(SCROLL_DURATION_PROPERTY),
-  "900ms",
+  floatingEngine.cachedCSSValues.get(SCROLL_EASING_PROPERTY),
+  "cubic-bezier(0.1, 0.2, 0.3, 0.4)",
   "Given two documents answering one property differently, When both views tick, Then neither took the other's value"
 );
 
 assert.equal(
-  [...panelEngine.cachedCSSValues.values()].includes("900ms"),
+  [...panelEngine.cachedCSSValues.values()].includes("cubic-bezier(0.1, 0.2, 0.3, 0.4)"),
   false,
   "Given the other document's values, When one view's style cache is read, Then it holds none of them"
 );
 
 assert.equal(
-  panelEngine.cachedAnimationSettings?.config.scroll.durationMs,
-  400,
-  "Given two documents with different scroll durations, When both views tick, Then each read its own into its settings"
+  panelEngine.cachedAnimationSettings?.config.lineScroll.easing,
+  "ease-in",
+  "Given two documents with different scroll easings, When both views tick, Then each read its own into its settings"
 );
 
 assert.equal(
-  floatingEngine.cachedAnimationSettings?.config.scroll.durationMs,
-  900,
-  "Given two documents with different scroll durations, When both views tick, Then neither read the other's into its settings"
+  floatingEngine.cachedAnimationSettings?.config.lineScroll.easing,
+  "cubic-bezier(0.1, 0.2, 0.3, 0.4)",
+  "Given two documents with different scroll easings, When both views tick, Then neither read the other's into its settings"
 );
 
 assert.equal(
   panelEngine.cachedAnimationSettings?.scrollTiming.earlyScrollConsiderS,
   floatingEngine.cachedAnimationSettings?.scrollTiming.earlyScrollConsiderS,
-  "Given different animation durations, both views retain the same independent lookahead"
+  "Given different animation easings, both views retain the same independent lookahead"
 );
 
 assert.deepEqual(
@@ -1014,7 +1014,7 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
 // Scroll grouping is committed only when a scroll happens. Animation length must not gate it.
 {
   const document = new FakeDocument();
-  const window = new FakeWindow({ [SCROLL_DURATION_PROPERTY]: "5000ms", [ANIMATE_SCROLL_PROPERTY]: "1" });
+  const window = new FakeWindow({ "--blyrics-lyric-scroll-duration": "5000ms", [ANIMATE_SCROLL_PROPERTY]: "1" });
   const host = new FakeHost();
   const mount = document.createElement("div");
   const engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
@@ -1040,6 +1040,7 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
     assert.deepEqual(host.logs, [], "Scroll ticks must not swallow an exception");
   };
   tick(1);
+  assert.ok(!window.propertyReads.includes("--blyrics-lyric-scroll-duration"), "The removed duration is never read");
   const firstPosition = host.scrollElement.scrollTop;
   const firstScrollCount = engine.skipScrolls;
   assert.ok(firstPosition > 0, "The first line must actually scroll");
@@ -1054,7 +1055,11 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   const previousAnimations = engine.lineScrollAnimations.map(record => record.animation);
   assert.ok(previousAnimations.length > 0, "The previous scroll animations are still running");
   tick(1.8);
-  assert.equal(engine.skipScrolls, firstScrollCount + 1, "Ungrouped C scrolls without waiting five seconds");
+  assert.equal(
+    engine.skipScrolls,
+    firstScrollCount + 1,
+    "Ungrouped C scrolls while earlier animations are still running"
+  );
   assert.ok(host.scrollElement.scrollTop > firstPosition);
   assert.deepEqual(engine.lastScrollElements, [lines[2], lines[3]], "C's scroll includes upcoming D");
   assert.ok(

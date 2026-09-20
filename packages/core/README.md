@@ -165,9 +165,12 @@ resuming autoscroll and relayout can still reposition the view.
 
 New groups scroll immediately. Previous per-line `translate` animations continue and compose
 additively, so their duration does not block the next scroll. The line-scroll duration knobs
-control visual motion. `--blyrics-lyric-scroll-duration` remains a fallback animation duration
-and the container's CSS transform transition duration; it no longer controls scheduling or
-lookahead. `blyrics-queue-scroll-ms` is ignored, and no timing equation needs balancing.
+control visual motion. The legacy `--blyrics-lyric-scroll-duration` variable and its
+`--blyrics-lyric-transition-duration` alias have been removed, along with the container transform
+transition. `blyrics-queue-scroll-ms` is ignored, and no timing equation needs balancing.
+Missing or invalid line durations fall back to an internal `750ms` duration; nonpositive resolved
+durations also use that fallback. Themes should set the line-scroll duration knobs directly
+instead of referencing the removed variables.
 
 Themes that previously relied on duration-derived lookahead should set their preferred
 `blyrics-early-scroll-consider-s` explicitly. The default remains close to the former default

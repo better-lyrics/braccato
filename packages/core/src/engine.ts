@@ -51,6 +51,7 @@ const EARLY_SCROLL_CONSIDER = registerThemeSetting("blyrics-early-scroll-conside
 const TIME_JUMP_THRESHOLD = 0.5;
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const SCROLL_PREPARE_LEAD_MS = 120;
+const LINE_SCROLL_FALLBACK_DURATION_MS = 750;
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
 const SWIPE_DURATION_RATIO = registerThemeSetting("blyrics-swipe-duration-ratio", 1.6);
 
@@ -611,12 +612,7 @@ interface AnimationConfig {
     waveOscillationDurationMs: number;
     waveOscillationEasing: string;
   };
-  scroll: {
-    durationMs: number;
-    easing: string;
-  };
   lineScroll: {
-    durationMs: number;
     easing: string;
     differentialEffects: boolean;
   };
@@ -1838,12 +1834,6 @@ function isGlowRestingInvisible(glowTo: string): boolean {
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const prefersReducedMotion = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
-  const scrollDurationMs = getCSSDurationWithFallback(
-    engine,
-    lyricsElement,
-    "--blyrics-lyric-scroll-duration",
-    "650ms"
-  );
   const scrollEasing = getCSSValue(
     engine,
     lyricsElement,
@@ -1987,12 +1977,7 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
         "ease-in-out"
       ),
     },
-    scroll: {
-      durationMs: scrollDurationMs,
-      easing: scrollEasing,
-    },
     lineScroll: {
-      durationMs: scrollDurationMs,
       easing: scrollEasing,
       differentialEffects: !prefersReducedMotion,
     },
@@ -2382,10 +2367,10 @@ function prepareLineScrollOffsets(
       missItems,
       "transition-duration",
       item =>
-        lineScrollDurationProperty(item.side, config.lineScroll.durationMs, config.lineScroll.differentialEffects),
+        lineScrollDurationProperty(item.side, LINE_SCROLL_FALLBACK_DURATION_MS, config.lineScroll.differentialEffects),
       style => {
         const durationMs = toMs(style.transitionDuration.split(",")[0].trim());
-        return durationMs > 0 ? durationMs : config.lineScroll.durationMs;
+        return durationMs > 0 ? durationMs : LINE_SCROLL_FALLBACK_DURATION_MS;
       }
     );
     const startEasings = batchResolveLineScrollProperty(

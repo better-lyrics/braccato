@@ -342,11 +342,6 @@ export const THEME_SETTINGS = [
 // Checked against the emitted stylesheets, which is the only place a custom property is declared.
 export const CUSTOM_PROPERTIES = [
   {
-    property: "--blyrics-lyric-scroll-duration",
-    summary:
-      "Fallback per-line animation duration and container transform transition duration. Does not gate scrolling or determine lookahead. The old blyrics-queue-scroll-ms setting is ignored.",
-  },
-  {
     property: "--blyrics-font-family",
     summary:
       "Overrides the default font stack. The default resolves separately for each lyric and translation language.",

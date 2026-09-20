@@ -235,7 +235,7 @@ A find-and-replace of `--braccato-` to `--blyrics-` gets almost all of it. The e
 | `--braccato-inactive-color`            | `--blyrics-lyric-inactive-color`            |
 | `--braccato-highlight-fade-in-duration`  | `--blyrics-lyric-highlight-fade-in-duration`  |
 | `--braccato-highlight-fade-out-duration` | `--blyrics-lyric-highlight-fade-out-duration` |
-| `--braccato-scroll-duration`           | `--blyrics-lyric-transition-duration`       |
+| `--braccato-scroll-duration`           | Set `blyrics-line-scroll-duration` and side-specific duration knobs in theme comments; the old duration aliases are removed |
 | `--braccato-scroll-timing-function`    | `--blyrics-lyric-transition-timing-function` |
 | `--braccato-padding-bottom`            | Gone. The engine measures it and writes `--blyrics-padding-bottom` itself. |
 

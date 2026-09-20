@@ -143,11 +143,7 @@
 	--blyrics-background-blur: 100px;
 	--blyrics-background-saturate: 2;
 
-	/* Lyric Transition Properties: visual fallback only; no scroll cooldown or lookahead coupling. */
-	--blyrics-lyric-scroll-duration: var(
-		--blyrics-lyric-transition-duration,
-		650ms
-	);
+	/* Shared lyric scroll easing */
 	--blyrics-lyric-scroll-timing-function: var(
 		--blyrics-lyric-transition-timing-function,
 		cubic-bezier(0.86, 0, 0.2, 1)
