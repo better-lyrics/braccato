@@ -1,6 +1,19 @@
+/* Resolve the default stack at each language boundary. A root-level var() would freeze
+   the host's language-specific fallback before the lyric/translation language is known.
+   Theme overrides remain inherited through --blyrics-font-family. */
+.blyrics--line,
+.blyrics--translated,
+.blyrics--romanized {
+	--blyrics-default-font-family:
+		Satoshi, var(--noto-sans-universal, "Noto Sans"), Avenir, -apple-system,
+		BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Open Sans,
+		Helvetica Neue, sans-serif;
+	font-family: var(--blyrics-font-family, var(--blyrics-default-font-family));
+}
+
 /* Main container styles */
 .blyrics-container {
-	font-family: var(--blyrics-font-family);
+	font-family: var(--blyrics-font-family, var(--blyrics-default-font-family));
 	font-size: var(--blyrics-font-size);
 	font-weight: var(--blyrics-font-weight);
 	isolation: isolate;
@@ -215,7 +228,7 @@
 		cubic-bezier(0.25, 1, 0.5, 1) both;
 	color: var(--blyrics-translated-color);
 	display: block;
-	font-family: var(--blyrics-translated-font-family);
+	font-family: var(--blyrics-translated-font-family, var(--blyrics-font-family, var(--blyrics-default-font-family)));
 	font-size: var(--blyrics-translated-font-size);
 	font-weight: var(--blyrics-translated-font-weight);
 	line-height: 1.1;

@@ -26,11 +26,14 @@ import {
 } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
 import type { Lyric } from "./types";
+import { applyLyricLanguage, resolveLyricLanguages } from "./language";
 
 const INITIAL_SKIP_SCROLLS = 2;
 const SKIP_SCROLL_DECAY_MS = 2000;
 
 export interface SetLyricsOptions {
+  /** BCP 47 language of the original lyrics. Kana/Hangul provide a fallback when omitted. */
+  language?: string | null;
   /**
    * Whether the loader is still covering the view. Recorded on the container for CSS to key on.
    */
@@ -97,6 +100,7 @@ export function setLyrics(
   const seek = (timeS: number): void => engine.host.seek(timeS);
   const lines: LineData[] = [];
   const syncType = deriveSyncType(lyrics);
+  const languages = resolveLyricLanguages(lyrics, options.language);
 
   for (const [lineIndex, lyricItem] of lyrics.entries()) {
     const lyricElement = doc.createElement("div");
@@ -107,6 +111,7 @@ export function setLyrics(
     lyricElement.dataset.lineNumber = String(lineIndex);
     lyricElement.classList.add(LINE_CLASS);
     lyricElement.dir = "auto";
+    applyLyricLanguage(lyricElement, languages[lineIndex]);
     addSeekHandler(seek, lyricElement, allZero);
     lines.push(line);
 
