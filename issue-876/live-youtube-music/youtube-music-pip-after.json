@@ -1,0 +1,82 @@
+{
+  "url": "about:blank",
+  "title": "Open Picture-in-Picture lyrics",
+  "documentLanguage": "",
+  "viewport": [
+    720,
+    244
+  ],
+  "devicePixelRatio": 1.25,
+  "mediaTime": 14.499612,
+  "paused": true,
+  "openerUrl": "https://music.youtube.com/watch?v=3NNhrqHZqlI",
+  "isDocumentPip": true,
+  "lyricLines": 42,
+  "timedRomanizationWords": 0,
+  "browser": "Chrome/152.0.7977.54",
+  "commit": "cc97e1ab4274863ff9c74b07dfd6afc9ec156c12",
+  "core": "1.8.0",
+  "samples": [
+    {
+      "selector": ".blyrics--line[data-line-number='2'] .blyrics-bidi-run:not(.blyrics-highlight-run) .blyrics--word",
+      "ownLanguage": null,
+      "contentLanguage": "ja",
+      "visible": true,
+      "rect": {
+        "x": 199.52500915527344,
+        "y": 90.32500457763672,
+        "width": 75.98750305175781,
+        "height": 33.76250076293945
+      },
+      "fonts": [
+        {
+          "familyName": "Noto Sans JP Thin",
+          "postScriptName": "NotoSansJP-Thin",
+          "isCustomFont": true,
+          "glyphCount": 3
+        }
+      ]
+    },
+    {
+      "selector": ".blyrics--line[data-line-number='2'] .blyrics--translated",
+      "ownLanguage": "zh-TW",
+      "contentLanguage": "zh-TW",
+      "visible": true,
+      "rect": {
+        "x": 199.52500915527344,
+        "y": 159.625,
+        "width": 494.1499938964844,
+        "height": 13.9375
+      },
+      "fonts": [
+        {
+          "familyName": "Noto Sans TC Thin",
+          "postScriptName": "NotoSansTC-Thin",
+          "isCustomFont": true,
+          "glyphCount": 11
+        }
+      ]
+    },
+    {
+      "selector": ".blyrics--line[data-line-number='2'] .blyrics--romanized",
+      "ownLanguage": "ja-Latn",
+      "contentLanguage": "ja-Latn",
+      "visible": true,
+      "rect": {
+        "x": 199.52500915527344,
+        "y": 132.08750915527344,
+        "width": 216.58750915527344,
+        "height": 19.537500381469727
+      },
+      "fonts": [
+        {
+          "familyName": "Satoshi Variable",
+          "postScriptName": "SatoshiVariable-Bold",
+          "isCustomFont": true,
+          "glyphCount": 35
+        }
+      ]
+    }
+  ],
+  "screenshot": "youtube-music-pip-after.png"
+}

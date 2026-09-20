@@ -1,0 +1,80 @@
+{
+  "url": "https://music.youtube.com/watch?v=3NNhrqHZqlI",
+  "title": "YouTube Music",
+  "documentLanguage": "en",
+  "viewport": [
+    1618,
+    862
+  ],
+  "devicePixelRatio": 1.25,
+  "mediaTime": 14.499612,
+  "paused": true,
+  "lyricLines": 42,
+  "timedRomanizationWords": 0,
+  "browser": "Chrome/152.0.7977.54",
+  "commit": "cc97e1ab4274863ff9c74b07dfd6afc9ec156c12",
+  "core": "1.8.0",
+  "samples": [
+    {
+      "selector": ".blyrics--line[data-line-number='2'] .blyrics-bidi-run:not(.blyrics-highlight-run) .blyrics--word",
+      "ownLanguage": null,
+      "contentLanguage": "ja",
+      "visible": true,
+      "rect": {
+        "x": 852.7000122070312,
+        "y": 341.375,
+        "width": 90,
+        "height": 39.98749923706055
+      },
+      "fonts": [
+        {
+          "familyName": "Noto Sans JP Thin",
+          "postScriptName": "NotoSansJP-Thin",
+          "isCustomFont": true,
+          "glyphCount": 3
+        }
+      ]
+    },
+    {
+      "selector": ".blyrics--line[data-line-number='2'] .blyrics--translated",
+      "ownLanguage": "zh-TW",
+      "contentLanguage": "zh-TW",
+      "visible": true,
+      "rect": {
+        "x": 852.7000122070312,
+        "y": 424.0625,
+        "width": 679,
+        "height": 22
+      },
+      "fonts": [
+        {
+          "familyName": "Noto Sans TC Thin",
+          "postScriptName": "NotoSansTC-Thin",
+          "isCustomFont": true,
+          "glyphCount": 11
+        }
+      ]
+    },
+    {
+      "selector": ".blyrics--line[data-line-number='2'] .blyrics--romanized",
+      "ownLanguage": "ja-Latn",
+      "contentLanguage": "ja-Latn",
+      "visible": true,
+      "rect": {
+        "x": 852.7000122070312,
+        "y": 389.3625183105469,
+        "width": 273.0874938964844,
+        "height": 26.700000762939453
+      },
+      "fonts": [
+        {
+          "familyName": "Satoshi Variable",
+          "postScriptName": "SatoshiVariable-Bold",
+          "isCustomFont": true,
+          "glyphCount": 35
+        }
+      ]
+    }
+  ],
+  "screenshot": "youtube-music-after.png"
+}
