@@ -1,0 +1,42 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><link rel=stylesheet href=/after-core/styles/variables.css><link rel=stylesheet href=/after-core/styles/lyrics.css><link rel=stylesheet href=/public/css/blyrics/misc.css><style>.blyrics--line{content-visibility:visible!important}.blyrics-container{height:700px;overflow:auto}.blyrics--word[data-word-state=active]{color:blue}.blyrics--line.blyrics--current{opacity:.9}</style></head><body><div id=mount></div><script type=module>
+import {createLyricsRenderer,injectTranslation} from '/after-core/index.js';
+const renderer=createLyricsRenderer({document,window,mount:document.querySelector('#mount')});
+const lyrics=Array.from({length:150},(_,i)=>({words:'海の 声が 聞こえる 君の 言葉を 風に 乗せて 歌う',startTimeMs:i*4000,durationMs:4000,parts:['海の ','声が ','聞こえる ','君の ','言葉を ','風に ','乗せて ','歌う'].map((words,j)=>({words,startTimeMs:i*4000+j*500,durationMs:500}))}));
+renderer.setLyrics(lyrics,{language:'ja'});
+for(const line of renderer.lines)injectTranslation(document,line.lyricElement,'海的聲音','zh-TW');
+const sheet=[...document.styleSheets].find(s=>s.href?.endsWith('misc.css'));
+const originalRules=[...sheet.cssRules].map(r=>r.cssText);
+const classes=['.blyrics--line','.blyrics--translated','.blyrics--romanized'];
+const setVariant=variant=>{
+  while(sheet.cssRules.length)sheet.deleteRule(0);
+  for(const text of originalRules){
+    const prefix=':where(.blyrics--line, .blyrics--translated, .blyrics--romanized)';
+    if(text.startsWith(prefix)){
+      if(variant==='disabled')continue;
+      if(variant==='expanded'){
+        const brace=text.indexOf('{');const suffix=text.slice(prefix.length,brace).trim();
+        sheet.insertRule(classes.map(c=>c+suffix).join(', ')+text.slice(brace),sheet.cssRules.length);continue;
+      }
+    }
+    sheet.insertRule(text,sheet.cssRules.length);
+  }
+  document.body.offsetHeight;
+};
+const words=renderer.lines.map(line=>[...line.lyricElement.querySelectorAll('.blyrics-bidi-run:not(.blyrics-highlight-run) .blyrics--word')]);
+window.benchmark={setVariant,nodeCount:document.querySelectorAll('*').length,run(kind,iterations){
+  for(let i=0;i<iterations;i++){
+    const index=i%150,line=renderer.lines[index];
+    if(kind==='words'){
+      const part=words[index][i%8];part.dataset.wordState=i%2?'active':'upcoming';line.lyricElement.classList.toggle('blyrics--current');
+      getComputedStyle(part).color;
+    }else if(kind==='insert'){
+      line.lyricElement.querySelector('.blyrics--translated').remove();
+      injectTranslation(document,line.lyricElement,i%2?'海的聲音':'海之聲','zh-TW');
+      getComputedStyle(line.lyricElement.lastElementChild).fontFamily;
+    }else if(kind==='language'){
+      renderer.setLanguage('ja');getComputedStyle(renderer.lines[0].lyricElement).fontFamily;
+    }
+  }
+},snapshot(){return {original:getComputedStyle(renderer.lines[0].lyricElement).fontFamily,translation:getComputedStyle(renderer.lines[0].lyricElement.querySelector('.blyrics--translated')).fontFamily}}};
+window.proofReady=true;
+</script></body></html>

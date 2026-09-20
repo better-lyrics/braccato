@@ -3,7 +3,7 @@
 Captured in headless Chrome using the actual Braccato renderer modules and Better Lyrics font styles. These are controlled browser fixtures, not live YouTube Music screenshots.
 
 - Before: published `@braccato/core@1.7.0`, Better Lyrics commit `2330e50c`.
-- After: Braccato commit `50822b792716ba156bf167d5d1df91f0391f4128`, Better Lyrics commit `2a8aaeb19faa325db46b63fc66743194e12dfd91`.
+- After: Braccato commit `551be4e9fe4ab34b2389b96ee0873013bad22b69`, Better Lyrics commit `2a8aaeb19faa325db46b63fc66743194e12dfd91`.
 - `regional-glyphs-before-after.png`: identical Unicode text rendered for five language/region settings.
 - `source-translation-documents.png`: a Japanese original, Latin romanization, and Traditional Chinese translation; the fixed version renders in two independent iframe documents with different UI languages.
 - `rendered-fonts.json`: 16 font selections checked using Chrome DevTools Protocol `CSS.getPlatformFontsForNode`. Captions are populated from these results, not from expected CSS declarations.

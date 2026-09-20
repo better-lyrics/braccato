@@ -1,0 +1,825 @@
+{
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/151.0.7922.108",
+    "revision": "@4744b886309d987d292e43232776d2206cccb13d",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+    "jsVersion": "15.1.206.16"
+  },
+  "nodeCount": 11561,
+  "repeats": 9,
+  "summary": [
+    {
+      "kind": "words",
+      "variant": "current",
+      "operations": 400,
+      "medianStyleMs": 7.947999999999955,
+      "medianLayoutMs": 0,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0.019869999999999888
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "operations": 400,
+      "medianStyleMs": 7.876999999999967,
+      "medianLayoutMs": 0,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0.01969249999999992
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "operations": 400,
+      "medianStyleMs": 7.466000000000028,
+      "medianLayoutMs": 0,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0.01866500000000007
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "operations": 400,
+      "medianStyleMs": 20.709999999999784,
+      "medianLayoutMs": 2.206999999999848,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0.05177499999999946
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "operations": 400,
+      "medianStyleMs": 20.74699999999996,
+      "medianLayoutMs": 2.1819999999999062,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0.0518674999999999
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "operations": 400,
+      "medianStyleMs": 19.92499999999997,
+      "medianLayoutMs": 2.1480000000000388,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0.04981249999999992
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "operations": 40,
+      "medianStyleMs": 0,
+      "medianLayoutMs": 0,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "operations": 40,
+      "medianStyleMs": 0,
+      "medianLayoutMs": 0,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "operations": 40,
+      "medianStyleMs": 0,
+      "medianLayoutMs": 0,
+      "medianScriptMs": 0,
+      "stylePerOperationMs": 0
+    }
+  ],
+  "samples": [
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 11.65200000000001,
+      "styleCount": 402,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 10.004,
+      "styleCount": 401,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 9.419000000000011,
+      "styleCount": 401,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 10.092000000000018,
+      "styleCount": 401,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.213999999999999,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 7.767000000000024,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.734999999999992,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 9.379000000000026,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 7.855999999999974,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 7.689999999999975,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 7.876999999999967,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.466000000000028,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 8.258000000000044,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.533000000000012,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 7.947999999999955,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.36199999999998,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 7.604999999999973,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 7.550000000000057,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 8.28299999999993,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 7.46800000000003,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.434000000000052,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 7.371999999999934,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 7.437000000000027,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 9.727000000000041,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 8.785000000000043,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 7.786999999999988,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "words",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 8.206999999999965,
+      "styleCount": 400,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 22.15200000000006,
+      "styleCount": 400,
+      "layoutMs": 2.0210000000000505,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 20.74699999999996,
+      "styleCount": 401,
+      "layoutMs": 2.1839999999999637,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 20.492000000000065,
+      "styleCount": 401,
+      "layoutMs": 2.0999999999999908,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 20.75199999999988,
+      "styleCount": 401,
+      "layoutMs": 2.138999999999891,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 21.055999999999962,
+      "styleCount": 401,
+      "layoutMs": 2.0609999999998685,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 23.159999999999847,
+      "styleCount": 401,
+      "layoutMs": 2.2480000000000278,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 20.79399999999998,
+      "styleCount": 401,
+      "layoutMs": 2.2159999999999958,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 20.10100000000015,
+      "styleCount": 401,
+      "layoutMs": 2.1819999999999062,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 18.780999999999935,
+      "styleCount": 400,
+      "layoutMs": 2.0999999999999908,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 19.211999999999783,
+      "styleCount": 400,
+      "layoutMs": 2.2729999999999695,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 20.78099999999994,
+      "styleCount": 401,
+      "layoutMs": 2.222999999999864,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 19.92499999999997,
+      "styleCount": 401,
+      "layoutMs": 2.1459999999999813,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 22.02800000000016,
+      "styleCount": 401,
+      "layoutMs": 2.1819999999999062,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 19.558999999999884,
+      "styleCount": 400,
+      "layoutMs": 2.1700000000000053,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 21.07900000000007,
+      "styleCount": 400,
+      "layoutMs": 2.402999999999711,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 19.614999999999938,
+      "styleCount": 400,
+      "layoutMs": 2.172000000000285,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 20.88999999999985,
+      "styleCount": 401,
+      "layoutMs": 2.155000000000129,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 18.97700000000002,
+      "styleCount": 401,
+      "layoutMs": 2.09500000000018,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 19.857000000000014,
+      "styleCount": 400,
+      "layoutMs": 2.1100000000000563,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 20.315000000000083,
+      "styleCount": 400,
+      "layoutMs": 2.223000000000308,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 19.58700000000002,
+      "styleCount": 401,
+      "layoutMs": 2.0900000000003693,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 19.96599999999993,
+      "styleCount": 401,
+      "layoutMs": 2.1640000000000548,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 21.03999999999995,
+      "styleCount": 401,
+      "layoutMs": 2.1480000000000388,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 19.7449999999999,
+      "styleCount": 401,
+      "layoutMs": 2.222999999999864,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "disabled",
+      "count": 400,
+      "styleMs": 19.778000000000073,
+      "styleCount": 401,
+      "layoutMs": 2.31899999999996,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "current",
+      "count": 400,
+      "styleMs": 20.709999999999784,
+      "styleCount": 401,
+      "layoutMs": 2.206999999999848,
+      "scriptMs": 0
+    },
+    {
+      "kind": "insert",
+      "variant": "expanded",
+      "count": 400,
+      "styleMs": 21.170000000000133,
+      "styleCount": 400,
+      "layoutMs": 2.222999999999864,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 1.971000000000167,
+      "styleCount": 3,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 1.8800000000003259,
+      "styleCount": 2,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0.6819999999998494,
+      "styleCount": 1,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "disabled",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "current",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    },
+    {
+      "kind": "language",
+      "variant": "expanded",
+      "count": 40,
+      "styleMs": 0,
+      "styleCount": 0,
+      "layoutMs": 0,
+      "scriptMs": 0
+    }
+  ]
+}
