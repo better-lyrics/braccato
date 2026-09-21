@@ -41,7 +41,8 @@
 moved here from the [Better Lyrics repository](https://github.com/better-lyrics/better-lyrics), where
 the rendering engine still runs as part of the extension. Its
 [README](packages/core/README.md) is the reference for properties, attributes, events, theming and
-class names.
+class names. The [autoscroll reference](packages/core/README.md#autoscroll-grouping-and-animation)
+explains lookahead grouping and overlapping scroll animations.
 
 `playground/` has been retired. The page it served,
 [braccato.boidu.dev](https://braccato.boidu.dev), is now [`demo/`](demo), beside the renderer it

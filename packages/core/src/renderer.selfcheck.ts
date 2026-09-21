@@ -1038,8 +1038,8 @@ richRenderer.tick(LATE_PLAYBACK_TIME_S, { isPlaying: true });
 
 assert.equal(
   rich.scrollContainer.scrollTop,
-  SECOND_LINE_SCROLL_TOP_PX,
-  "Given a scroll still being animated, When the next line comes up, Then the view lets it finish rather than jumping over it"
+  SECOND_LINE_SCROLL_TOP_PX + LINE_PITCH_PX,
+  "Given a scroll still being animated, When the next line comes up, Then the view scrolls immediately"
 );
 
 // -- What the view resolved once, it keeps --------------------------------------------

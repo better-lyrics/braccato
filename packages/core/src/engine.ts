@@ -47,19 +47,11 @@ const USER_SCROLL_RESUME_DELAY_MS = 25000;
 const PASSIVE_USER_SCROLL_RESUME_DELAY_MS = 5000;
 
 const LYRIC_ENDING_THRESHOLD_S = registerThemeSetting("blyrics-lyric-ending-threshold-s", 0.5);
-const EARLY_SCROLL_CONSIDER = registerThemeSetting("blyrics-early-scroll-consider-s", 0.62);
-const QUEUE_SCROLL_THRESHOLD = registerThemeSetting("blyrics-queue-scroll-ms", 150);
+const EARLY_SCROLL_CONSIDER = registerThemeSetting("blyrics-early-scroll-consider-s", 0.54);
 const TIME_JUMP_THRESHOLD = 0.5;
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-const SCROLL_TIMING_RATIO_BASE_DURATION_MS = 750;
-const SCROLL_TIMING_RATIO_BASE_EARLY_SCROLL_CONSIDER_S = 0.62;
-const SCROLL_TIMING_RATIO_BASE_QUEUE_SCROLL_THRESHOLD_MS = 150;
-const MAX_AUTO_QUEUE_SCROLL_THRESHOLD_MS = 200;
 const SCROLL_PREPARE_LEAD_MS = 120;
-const SCROLL_TIMING_RATIO_BASE_TOTAL_MS =
-  SCROLL_TIMING_RATIO_BASE_EARLY_SCROLL_CONSIDER_S * 1000 + SCROLL_TIMING_RATIO_BASE_QUEUE_SCROLL_THRESHOLD_MS;
-const SCROLL_TIMING_BUFFER_MS = SCROLL_TIMING_RATIO_BASE_TOTAL_MS - SCROLL_TIMING_RATIO_BASE_DURATION_MS;
-const AUTO_QUEUE_SCROLL_RATIO = SCROLL_TIMING_RATIO_BASE_QUEUE_SCROLL_THRESHOLD_MS / SCROLL_TIMING_RATIO_BASE_TOTAL_MS;
+const LINE_SCROLL_FALLBACK_DURATION_MS = 750;
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
 const SWIPE_DURATION_RATIO = registerThemeSetting("blyrics-swipe-duration-ratio", 1.6);
 
@@ -149,10 +141,8 @@ interface AnimEngineViewState {
   scrollResumeTime: number;
   scrollPos: number;
   selectedElementIndex: number;
-  nextScrollAllowedTime: number;
   wasUserScrolling: boolean;
-  lastActiveElements: LineData[];
-  queuedScroll: boolean;
+  lastScrollElements: LineData[];
   lastScrollDebugContext: {
     activeElms: LineData[];
     centers: number[];
@@ -259,10 +249,8 @@ export function createAnimationEngineInstance(
     scrollResumeTime: 0,
     scrollPos: 0,
     selectedElementIndex: 0,
-    nextScrollAllowedTime: 0,
     wasUserScrolling: false,
-    lastActiveElements: [],
-    queuedScroll: false,
+    lastScrollElements: [],
     lastScrollDebugContext: {
       activeElms: [],
       centers: [],
@@ -380,7 +368,6 @@ export function noteUserScroll(engine: AnimationEngineInstance, isPassive: boole
  */
 export function noteContainerResize(engine: AnimationEngineInstance, width: number, height: number): boolean {
   if (width === engine.lyricWidth && height === engine.lyricHeight) return false;
-  engine.nextScrollAllowedTime = 0;
   return true;
 }
 
@@ -429,10 +416,9 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
     line.isSelected = false;
   }
   engine.skipScrollsDecayTimes = [];
-  engine.lastActiveElements = [];
+  engine.lastScrollElements = [];
   engine.lastScrollDebugContext.activeElms = [];
   engine.lastScrollDebugContext.centers = [];
-  engine.queuedScroll = false;
   engine.passiveScrollAccumulatedTime = 0;
   engine.passiveLastWallTime = 0;
   stopPassiveScrollLoop(engine);
@@ -626,12 +612,7 @@ interface AnimationConfig {
     waveOscillationDurationMs: number;
     waveOscillationEasing: string;
   };
-  scroll: {
-    durationMs: number;
-    easing: string;
-  };
   lineScroll: {
-    durationMs: number;
     easing: string;
     differentialEffects: boolean;
   };
@@ -639,7 +620,7 @@ interface AnimationConfig {
 
 interface AnimationSettings {
   config: AnimationConfig;
-  scrollTiming: { earlyScrollConsiderS: number; queueScrollMs: number };
+  scrollTiming: { earlyScrollConsiderS: number };
 }
 
 interface HighlightAnimations {
@@ -1853,12 +1834,6 @@ function isGlowRestingInvisible(glowTo: string): boolean {
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const prefersReducedMotion = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
-  const scrollDurationMs = getCSSDurationWithFallback(
-    engine,
-    lyricsElement,
-    "--blyrics-lyric-scroll-duration",
-    "650ms"
-  );
   const scrollEasing = getCSSValue(
     engine,
     lyricsElement,
@@ -2002,51 +1977,15 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
         "ease-in-out"
       ),
     },
-    scroll: {
-      durationMs: scrollDurationMs,
-      easing: scrollEasing,
-    },
     lineScroll: {
-      durationMs: scrollDurationMs,
       easing: scrollEasing,
       differentialEffects: !prefersReducedMotion,
     },
   };
 }
 
-function readScrollTiming(scrollDurationMs: number): { earlyScrollConsiderS: number; queueScrollMs: number } {
-  const totalMs = Math.max(0, scrollDurationMs + SCROLL_TIMING_BUFFER_MS);
-  const earlyScrollConsiderWasSet = EARLY_SCROLL_CONSIDER.isManuallySet();
-  const queueScrollWasSet = QUEUE_SCROLL_THRESHOLD.isManuallySet();
-
-  if (earlyScrollConsiderWasSet && queueScrollWasSet) {
-    return {
-      earlyScrollConsiderS: Math.max(0, EARLY_SCROLL_CONSIDER.getNumberValue()),
-      queueScrollMs: Math.max(0, QUEUE_SCROLL_THRESHOLD.getNumberValue()),
-    };
-  }
-
-  if (earlyScrollConsiderWasSet) {
-    const earlyScrollConsiderS = Math.max(0, EARLY_SCROLL_CONSIDER.getNumberValue());
-    return {
-      earlyScrollConsiderS,
-      queueScrollMs: Math.min(Math.max(0, totalMs - earlyScrollConsiderS * 1000), MAX_AUTO_QUEUE_SCROLL_THRESHOLD_MS),
-    };
-  }
-
-  if (queueScrollWasSet) {
-    const queueScrollMs = Math.max(0, QUEUE_SCROLL_THRESHOLD.getNumberValue());
-    return {
-      earlyScrollConsiderS: Math.max(0, (totalMs - queueScrollMs) / 1000),
-      queueScrollMs,
-    };
-  }
-
-  const queueScrollMs = Math.min(totalMs * AUTO_QUEUE_SCROLL_RATIO, MAX_AUTO_QUEUE_SCROLL_THRESHOLD_MS);
-  return {
-    earlyScrollConsiderS: Math.max(0, (totalMs - queueScrollMs) / 1000),
-    queueScrollMs,
-  };
+function readScrollTiming(): { earlyScrollConsiderS: number } {
+  return { earlyScrollConsiderS: Math.max(0, EARLY_SCROLL_CONSIDER.getNumberValue()) };
 }
 
 function getAnimationSettings(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationSettings {
@@ -2054,7 +1993,7 @@ function getAnimationSettings(engine: AnimationEngineInstance, lyricsElement: HT
     const config = readAnimationConfig(engine, lyricsElement);
     engine.cachedAnimationSettings = {
       config,
-      scrollTiming: readScrollTiming(config.scroll.durationMs),
+      scrollTiming: readScrollTiming(),
     };
   }
   return engine.cachedAnimationSettings;
@@ -2428,10 +2367,10 @@ function prepareLineScrollOffsets(
       missItems,
       "transition-duration",
       item =>
-        lineScrollDurationProperty(item.side, config.lineScroll.durationMs, config.lineScroll.differentialEffects),
+        lineScrollDurationProperty(item.side, LINE_SCROLL_FALLBACK_DURATION_MS, config.lineScroll.differentialEffects),
       style => {
         const durationMs = toMs(style.transitionDuration.split(",")[0].trim());
-        return durationMs > 0 ? durationMs : config.lineScroll.durationMs;
+        return durationMs > 0 ? durationMs : LINE_SCROLL_FALLBACK_DURATION_MS;
       }
     );
     const startEasings = batchResolveLineScrollProperty(
@@ -2926,7 +2865,7 @@ export function tickView(
         (lyricScrollTime < nextTime || lyricScrollTime < time + lineData.duration)
       ) {
         activeElems.push(lineData);
-        if (!engine.lastActiveElements.includes(lineData) && lyricScrollTime >= time) {
+        if (!engine.lastScrollElements.includes(lineData) && lyricScrollTime >= time) {
           newLyricSelected = true;
         }
 
@@ -3078,10 +3017,6 @@ export function tickView(
         activeElems.push(lines[0]);
       }
 
-      engine.lastActiveElements = activeElems.filter(
-        elm => lyricScrollTime >= elm.time // remove elements that haven't reached their scroll time yet.
-      );
-
       // Offset so lyrics appear towards the center of the screen.
       const scrollPosOffset = tabRendererHeight * SCROLL_POS_OFFSET_RATIO.getNumberValue();
 
@@ -3217,7 +3152,7 @@ export function tickView(
         !engine.wasUserScrolling &&
         timeUntilUpcomingScrollMs > 0 &&
         timeUntilUpcomingScrollMs <= SCROLL_PREPARE_LEAD_MS &&
-        Date.now() > engine.nextScrollAllowedTime &&
+        !engine.lastScrollElements.includes(lastActiveLyric) &&
         Math.abs(scrollTop - scrollPos) > 2
       ) {
         updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
@@ -3233,43 +3168,39 @@ export function tickView(
         );
       }
 
-      if (engine.wasUserScrolling || newLyricSelected || engine.queuedScroll) {
-        if (Date.now() > engine.nextScrollAllowedTime) {
-          engine.queuedScroll = false;
-          engine.lastScrollDebugContext.lyricScrollTime = lyricScrollTime;
-          engine.lastScrollDebugContext.centers = lyricPositions;
-          engine.lastScrollDebugContext.activeElms = activeElems;
+      if (engine.wasUserScrolling || newLyricSelected) {
+        // Remember future lines only when their group is committed, so they cannot scroll
+        // again at their start. Entering the lookahead window alone does not commit a group.
+        engine.lastScrollElements = activeElems;
+        engine.lastScrollDebugContext.lyricScrollTime = lyricScrollTime;
+        engine.lastScrollDebugContext.centers = lyricPositions;
+        engine.lastScrollDebugContext.activeElms = activeElems;
 
-          if (smoothScroll && Math.abs(scrollTop - scrollPos) > 2) {
-            const scrollDeltaPx = scrollPos - scrollTop;
-            if (animationConfig.enabled.scroll) {
-              updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
-              const lineScrollItems = getLineScrollItems(engine, lines);
-              commitOrPrepareLineScroll(
-                engine,
-                lineScrollItems,
-                lastActiveLyric,
-                scrollDeltaPx,
-                scrollTop,
-                scrollPos,
-                tabRendererHeight,
-                animationConfig
-              );
-              engine.nextScrollAllowedTime = animationConfig.scroll.durationMs + Date.now() + 20;
-            }
-          } else {
-            dropPendingLineScroll(engine);
+        if (smoothScroll && Math.abs(scrollTop - scrollPos) > 2) {
+          const scrollDeltaPx = scrollPos - scrollTop;
+          if (animationConfig.enabled.scroll) {
+            updateVisibleLyricWillChange(engine, lines, scrollTop, scrollPos, tabRendererHeight);
+            const lineScrollItems = getLineScrollItems(engine, lines);
+            commitOrPrepareLineScroll(
+              engine,
+              lineScrollItems,
+              lastActiveLyric,
+              scrollDeltaPx,
+              scrollTop,
+              scrollPos,
+              tabRendererHeight,
+              animationConfig
+            );
           }
-
-          scrollTop = scrollPos;
-          engine.scrollPos = scrollTop;
-          tabRenderer.scrollTop = scrollTop;
-          engine.skipScrolls += 1;
-          engine.skipScrollsDecayTimes.push(Date.now() + 2000);
-        } else if (engine.nextScrollAllowedTime - Date.now() < scrollTiming.queueScrollMs || timeJumped) {
-          // just missed out on being able to scroll, queue this once we finish our current lyric
-          engine.queuedScroll = true;
+        } else {
+          dropPendingLineScroll(engine);
         }
+
+        scrollTop = scrollPos;
+        engine.scrollPos = scrollTop;
+        tabRenderer.scrollTop = scrollTop;
+        engine.skipScrolls += 1;
+        engine.skipScrollsDecayTimes.push(Date.now() + 2000);
       }
     }
 

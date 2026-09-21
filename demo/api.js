@@ -310,6 +310,13 @@ export const THEME_SETTINGS = [
     summary: "Seconds before a line ends at which it starts handing over to the next one.",
   },
   {
+    key: "blyrics-early-scroll-consider-s",
+    fallback: "0.54",
+    rebuilds: false,
+    summary:
+      "Seconds of lookahead when a lyric triggers a scroll. Entering the window alone does not scroll, and included lines do not scroll again at their start. Independent of animation duration; there is no scroll gate or queue.",
+  },
+  {
     key: "blyrics-passive-scroll-enabled",
     fallback: "true",
     rebuilds: false,
@@ -325,7 +332,8 @@ export const THEME_SETTINGS = [
     key: "blyrics-line-scroll-duration",
     fallback: "a calc() off the line's distance from the active one",
     rebuilds: false,
-    summary: "A CSS time rather than a number. Lines further from the active one take longer, and this is that curve.",
+    summary:
+      "A CSS time rather than a number. Lines further from the active one take longer, and this is that curve. Animations overlap additively; their duration does not delay the next scroll.",
   },
 ];
 
