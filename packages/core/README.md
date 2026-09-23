@@ -150,6 +150,20 @@ stylesheet must not be able to configure the module by accident. An empty theme 
 back to its default. The stylesheet itself goes into the document head under the
 `blyrics-custom-style` id.
 
+A comment setting holds one value for every view in the bundle. The target scroll position can
+also be set per view: when `--blyrics-target-scroll-pos-ratio` resolves on `.blyrics-container`, it
+wins over `blyrics-target-scroll-pos-ratio`, so an ordinary selector scopes it to one view. It takes
+a unitless number, clamped to `0` to `1`; anything else falls back to the comment setting. Like the
+other custom properties the module reads, it is read once per theme, so the selector has to match
+before the theme is applied.
+
+```css
+/* blyrics-target-scroll-pos-ratio = 0.5; */
+.pip-view .blyrics-container {
+  --blyrics-target-scroll-pos-ratio: 0.37;
+}
+```
+
 ### Autoscroll grouping and animation
 
 `blyrics-early-scroll-consider-s` is a comment setting with an independent default of `0.54`

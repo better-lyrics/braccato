@@ -1853,6 +1853,81 @@ assert.deepEqual(
 
 instantRenderer.destroy();
 
+// -- The target scroll position resolves per view ------------------------------------------------
+
+const SCOPED_TARGET_SCROLL_RATIO = 0.2;
+const COMMENT_TARGET_SCROLL_RATIO = 0.3;
+
+function paddedForTarget(styleValues: Record<string, string>): {
+  fixture: ViewFixture;
+  paddingBottom: string;
+  scrollTop: number;
+} {
+  const { fixture, host } = newViewFixture({ ...SCROLL_ANIMATION_ON, ...styleValues });
+  const renderer = createLyricsRenderer({
+    document: asDocument(fixture.fakeDocument),
+    window: asWindow(fixture.fakeWindow),
+    mount: asElement<HTMLElement>(fixture.mount),
+    host,
+  });
+  renderer.setTheme(`/* blyrics-target-scroll-pos-ratio = ${COMMENT_TARGET_SCROLL_RATIO}; */`);
+  renderer.setLyrics(RICHSYNC_LYRICS);
+  renderer.tick(PLAYBACK_TIME_S, { isPlaying: true });
+  const container = asFakeNode(renderer.container!);
+  container.scrollHeight = SCROLL_CONTAINER_HEIGHT_PX * 4;
+  renderer.relayout();
+  const paddingBottom = container.style.getPropertyValue("padding-bottom");
+  container.childNodes
+    .filter(child => child.classList.contains(LINE_CLASS))
+    .forEach((line, index) => {
+      line.offsetTop = index * LINE_PITCH_PX;
+      line.offsetHeight = LINE_HEIGHT_PX;
+    });
+  renderer.relayout();
+  renderer.tick(PLAYBACK_TIME_S, { isPlaying: true });
+  const scrollTop = fixture.scrollContainer.scrollTop;
+  renderer.destroy();
+  return { fixture, paddingBottom, scrollTop };
+}
+
+function secondLineScrollTop(ratio: number): number {
+  return LINE_PITCH_PX + LINE_HEIGHT_PX / 2 - SCROLL_CONTAINER_HEIGHT_PX * ratio;
+}
+
+const scopedTarget = paddedForTarget({ "--blyrics-target-scroll-pos-ratio": `${SCOPED_TARGET_SCROLL_RATIO}` });
+const unscopedTarget = paddedForTarget({});
+const unreadableTarget = paddedForTarget({ "--blyrics-target-scroll-pos-ratio": "centre" });
+
+assert.equal(
+  scopedTarget.paddingBottom,
+  SCROLL_CONTAINER_HEIGHT_PX * (1 - SCOPED_TARGET_SCROLL_RATIO) + "px",
+  "Given a view whose document resolves its own target scroll position, When its padding is sized, Then it is sized for that target rather than the one the theme's settings declare"
+);
+
+assert.equal(
+  unscopedTarget.paddingBottom,
+  SCROLL_CONTAINER_HEIGHT_PX * (1 - COMMENT_TARGET_SCROLL_RATIO) + "px",
+  "Given a view whose document resolves no target scroll position, When its padding is sized, Then the theme's settings decide it as before"
+);
+
+assert.equal(
+  unreadableTarget.paddingBottom,
+  unscopedTarget.paddingBottom,
+  "Given a target scroll position that is not a number, When its padding is sized, Then the theme's settings decide it rather than the value"
+);
+
+assert.equal(
+  scopedTarget.scrollTop,
+  secondLineScrollTop(SCOPED_TARGET_SCROLL_RATIO),
+  "Given a view whose document resolves its own target scroll position, When it scrolls to a line, Then the line lands at that target"
+);
+
+assert.equal(
+  unscopedTarget.scrollTop,
+  secondLineScrollTop(COMMENT_TARGET_SCROLL_RATIO),
+  "Given a view whose document resolves no target scroll position, When it scrolls to a line, Then the line lands where the theme's settings put it"
+);
+
 const drivenFixtures = [
   panel,
   faceless,
@@ -1868,6 +1943,9 @@ const drivenFixtures = [
   shared,
   sliding,
   instant,
+  scopedTarget.fixture,
+  unscopedTarget.fixture,
+  unreadableTarget.fixture,
 ];
 
 assert.equal(
