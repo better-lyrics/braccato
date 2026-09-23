@@ -7,6 +7,9 @@ than a shadow root, so the CSS already on your page reaches them.
 Extracted from the [Better Lyrics](https://better-lyrics.boidu.dev) rendering engine, which is still
 where it runs.
 
+The [renderer guide](https://docs.betterlyrics.org/braccato/renderer) on the docs site covers properties, events,
+scrolling and theming with lyrics from the Better Lyrics API. This README is still the full reference.
+
 ## Install
 
 ```bash

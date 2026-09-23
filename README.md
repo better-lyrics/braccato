@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="https://braccato.boidu.dev"><img src="https://img.shields.io/badge/Demo-braccato.boidu.dev-F50032?style=flat-square" alt="Demo" /></a>
+  <a href="https://docs.betterlyrics.org/braccato"><img src="https://img.shields.io/badge/Docs-docs.betterlyrics.org-F50032?style=flat-square" alt="Docs" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2196f3?style=flat-square" alt="MIT License" /></a>
   <a href="https://better-lyrics.boidu.dev"><img src="https://img.shields.io/badge/Built%20for-Better%20Lyrics-F50032?style=flat-square" alt="Built for Better Lyrics" /></a>
 </p>
@@ -42,7 +43,8 @@ moved here from the [Better Lyrics repository](https://github.com/better-lyrics/
 the rendering engine still runs as part of the extension. Its
 [README](packages/core/README.md) is the reference for properties, attributes, events, theming and
 class names. The [autoscroll reference](packages/core/README.md#autoscroll-grouping-and-animation)
-explains lookahead grouping and overlapping scroll animations.
+explains lookahead grouping and overlapping scroll animations. Guides for each package, with a live
+example against the Better Lyrics API, are at [docs.betterlyrics.org/braccato](https://docs.betterlyrics.org/braccato).
 
 `playground/` has been retired. The page it served,
 [braccato.boidu.dev](https://braccato.boidu.dev), is now [`demo/`](demo), beside the renderer it
