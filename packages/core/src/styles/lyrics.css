@@ -215,11 +215,6 @@
 	color: color-mix(in srgb, var(--blyrics-lyric-inactive-color) 78%, transparent);
 }
 
-.blyrics-explicit {
-	text-decoration: line-through;
-	text-decoration-thickness: 0.08em;
-}
-
 .blyrics--translated,
 .blyrics--romanized {
 	animation: blyrics-decoration-in calc(var(--blyrics-animate-decoration-entry) * 0.35s)

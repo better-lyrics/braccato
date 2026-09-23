@@ -295,6 +295,7 @@ refactor. Import them from `@braccato/core/constants` instead of typing them out
 | `BACKGROUND_LYRIC_CLASS`  | `blyrics-background-lyric`  | A background vocal, sung over the line it answers.           |
 | `USER_SCROLLING_CLASS`    | `blyrics-user-scrolling`    | Set while a reader has scrolled away and autoscroll waits.   |
 | `TRANSLATED_LYRICS_CLASS` | `blyrics--translated`       | A translation hung off a line that was already built.        |
+| `EXPLICIT_WORD_CLASS`     | `blyrics-explicit`          | A word the lyrics flag as explicit. Unstyled unless a theme styles it. |
 | `CUSTOM_THEME_STYLE_ID`   | `blyrics-custom-style`      | The id of the `<style>` the theme lands in.                  |
 
 ## Stylesheets
