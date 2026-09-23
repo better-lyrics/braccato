@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.10.0
+
+### Minor Changes
+
+- 630f8a2: Read the target scroll position from `--blyrics-target-scroll-pos-ratio` on the lyrics container when it resolves, so a theme can scope it to one view with a selector.
+
 ## 1.9.0
 
 ### Minor Changes
