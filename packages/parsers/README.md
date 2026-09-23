@@ -2,6 +2,8 @@
 
 Lyrics format parsers for TTML, LRC, SRT, QRC, and plain text, with automatic format detection. Produces the `Lyric[]` array that [`@braccato/core`](https://www.npmjs.com/package/@braccato/core) renders.
 
+The [parsers guide](https://docs.betterlyrics.org/braccato/parsers) shows how to parse the response from each Better Lyrics API provider.
+
 ## Install
 
 ```bash

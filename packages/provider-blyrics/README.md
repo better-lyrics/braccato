@@ -2,6 +2,8 @@
 
 Lyrics provider chain with priority ordering and validation. Fetch synchronized lyrics from multiple sources with automatic fallback.
 
+The [provider guide](https://docs.betterlyrics.org/braccato/provider) walks through setting up a chain with fallback across providers.
+
 ## Install
 
 ```bash
