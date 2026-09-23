@@ -53,13 +53,21 @@ jobs:
           fi
 
       - name: Version and publish
+        id: version
         run: |
           pnpm changeset version
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
             git commit -m "chore: version packages [skip ci]"
             git push origin HEAD:master
+            echo "released=true" >> "$GITHUB_OUTPUT"
           fi
           pnpm changeset publish --no-git-tag
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+
+      - name: Rebuild docs
+        if: steps.version.outputs.released == 'true'
+        run: curl -fsS -X POST "$DOCS_DEPLOY_HOOK_URL"
+        env:
+          DOCS_DEPLOY_HOOK_URL: ${{ secrets.DOCS_DEPLOY_HOOK_URL }}
