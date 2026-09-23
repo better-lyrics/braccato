@@ -1752,6 +1752,12 @@ function getCSSOffset(
   return Math.max(0, Math.min(1, getCSSNumber(engine, lyricsElement, property, fallback)));
 }
 
+// The comment setting is shared by every view in a bundle; the custom property lets a theme scope it to one.
+function getTargetScrollRatio(engine: AnimationEngineInstance, lyricsElement: HTMLElement): number {
+  const scoped = Number.parseFloat(getCSSValue(engine, lyricsElement, "--blyrics-target-scroll-pos-ratio", ""));
+  return Number.isFinite(scoped) ? Math.max(0, Math.min(1, scoped)) : SCROLL_POS_OFFSET_RATIO.getNumberValue();
+}
+
 // Compose the glow filter so the color stays an unresolved var(--blyrics-glow-color).
 // Reading a fully composed --blyrics-highlight-glow-filter-* off the container resolves the
 // nested color there, which would defeat per-word overrides like
@@ -3018,7 +3024,7 @@ export function tickView(
       }
 
       // Offset so lyrics appear towards the center of the screen.
-      const scrollPosOffset = tabRendererHeight * SCROLL_POS_OFFSET_RATIO.getNumberValue();
+      const scrollPosOffset = tabRendererHeight * getTargetScrollRatio(engine, lyricsElement);
 
       let lastActiveLyric = activeElems[activeElems.length - 1];
 
@@ -3291,7 +3297,7 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
   if (!lyricsElement || !tabRenderer) return;
 
   const tabRendererHeight = tabRenderer.getBoundingClientRect().height;
-  const scrollPosOffsetRatio = SCROLL_POS_OFFSET_RATIO.getNumberValue();
+  const scrollPosOffsetRatio = getTargetScrollRatio(engine, lyricsElement);
   const currentPaddingBottom = Number.parseFloat(engine.window.getComputedStyle(lyricsElement).paddingBottom) || 0;
   const lyricsHeightWithoutBottomPadding = Math.max(0, lyricsElement.scrollHeight - currentPaddingBottom);
 
