@@ -34,9 +34,25 @@ All parsers implement:
 ```typescript
 interface LyricParser {
   parse(input: string, duration?: number): Lyric[];
+  metadata(input: string): LyricMetadata;
   detect(input: string): boolean;
 }
 ```
+
+`metadata` reads what the file says about the song rather than its lines, which today is who wrote it. `songwriters` is empty when the file credits nobody:
+
+```typescript
+const { songwriters } = detectParser(inputText).metadata(inputText); // ["Max Martin", "Savan Kotecha"]
+```
+
+| Format | Where the songwriters come from |
+| --- | --- |
+| TTML | `<songwriters>` in any metadata container (Apple's `iTunesMetadata`, lrc.red's `sourceMetadata`), and Composer's `<composer:meta key="songwriter">` |
+| LRC | `[au:]` and `[lr:]`. `[by:]` names whoever made the file and is left out |
+| QRC | Credit lines such as `作词:` or `Written by:`. Producer, mixing and the other roles are left out |
+| SRT, Plain | Nothing |
+
+Names that LRC and QRC hold as free text are split on `/`, `、`, `，` and `,`. Every format drops duplicates and keeps the order the file gives.
 
 `detectParser` tries each format in priority order: TTML, LRC, SRT, QRC, Plain.
 

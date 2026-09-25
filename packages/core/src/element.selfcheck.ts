@@ -1629,4 +1629,24 @@ assert.equal(
 
 disconnectElement(placeholderElement);
 
+// -- Songwriters reach the build --------------------------------------------
+
+const { fixture: credited, host: creditedHost } = newElementFixture(newConnectedDocument());
+const creditedElement = createCustomElement(credited.fakeDocument, BraccatoLyricsElement);
+
+creditedElement.host = creditedHost;
+creditedElement.lyricsOptions = { songwriters: ["Mara Quill", "Jonah Pike"] };
+creditedElement.lyrics = SYNCED_LYRICS;
+connectElement(credited.root, creditedElement);
+
+const creditedChildren = asFakeNode(creditedElement.renderer!.container!).childNodes;
+
+assert.equal(
+  creditedChildren.at(-1)?.textContent,
+  "Mara Quill & Jonah Pike",
+  "Given lyrics options that name the songwriters, When the lyrics are built, Then the credits close the view after the last line"
+);
+
+disconnectElement(creditedElement);
+
 console.log("Lyrics element self-check passed");

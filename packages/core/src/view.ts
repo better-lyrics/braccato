@@ -10,7 +10,7 @@
 // lines is where those values are first knowable: the container, the records, the sync type, the
 // size they were measured at, and the scrolls to swallow before the view has settled.
 
-import { LINE_CLASS, LYRICS_CLASS, RTL_CLASS } from "./constants";
+import { CREDITS_CLASS, CREDITS_NAMES_CLASS, LINE_CLASS, LYRICS_CLASS, RTL_CLASS } from "./constants";
 import { type AnimationEngineInstance, setupLineCullObserver } from "./engine";
 import {
   addSeekHandler,
@@ -27,6 +27,9 @@ import {
 import { createInstrumentalElement } from "./instrumental";
 import type { Lyric } from "./types";
 import { applyLyricLanguage, resolveLyricLanguages } from "./language";
+import { registerThemeSetting } from "./themeSettings";
+
+const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
 
 const INITIAL_SKIP_SCROLLS = 2;
 const SKIP_SCROLL_DECAY_MS = 2000;
@@ -42,6 +45,8 @@ export interface SetLyricsOptions {
    * These lyrics are a "not found" placeholder rather than a real result.
    */
   noLyrics: boolean;
+  /** Who wrote the song, shown after the last line. */
+  songwriters?: readonly string[];
 }
 
 function buildInstrumentalLine(doc: Document, lyricElement: HTMLDivElement, lyrics: Lyric[], lineIndex: number): void {
@@ -74,6 +79,21 @@ function buildSungLine(doc: Document, lyricElement: HTMLDivElement, lyricItem: L
   if (lyricItem.agent) {
     lyricElement.dataset.agent = lyricItem.agent;
   }
+}
+
+function formatSongwriters(names: readonly string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} & ${names.at(-1)}` : (names[0] ?? "");
+}
+
+function buildCredits(doc: Document, songwriters: readonly string[]): HTMLDivElement {
+  const credits = doc.createElement("div");
+  credits.className = CREDITS_CLASS;
+  const names = doc.createElement("span");
+  names.className = CREDITS_NAMES_CLASS;
+  names.dir = "auto";
+  names.textContent = formatSongwriters(songwriters);
+  credits.appendChild(names);
+  return credits;
 }
 
 /**
@@ -122,6 +142,11 @@ export function setLyrics(
     }
 
     container.appendChild(lyricElement);
+  }
+
+  const songwriters = options.songwriters ?? [];
+  if (songwriters.length > 0 && !options.noLyrics && !hideCredits.getBooleanValue()) {
+    container.appendChild(buildCredits(doc, songwriters));
   }
 
   engine.skipScrolls = INITIAL_SKIP_SCROLLS;

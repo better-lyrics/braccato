@@ -301,6 +301,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
         language: options?.language,
         loaderVisible: options?.loaderVisible ?? false,
         noLyrics: options?.noLyrics ?? false,
+        songwriters: options?.songwriters,
       });
       currentLyrics = lyrics;
       currentLanguage = normalizeLanguage(options?.language);
