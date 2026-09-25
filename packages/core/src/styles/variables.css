@@ -50,6 +50,11 @@
 		display-p3 1 1 1 / var(--blyrics-translated-opacity, 0.6)
 	);
 
+	--blyrics-credits-label: "Written by";
+	--blyrics-credits-font-size: max(0.4em, 12px);
+	--blyrics-credits-opacity: 0.2;
+	--blyrics-credits-focused-opacity: 0.85;
+
 	--blyrics-footer-font-family: Satoshi, Roboto, Noto Naskh Arabic UI, Arial, sans-serif;
 	--blyrics-footer-font-size: 14px;
 	--blyrics-footer-font-weight: 400;

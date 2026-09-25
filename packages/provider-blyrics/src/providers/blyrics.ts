@@ -35,6 +35,7 @@ export function createBLyricsProvider(options: BLyricsProviderOptions = {}): Pro
 
 		return {
 			lyrics,
+			songwriters: TTMLParser.metadata(ttml).songwriters,
 			language: json.lang ?? undefined,
 			source: "boidu.dev",
 			sourceHref: "https://boidu.dev/",

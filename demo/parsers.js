@@ -71,5 +71,5 @@ export function parseLyrics(parsers, text, durationMs) {
     throw new Error(`Read as ${format}, but no lines came out.`);
   }
 
-  return { lyrics, format };
+  return { lyrics, format, songwriters: parser.metadata(text).songwriters };
 }

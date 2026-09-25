@@ -1,4 +1,4 @@
-import type { Lyric, LyricParser } from "./types.js";
+import type { Lyric, LyricMetadata, LyricParser } from "./types.js";
 
 export const PlainParser: LyricParser = {
 	detect(_input: string): boolean {
@@ -10,5 +10,8 @@ export const PlainParser: LyricParser = {
 			words,
 			durationMs: 0,
 		}));
+	},
+	metadata(_input: string): LyricMetadata {
+		return { songwriters: [] };
 	},
 };

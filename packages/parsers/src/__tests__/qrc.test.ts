@@ -262,3 +262,65 @@ describe("QRCParser", () => {
 		});
 	});
 });
+
+describe("QRCParser.metadata", () => {
+	it("reads the lyricist and composer credit lines", () => {
+		const body = `[0,3000]作词:(0,1500)周杰伦(1500,1500)
+[3000,3000]作曲:(3000,1500)方文山(4500,1500)
+[6000,2000]Real(6000,1000)lyric(7000,1000)`;
+
+		expect(QRCParser.metadata(body)).toEqual({ songwriters: ["周杰伦", "方文山"] });
+	});
+
+	it("reads English songwriting prefixes", () => {
+		const body = `[0,3000]Written by:(0,1500)Max Martin(1500,1500)
+[3000,3000]Lyrics by:(3000,1500)Savan Kotecha(4500,1500)`;
+
+		expect(QRCParser.metadata(body).songwriters).toEqual(["Max Martin", "Savan Kotecha"]);
+	});
+
+	it("reads credits inside the QQ Music envelope", () => {
+		const envelope = `<?xml version="1.0" encoding="utf-8"?><QrcInfos><LyricInfo LyricCount="1"><Lyric_1 LyricType="1" LyricContent="[ti:Song]
+[0,3000]词：(0,1500)林夕(1500,1500)
+[3000,2000]Real(3000,1000)lyric(4000,1000)"/></LyricInfo></QrcInfos>`;
+
+		expect(QRCParser.metadata(envelope).songwriters).toEqual(["林夕"]);
+	});
+
+	describe("edge cases", () => {
+		it("skips credits that are not songwriting", () => {
+			const body = `[0,3000]Produced by:(0,1500)Someone(1500,1500)
+[3000,3000]编曲:(3000,1500)Arranger(4500,1500)
+[6000,3000]混音:(6000,1500)Mixer(7500,1500)`;
+
+			expect(QRCParser.metadata(body).songwriters).toEqual([]);
+		});
+
+		it("splits a credit that lists several names and names each person once", () => {
+			const body = `[0,3000]作词:(0,1500)A/B(1500,1500)
+[3000,3000]作曲:(3000,1500)B、C(4500,1500)`;
+
+			expect(QRCParser.metadata(body).songwriters).toEqual(["A", "B", "C"]);
+		});
+
+		it("does not read a singer label as a songwriter", () => {
+			const body = "[0,2000]王力宏:(0,500)我(500,1500)";
+			expect(QRCParser.metadata(body).songwriters).toEqual([]);
+		});
+
+		it("reads nothing from empty input or a body without credits", () => {
+			expect(QRCParser.metadata("").songwriters).toEqual([]);
+			expect(QRCParser.metadata("[0,2000]Real(0,1000)lyric(1000,1000)").songwriters).toEqual([]);
+		});
+	});
+
+	describe("regressions", () => {
+		it("still keeps the credit lines out of the parsed lyrics", () => {
+			const body = `[0,3000]作词:(0,1500)周杰伦(1500,1500)
+[6000,2000]Real(6000,1000)lyric(7000,1000)`;
+
+			const sung = QRCParser.parse(body, 20000).filter((l) => !l.isInstrumental);
+			expect(sung.map((l) => l.words)).toEqual(["Reallyric"]);
+		});
+	});
+});

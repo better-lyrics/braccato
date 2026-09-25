@@ -1,6 +1,7 @@
+import { splitCreditNames, uniqueNames } from "./credits.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import { stringSimilarity } from "./stringSimilarity.js";
-import type { Lyric, LyricParser, LyricPart } from "./types.js";
+import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 /** Song metadata, used to drop opening lines that only echo the title or the artist. */
 export interface QrcMetadata {
@@ -55,11 +56,11 @@ function parseWords(src: string): ParsedWord[] {
 
 // -- Metadata/Credit Detection --------------------------
 
+// The credits that name who wrote the song. `编曲` (arrangement) ends in `曲` too and is not one.
+const SONGWRITER_PREFIXES = ["词", "作词", "曲", "作曲", "writtenby", "lyricsby", "composedby", "lyricist", "composer"];
+
 const CREDIT_PREFIXES = [
-	"词",
-	"作词",
-	"曲",
-	"作曲",
+	...SONGWRITER_PREFIXES,
 	"编曲",
 	"和声",
 	"混音",
@@ -76,9 +77,7 @@ const CREDIT_PREFIXES = [
 	"美工",
 	"海报",
 	"旁白",
-	"writtenby",
 	"producedby",
-	"composedby",
 	"arrangedby",
 	"mixing",
 	"mastering",
@@ -88,14 +87,15 @@ const CREDIT_PREFIXES = [
 	"bass",
 	"drums",
 	"producer",
-	"lyricist",
-	"composer",
 	"arranger",
-	"lyricsby",
 ];
 
+function normalizePrefix(name: string): string {
+	return name.toLowerCase().replace(/\s+/g, "");
+}
+
 function isMetadataPrefix(name: string): boolean {
-	const n = name.toLowerCase().replace(/\s+/g, "");
+	const n = normalizePrefix(name);
 	return CREDIT_PREFIXES.includes(n) || n.endsWith("词") || n.endsWith("曲") || n.endsWith("声") || n.endsWith("音");
 }
 
@@ -322,6 +322,23 @@ export function parseQRC(qrcXml: string, songDurationMs: number, metadata?: QrcM
 	return insertInstrumentalBreaks(lyrics, songDurationMs);
 }
 
+const CREDIT_LINE_REGEX = /^([^:：]+)[:：]\s*(.+)$/;
+
+function readSongwriters(qrcXml: string): string[] {
+	const names: string[] = [];
+	for (const raw of unwrapEnvelope(qrcXml).split("\n")) {
+		const lineTime = parseLineTime(raw.trim());
+		if (!lineTime) continue;
+
+		const text = parseWords(lineTime.rest)
+			.map((w) => w.text)
+			.join("");
+		const credit = text.match(CREDIT_LINE_REGEX);
+		if (credit && SONGWRITER_PREFIXES.includes(normalizePrefix(credit[1]))) names.push(...splitCreditNames(credit[2]));
+	}
+	return uniqueNames(names);
+}
+
 export const QRCParser: LyricParser = {
 	detect(input: string): boolean {
 		if (input.includes("<QrcInfos>") || input.includes("LyricContent=")) return true;
@@ -329,5 +346,8 @@ export const QRCParser: LyricParser = {
 	},
 	parse(input: string, duration = 0): Lyric[] {
 		return parseQRC(input, duration);
+	},
+	metadata(input: string): LyricMetadata {
+		return { songwriters: input ? readSongwriters(input) : [] };
 	},
 };

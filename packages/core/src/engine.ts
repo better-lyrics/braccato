@@ -19,6 +19,7 @@
 
 import {
   ANIMATING_CLASS,
+  CREDITS_CLASS,
   CURRENT_LYRICS_CLASS,
   FOOTER_CLASS,
   LINE_CLASS,
@@ -179,6 +180,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   host: LyricsRendererHost;
   cachedTabRendererHeight: number | null;
   cachedFooterItem: LineScrollItem | null;
+  cachedCreditsItem: LineScrollItem | null;
+  creditsFocused: boolean;
   cachedLineScrollTiming: Map<string, LineScrollTiming>;
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
@@ -260,6 +263,8 @@ export function createAnimationEngineInstance(
     passiveLastWallTime: 0,
     cachedTabRendererHeight: null,
     cachedFooterItem: null,
+    cachedCreditsItem: null,
+    creditsFocused: false,
     cachedLineScrollTiming: new Map(),
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
@@ -424,6 +429,8 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   stopPassiveScrollLoop(engine);
   engine.lines = [];
   engine.cachedFooterItem = null;
+  engine.cachedCreditsItem = null;
+  engine.creditsFocused = false;
   engine.lyricsContainer = null;
   engine.waveAnimationPool.length = 0;
 }
@@ -2293,20 +2300,19 @@ function updateVisibleLyricWillChange(
   engine.visibleWillChangeElements = nextVisibleElements;
 }
 
-// Footer bounds come from the relayout-time cache, not a getBoundingClientRect here, which would force
-// a synchronous recalc mid-tick after the scroll commit dirtied style.
+// The credits and the footer after the last line scroll with the lines. Their bounds come from the
+// relayout-time cache, not a getBoundingClientRect here, which would force a synchronous recalc
+// mid-tick after the scroll commit dirtied style.
 function getLineScrollItems(engine: AnimationEngineInstance, lines: LineData[]): LineScrollItem[] {
-  return engine.cachedFooterItem ? [...lines, engine.cachedFooterItem] : lines;
+  const trailing = [engine.cachedCreditsItem, engine.cachedFooterItem].filter(item => item !== null);
+  return trailing.length > 0 ? [...lines, ...trailing] : lines;
 }
 
-function measureFooterItem(engine: AnimationEngineInstance, lyricsElement: HTMLElement): void {
-  const footer = lyricsElement.querySelector(`:scope > .${FOOTER_CLASS}`) as HTMLElement | null;
-  if (!footer) {
-    engine.cachedFooterItem = null;
-    return;
-  }
-  const footerBounds = getRelativeLayoutBounds(lyricsElement, footer);
-  engine.cachedFooterItem = { lyricElement: footer, position: footerBounds.y, height: footerBounds.height };
+function measureTrailingItem(lyricsElement: HTMLElement, className: string): LineScrollItem | null {
+  const element = lyricsElement.querySelector<HTMLElement>(`:scope > .${className}`);
+  if (!element) return null;
+  const bounds = getRelativeLayoutBounds(lyricsElement, element);
+  return { lyricElement: element, position: bounds.y, height: bounds.height };
 }
 
 function prepareLineScrollOffsets(
@@ -3018,6 +3024,18 @@ export function tickView(
       }
     }
 
+    const lastSungLine = lines.findLast(lineData => lineData.lyricElement.dataset.instrumental !== "true");
+    const creditsFocused =
+      lastSungLine !== undefined &&
+      (engine.cachedCreditsItem?.height ?? 0) > 0 &&
+      lyricScrollTime >= lastSungLine.time + lastSungLine.duration;
+    if (creditsFocused !== engine.creditsFocused) {
+      engine.creditsFocused = creditsFocused;
+      if (creditsFocused) lyricsElement.dataset.creditsFocused = "true";
+      else delete lyricsElement.dataset.creditsFocused;
+      newLyricSelected = true;
+    }
+
     if (engine.scrollResumeTime < Date.now() || engine.scrollPos === -1) {
       if (activeElems.length == 0) {
         activeElems.push(lines[0]);
@@ -3054,6 +3072,11 @@ export function tickView(
 
       // Make sure top of last active lyric is visible.
       scrollPos = Math.min(scrollPos, lastActiveLyric.position);
+
+      const credits = engine.cachedCreditsItem;
+      if (engine.creditsFocused && credits) {
+        scrollPos = credits.position + credits.height / 2 - scrollPosOffset;
+      }
 
       // Past either end the browser clamps the write and reports nothing, leaving the view aiming
       // at a position it never reached and re-aiming once per remaining line.
@@ -3304,7 +3327,15 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
   const lyricLines = lyricsElement.querySelectorAll<HTMLElement>(`:scope > .${LINE_CLASS}`);
   const firstLyric = lyricLines[0] ?? null;
   const lastLyric = lyricLines[lyricLines.length - 1] ?? null;
-  const lastLyricBounds = lastLyric ? getRelativeLayoutBounds(lyricsElement, lastLyric) : null;
+  const credits = lyricsElement.querySelector<HTMLElement>(`:scope > .${CREDITS_CLASS}`);
+  const creditsBounds = credits ? getRelativeLayoutBounds(lyricsElement, credits) : null;
+  // The credits take the focus once the song ends, so they are the last thing the scroll must reach.
+  const lastLyricBounds =
+    creditsBounds && creditsBounds.height > 0
+      ? creditsBounds
+      : lastLyric
+        ? getRelativeLayoutBounds(lyricsElement, lastLyric)
+        : null;
   const footer = lyricsElement.querySelector<HTMLElement>(`:scope > .${FOOTER_CLASS}`);
 
   const { top, bottom } = computeScrollPadding({
@@ -3355,7 +3386,8 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
     );
   }
 
-  measureFooterItem(engine, lyricsElement);
+  engine.cachedCreditsItem = measureTrailingItem(lyricsElement, CREDITS_CLASS);
+  engine.cachedFooterItem = measureTrailingItem(lyricsElement, FOOTER_CLASS);
 
   // Re-arm from the fresh measurements, so a line skipped after this holds its new placeholder height.
   setupLineCullObserver(engine);

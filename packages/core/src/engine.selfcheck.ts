@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import { CREDITS_CLASS, LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
 import {
   type AnimationEngineInstance,
   clearLyrics,
@@ -28,6 +28,7 @@ import {
   installFakeDOMRect,
   poisonAmbientGlobals,
 } from "./selfcheck/fakeWindow";
+import { parseThemeConfig, setThemeSettings } from "./themeSettings";
 import type { Lyric, LyricsRendererHost, TickOptions } from "./types";
 import { setLyrics } from "./view";
 
@@ -1072,6 +1073,173 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.equal(engine.skipScrolls, firstScrollCount + 2, "Seeking backwards must still retarget the viewport");
   engine.destroy();
 }
+
+// -- Songwriter credits close the view --------------------------------------------
+
+const creditsDocument = new FakeDocument();
+const creditsHost = new FakeHost();
+const creditsMount = creditsDocument.createElement("div");
+const creditsEngine = createAnimationEngineInstance(
+  asDocument(creditsDocument),
+  asWindow(new FakeWindow({ [ANIMATE_SCROLL_PROPERTY]: "0" })),
+  creditsHost
+);
+
+function buildCredits(
+  options: { songwriters?: readonly string[]; noLyrics?: boolean },
+  lyrics: Lyric[] = LINE_SYNCED_LYRICS
+): FakeNode[] {
+  setLyrics(creditsEngine, asElement<HTMLElement>(creditsMount), lyrics, {
+    loaderVisible: false,
+    noLyrics: false,
+    ...options,
+  });
+  return asFakeNode(creditsEngine.lyricsContainer!).childNodes;
+}
+
+function creditsIn(children: FakeNode[]): FakeNode[] {
+  return children.filter(child => child.classList.contains(CREDITS_CLASS));
+}
+
+const creditedChildren = buildCredits({ songwriters: ["Mara Quill", "Jonah Pike", "Ada Stone"] });
+
+assert.ok(
+  creditedChildren.at(-1)?.classList.contains(CREDITS_CLASS) && creditedChildren.at(-2)?.classList.contains(LINE_CLASS),
+  "Given songwriters, When the lyrics are built, Then the credits come straight after the last line"
+);
+
+assert.equal(
+  creditedChildren.at(-1)?.textContent,
+  "Mara Quill, Jonah Pike & Ada Stone",
+  "Given three songwriters, When they are joined, Then commas separate them and an ampersand joins the last two"
+);
+
+assert.equal(
+  creditsIn(buildCredits({ songwriters: ["Mara Quill", "Jonah Pike"] }))[0]?.textContent,
+  "Mara Quill & Jonah Pike"
+);
+assert.equal(creditsIn(buildCredits({ songwriters: ["Mara Quill"] }))[0]?.textContent, "Mara Quill");
+
+for (const [label, options] of [
+  ["no songwriters", { songwriters: [] }],
+  ["songwriters never given", {}],
+  ["a placeholder message", { songwriters: ["Mara Quill"], noLyrics: true }],
+] as const) {
+  assert.equal(
+    creditsIn(buildCredits(options)).length,
+    0,
+    `Given ${label}, When the lyrics are built, Then no credits are built`
+  );
+}
+
+setThemeSettings(parseThemeConfig("/* blyrics-hide-credits = true; */"));
+assert.equal(
+  creditsIn(buildCredits({ songwriters: ["Mara Quill"] })).length,
+  0,
+  "Given a theme that hides the credits, When the lyrics are built, Then no credits are built"
+);
+setThemeSettings(parseThemeConfig("/* blyrics-hide-credits = false; */"));
+
+// -- The credits take the focus once the last line has ended ------------------------------------
+
+const CREDITS_LINE_HEIGHT_PX = 60;
+const CREDITS_GAP_PX = 20;
+const CREDITS_TOP_PX = LINE_SYNCED_LYRICS.length * CREDITS_LINE_HEIGHT_PX + CREDITS_GAP_PX;
+const CREDITS_HEIGHT_PX = 30;
+const TARGET_RATIO = 0.37;
+
+function layOutCredits(creditsHeight: number, lyrics: Lyric[] = LINE_SYNCED_LYRICS): FakeNode {
+  const children = buildCredits({ songwriters: ["Mara Quill", "Jonah Pike"] }, lyrics);
+  const creditsTop = lyrics.length * CREDITS_LINE_HEIGHT_PX + CREDITS_GAP_PX;
+  children
+    .filter(child => child.classList.contains(LINE_CLASS))
+    .forEach((line, index) => {
+      line.offsetTop = index * CREDITS_LINE_HEIGHT_PX;
+      line.offsetHeight = CREDITS_LINE_HEIGHT_PX;
+    });
+  const credits = creditsIn(children)[0];
+  credits.offsetTop = creditsTop;
+  credits.offsetHeight = creditsHeight;
+  const container = asFakeNode(creditsEngine.lyricsContainer!);
+  container.scrollHeight = creditsTop + creditsHeight;
+  relayout(creditsEngine, true);
+  return container;
+}
+
+const creditsContainer = layOutCredits(CREDITS_HEIGHT_PX);
+const creditsCentre = CREDITS_TOP_PX + CREDITS_HEIGHT_PX / 2;
+
+assert.ok(
+  Number.parseFloat(creditsContainer.style.getPropertyValue("padding-bottom")) +
+    (creditsContainer.scrollHeight - creditsCentre) >=
+    VIEWPORT_HEIGHT_PX * (1 - TARGET_RATIO),
+  "Given credits after the last line, When the padding is sized, Then the credits can reach the target scroll position"
+);
+
+const LAST_LINE = LINE_SYNCED_LYRICS[LINE_SYNCED_LYRICS.length - 1];
+const LAST_LINE_START_S = LAST_LINE.startTimeMs / 1000;
+const SONG_ENDED_S = (LAST_LINE.startTimeMs + LAST_LINE.durationMs) / 1000 + 1;
+const tickCredits = (timeS: number) => tickView(creditsEngine, timeS, resolveTickOptions(newTickOptions()));
+
+tickCredits(LAST_LINE_START_S);
+const lastLineScrollPos = creditsEngine.scrollPos;
+
+assert.equal(
+  creditsContainer.dataset.creditsFocused,
+  undefined,
+  "Given the last line still singing, When the view ticks, Then the credits stay dim"
+);
+
+tickCredits(SONG_ENDED_S);
+
+assert.equal(
+  creditsContainer.dataset.creditsFocused,
+  "true",
+  "Given the last line has ended, When the view ticks, Then the credits take the focus"
+);
+
+assert.equal(
+  creditsEngine.scrollPos,
+  creditsCentre - VIEWPORT_HEIGHT_PX * TARGET_RATIO,
+  "Given the credits have the focus, When the view scrolls, Then it centres them where a line would sit"
+);
+
+tickCredits(LAST_LINE_START_S);
+
+assert.equal(
+  creditsContainer.dataset.creditsFocused,
+  undefined,
+  "Given a seek back into the last line, When the view ticks, Then the credits give the focus back"
+);
+
+assert.equal(
+  creditsEngine.scrollPos,
+  lastLineScrollPos,
+  "Given a seek back into the last line, When the view scrolls, Then it aims at that line again"
+);
+
+const hiddenCreditsContainer = layOutCredits(0);
+tickCredits(SONG_ENDED_S);
+
+assert.equal(
+  hiddenCreditsContainer.dataset.creditsFocused,
+  undefined,
+  "Given credits a stylesheet hid, When the song ends, Then nothing takes the focus"
+);
+
+const creditsOutroContainer = layOutCredits(CREDITS_HEIGHT_PX, [
+  ...LINE_SYNCED_LYRICS,
+  { startTimeMs: LAST_LINE.startTimeMs + LAST_LINE.durationMs, durationMs: 20000, words: "", isInstrumental: true },
+]);
+tickCredits(SONG_ENDED_S);
+
+assert.equal(
+  creditsOutroContainer.dataset.creditsFocused,
+  "true",
+  "Given an instrumental outro, When the last sung line has ended, Then the credits take the focus without waiting out the outro"
+);
+
+creditsEngine.destroy();
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +

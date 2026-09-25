@@ -305,3 +305,57 @@ describe("createLRCLibPlainProvider", () => {
 		expect(await createLRCLibPlainProvider()(makeCtx())).toBeNull();
 	});
 });
+
+describe("songwriters", () => {
+	const CREDITED_TTML = `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><head><metadata><iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal"><songwriters><songwriter>Chris Martin</songwriter><songwriter>Brian Eno</songwriter></songwriters></iTunesMetadata></metadata></head><body dur="30s"><div><p begin="5s" end="10s">Hello world</p></div></body></tt>`;
+	const CREDITED_LRC = `[au:Chris Martin / Brian Eno]\n${LRC}`;
+	const CREDITED_QRC = `[0,1000]作词:(0,500)Chris Martin(500,500)\n${QRC}`;
+	const WRITERS = ["Chris Martin", "Brian Eno"];
+
+	it("carries TTML songwriters from boidu.dev", async () => {
+		stubFetch(() => ({ ok: true, json: { ttml: CREDITED_TTML } }));
+		expect((await createBLyricsProvider()(makeCtx()))?.songwriters).toEqual(WRITERS);
+	});
+
+	it("carries TTML songwriters from BiniLyrics", async () => {
+		stubFetch((url) =>
+			url.includes("lyrics.ttml")
+				? { ok: true, text: CREDITED_TTML }
+				: { ok: true, json: { results: [{ lyricsUrl: "https://example.test/lyrics.ttml" }] } },
+		);
+		expect((await createBinimumProvider()(makeCtx()))?.songwriters).toEqual(WRITERS);
+	});
+
+	it("carries TTML and LRC songwriters from Unison", async () => {
+		stubFetch(() => ({ ok: true, json: { data: { format: "ttml", lyrics: CREDITED_TTML } } }));
+		expect((await createUnisonProvider()(makeCtx()))?.songwriters).toEqual(WRITERS);
+
+		stubFetch(() => ({ ok: true, json: { data: { format: "lrc", lyrics: CREDITED_LRC } } }));
+		expect((await createUnisonProvider()(makeCtx()))?.songwriters).toEqual(WRITERS);
+	});
+
+	it("carries LRC songwriters from LRCLib and Legato", async () => {
+		stubFetch(() => ({ ok: true, json: { syncedLyrics: CREDITED_LRC } }));
+		expect((await createLRCLibSyncedProvider()(makeCtx()))?.songwriters).toEqual(WRITERS);
+
+		stubFetch(() => ({ ok: true, json: { lyrics: CREDITED_LRC } }));
+		expect((await createLegatoProvider()(makeCtx()))?.songwriters).toEqual(WRITERS);
+	});
+
+	it("carries QRC songwriters from Portato", async () => {
+		stubFetch(() => ({ ok: true, json: { lyrics: CREDITED_QRC } }));
+		expect((await createPortatoProvider()(makeCtx()))?.songwriters).toEqual(["Chris Martin"]);
+	});
+
+	describe("edge cases", () => {
+		it("reports no songwriters when the file credits none", async () => {
+			stubFetch(() => ({ ok: true, json: { ttml: TTML } }));
+			expect((await createBLyricsProvider()(makeCtx()))?.songwriters).toEqual([]);
+		});
+
+		it("reports none for plain lyrics, which cannot carry them", async () => {
+			stubFetch(() => ({ ok: true, json: { plainLyrics: PLAIN } }));
+			expect((await createLRCLibPlainProvider()(makeCtx()))?.songwriters).toBeUndefined();
+		});
+	});
+});

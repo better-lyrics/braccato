@@ -47,6 +47,7 @@ let lineSyncedAnimationDelay = registerThemeSetting("blyrics-line-synced-animati
 let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500, true);
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
 let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
+export const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 

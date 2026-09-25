@@ -553,3 +553,78 @@ describe("TTMLParser", () => {
 		});
 	});
 });
+
+describe("TTMLParser.metadata", () => {
+	const body = `<body dur="10s"><div><p begin="0s" end="5s">Line</p></div></body>`;
+
+	it("reads Apple's iTunesMetadata songwriters", () => {
+		const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xml:lang="en"><head><metadata><ttm:agent type="person" xml:id="v1"/><iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal"><translations/><songwriters><songwriter>Abel Tesfaye</songwriter><songwriter>Max Martin</songwriter></songwriters><audio lyricOffset="0.046" role="spatial"/></iTunesMetadata></metadata></head>${body}</tt>`;
+
+		expect(TTMLParser.metadata(ttml)).toEqual({ songwriters: ["Abel Tesfaye", "Max Martin"] });
+	});
+
+	it("reads lrc.red's sourceMetadata songwriters", () => {
+		const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:lrc="http://lrc.red/lyric-ttml-internal"><head><metadata><sourceMetadata xmlns="http://lrc.red/lyric-ttml-internal" leadingSilence="0"><translations/><songwriters><songwriter>Oscar Thomas Holter</songwriter></songwriters></sourceMetadata></metadata></head>${body}</tt>`;
+
+		expect(TTMLParser.metadata(ttml).songwriters).toEqual(["Oscar Thomas Holter"]);
+	});
+
+	it("reads Composer's meta pairs under either key", () => {
+		const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:composer="https://composer.boidu.dev/ns"><head><metadata><composer:meta key="artists" value="Someone"/><composer:meta key="songwriter" value="A"/><composer:meta key="songwriters" value="B"/></metadata></head>${body}</tt>`;
+
+		expect(TTMLParser.metadata(ttml).songwriters).toEqual(["A", "B"]);
+	});
+
+	describe("edge cases", () => {
+		it("reads a pretty-printed head", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <head>
+    <metadata>
+      <iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal">
+        <songwriters>
+          <songwriter>Chester Bennington</songwriter>
+          <songwriter>Mike Shinoda</songwriter>
+        </songwriters>
+      </iTunesMetadata>
+    </metadata>
+  </head>
+  ${body}
+</tt>`;
+
+			expect(TTMLParser.metadata(ttml).songwriters).toEqual(["Chester Bennington", "Mike Shinoda"]);
+		});
+
+		it("decodes entities and keeps a name with a comma whole", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"><head><metadata><iTunesMetadata><songwriters><songwriter>Tom &amp; Jerry</songwriter><songwriter>Smith, John</songwriter></songwriters></iTunesMetadata></metadata></head>${body}</tt>`;
+
+			expect(TTMLParser.metadata(ttml).songwriters).toEqual(["Tom & Jerry", "Smith, John"]);
+		});
+
+		it("names a person once when two sources credit them", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:composer="https://composer.boidu.dev/ns"><head><metadata><composer:meta key="songwriter" value="A"/><iTunesMetadata><songwriters><songwriter>A</songwriter><songwriter> </songwriter></songwriters></iTunesMetadata></metadata></head>${body}</tt>`;
+
+			expect(TTMLParser.metadata(ttml).songwriters).toEqual(["A"]);
+		});
+
+		it("reads nothing from a document without a head, with an empty list, or that is not XML", () => {
+			expect(TTMLParser.metadata(`<tt xmlns="http://www.w3.org/ns/ttml">${body}</tt>`).songwriters).toEqual([]);
+			expect(
+				TTMLParser.metadata(
+					`<tt xmlns="http://www.w3.org/ns/ttml"><head><metadata><iTunesMetadata><songwriters/></iTunesMetadata></metadata></head>${body}</tt>`,
+				).songwriters,
+			).toEqual([]);
+			expect(TTMLParser.metadata("").songwriters).toEqual([]);
+			expect(TTMLParser.metadata("<tt><body>").songwriters).toEqual([]);
+		});
+	});
+
+	describe("invariants", () => {
+		it("leaves the parsed lyrics and their result shape alone", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"><head><metadata><iTunesMetadata><songwriters><songwriter>A</songwriter></songwriters></iTunesMetadata></metadata></head>${body}</tt>`;
+
+			const parsed = parseTTMLContent(ttml);
+			expect(Object.keys(parsed).sort()).toEqual(["isWordSynced", "language", "lyrics"]);
+			expect(parsed.lyrics.filter((l) => !l.isInstrumental).map((l) => l.words)).toEqual(["Line"]);
+		});
+	});
+});

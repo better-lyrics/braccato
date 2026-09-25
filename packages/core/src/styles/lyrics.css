@@ -239,6 +239,26 @@
 	}
 }
 
+.blyrics-container > .blyrics-credits {
+	cursor: default;
+}
+
+.blyrics-credits {
+	color: var(--blyrics-ui-text-color);
+	font-size: var(--blyrics-credits-font-size);
+	opacity: var(--blyrics-credits-opacity);
+	transition: opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.blyrics-credits::before {
+	content: var(--blyrics-credits-label) " ";
+}
+
+.blyrics-container[data-credits-focused] > .blyrics-credits,
+.blyrics-container[data-sync="none"] > .blyrics-credits {
+	opacity: var(--blyrics-credits-focused-opacity);
+}
+
 .blyrics--romanized {
 	background: rgba(255, 255, 255, 0.05);
 	border: 1px solid rgba(255, 255, 255, 0.1);

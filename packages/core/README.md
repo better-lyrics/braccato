@@ -71,6 +71,15 @@ A `Lyric` is `{ startTimeMs, durationMs, words }`, with an optional `parts` arra
 fields for syllable or word timing, and optional `translation`, `romanization` and
 `timedRomanization` beside them.
 
+Who wrote the song travels beside the lines rather than in them. Hand the names to `lyricsOptions` and
+the view closes with a "Written by" line after the last lyric. The parsers read them out of the file:
+
+```js
+const parser = detectParser(text);
+view.lyricsOptions = { songwriters: parser.metadata(text).songwriters };
+view.lyrics = parser.parse(text, player.duration * 1000);
+```
+
 ## Properties
 
 Every one of these may be written before the element is in a document. The renderer is built when it
@@ -79,7 +88,7 @@ connects, and everything it was handed by then is applied at once.
 | Property        | Attribute      | Type                                | Default  | Description                                                                                                                              |
 | --------------- | -------------- | ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `lyrics`        |                | `Lyric[] \| null`                   | `null`   | The song. Null means it was never given one, and an empty array clears the view, so there is a way to say both.                            |
-| `lyricsOptions` |                | `{ loaderVisible?, noLyrics?, language? }`     | `{}`     | How the lines are built. `noLyrics` marks a message as a placeholder rather than a song, which keeps passive scrolling from drifting it.   |
+| `lyricsOptions` |                | `{ loaderVisible?, noLyrics?, language?, songwriters? }` | `{}`     | How the lines are built. `noLyrics` marks a message as a placeholder rather than a song, which keeps passive scrolling from drifting it. `songwriters` closes the view with a credits line. |
 | `source`        | `source`       | `string \| HTMLMediaElement \| null` | `null`  | A selector or the media element itself. See Following a media element.                                                                     |
 | `mediaElement`  |                | `HTMLMediaElement \| null` (get)    | `null`   | What `source` resolved to. Null while disconnected, and null for a selector that missed.                                                   |
 | `currentTime`   | `current-time` | `number`                            | `0`      | Playback position in **seconds**. Writing it renders the view again, so whoever holds the clock drives the lyrics by writing this.        |
@@ -229,6 +238,24 @@ frequency. Both must use the same commands in the same order with the same numbe
 browser only interpolates two paths smoothly when their command sequences match, and a mismatched
 pair snaps at the halfway point instead of flowing.
 
+### Credits
+
+Given `songwriters`, the view ends with `A, B & C` after the last line. It sits dim through the song,
+and once the last line has ended it brightens and takes the scroll focus, the way Apple Music closes a
+song. Seeking back hands the focus to the lines again. Unsynced lyrics have no end, so their credits
+show at full strength from the start.
+
+| Custom property                      | Default          | What it sets                                         |
+| ------------------------------------ | ---------------- | ---------------------------------------------------- |
+| `--blyrics-credits-label`            | `"Written by"`   | The words before the names. Localise it here.        |
+| `--blyrics-credits-font-size`        | `max(0.4em, 12px)` | The size of the whole line.                        |
+| `--blyrics-credits-opacity`          | `0.2`            | While the song plays.                                |
+| `--blyrics-credits-focused-opacity`  | `0.85`           | Once the song has ended.                             |
+
+The container carries `data-credits-focused` while the credits hold the focus. To hide them, a
+stylesheet can set `.blyrics-credits { display: none; }`, which the scroll then ignores, or a theme can
+declare `/* blyrics-hide-credits = true; */` so they are never built.
+
 ### Letter wave (experimental)
 
 On by default; a theme opts out with `/* blyrics-letter-wave = false; */`. It splits every word into
@@ -296,6 +323,7 @@ refactor. Import them from `@braccato/core/constants` instead of typing them out
 | `USER_SCROLLING_CLASS`    | `blyrics-user-scrolling`    | Set while a reader has scrolled away and autoscroll waits.   |
 | `TRANSLATED_LYRICS_CLASS` | `blyrics--translated`       | A translation hung off a line that was already built.        |
 | `EXPLICIT_WORD_CLASS`     | `blyrics-explicit`          | A word the lyrics flag as explicit. Unstyled unless a theme styles it. |
+| `CREDITS_CLASS`           | `blyrics-credits`           | The songwriter credits after the last line.                  |
 | `CUSTOM_THEME_STYLE_ID`   | `blyrics-custom-style`      | The id of the `<style>` the theme lands in.                  |
 
 ## Stylesheets

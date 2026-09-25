@@ -35,11 +35,13 @@ export function createBinimumProvider(options: BinimumProviderOptions = {}): Pro
 		const ttmlResponse = await fetch(selected.lyricsUrl, { signal: signal() });
 		if (!ttmlResponse.ok) return null;
 
-		const lyrics = TTMLParser.parse(await ttmlResponse.text());
+		const ttml = await ttmlResponse.text();
+		const lyrics = TTMLParser.parse(ttml);
 		if (lyrics.length === 0) return null;
 
 		return {
 			lyrics,
+			songwriters: TTMLParser.metadata(ttml).songwriters,
 			source: "BiniLyrics",
 			sourceHref: "https://lyrics-api.binimum.org/",
 			cacheAllowed: true,
