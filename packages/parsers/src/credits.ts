@@ -2,25 +2,44 @@ const FREE_TEXT_SEPARATORS = /[/、，,]/;
 const CREDIT_LINE_REGEX = /^([^:：]+)[:：]\s*(.+)$/;
 
 // The credits that name who wrote the song. `编曲` (arrangement) ends in `曲` too and is not one.
-const SONGWRITER_ROLES = ["词", "作词", "曲", "作曲", "writtenby", "lyricsby", "composedby", "lyricist", "composer"];
+const SONGWRITER_ROLES = [
+	"词",
+	"詞",
+	"作词",
+	"作詞",
+	"曲",
+	"作曲",
+	"writtenby",
+	"lyricsby",
+	"composedby",
+	"lyricist",
+	"composer",
+];
 
 const CREDIT_ROLES = [
 	...SONGWRITER_ROLES,
 	"编曲",
+	"編曲",
 	"和声",
+	"和聲",
 	"混音",
 	"吉他",
 	"制作人",
+	"製作人",
 	"演唱",
 	"原唱",
 	"翻唱",
 	"后期",
+	"後期",
 	"和音",
 	"录音",
+	"錄音",
 	"策划",
+	"策劃",
 	"伴奏",
 	"美工",
 	"海报",
+	"海報",
 	"旁白",
 	"producedby",
 	"arrangedby",
@@ -35,6 +54,11 @@ const CREDIT_ROLES = [
 	"arranger",
 ];
 
+// An unlisted CJK role still counts when it ends in a role noun, but only at role length, or a sung
+// clause such as `我听见你的声音` would read as one.
+const ROLE_NOUN_SUFFIXES = ["词", "詞", "曲", "声", "聲", "音"];
+const ROLE_NOUN_MAX_LENGTH = 4;
+
 function normalizeRole(role: string): string {
 	return role.toLowerCase().replace(/\s+/g, "");
 }
@@ -42,7 +66,8 @@ function normalizeRole(role: string): string {
 /** Whether the text before a colon names a credit role, such as `作词` or `Produced by`, rather than a singer. */
 export function isCreditRole(role: string): boolean {
 	const n = normalizeRole(role);
-	return CREDIT_ROLES.includes(n) || n.endsWith("词") || n.endsWith("曲") || n.endsWith("声") || n.endsWith("音");
+	if (CREDIT_ROLES.includes(n)) return true;
+	return n.length <= ROLE_NOUN_MAX_LENGTH && ROLE_NOUN_SUFFIXES.some((noun) => n.endsWith(noun));
 }
 
 /** Whether a lyric line's text is a credit, such as `作词：周杰伦`, rather than a sung line. */

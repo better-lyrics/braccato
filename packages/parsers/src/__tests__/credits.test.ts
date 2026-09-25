@@ -74,6 +74,10 @@ describe("isCreditRole", () => {
 		expect(isCreditRole("填词")).toBe(true);
 	});
 
+	it("reads the ending noun only on a role-length prefix", () => {
+		expect(isCreditRole("我听见你的声音")).toBe(false);
+	});
+
 	it("does not read a singer as a role", () => {
 		expect(isCreditRole("Drake")).toBe(false);
 		expect(isCreditRole("王力宏")).toBe(false);

@@ -118,7 +118,7 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 
 		consumeSegment(leadText, false);
 		if (bgText !== null) consumeSegment(bgText, true);
-		if (isCreditLine(plainText)) continue;
+		if (isCreditLine(leadText.replace(ENHANCED_WORD_REGEX, ""))) continue;
 
 		const duration = lineEndTime - lineStartTime;
 
@@ -257,7 +257,9 @@ export const LRCParser: LyricParser = {
 			if (idTagMatch && SONGWRITER_ID_TAGS.includes(idTagMatch[1])) names.push(...splitCreditNames(idTagMatch[2]));
 			else {
 				const text = line.replace(TIME_TAG_REGEX, "");
-				if (text !== line) names.push(...songwritersInCreditLine(text.replace(ENHANCED_WORD_REGEX, "")));
+				if (text !== line) {
+					names.push(...songwritersInCreditLine(text.replace(BG_MARKER_REGEX, "").replace(ENHANCED_WORD_REGEX, "")));
+				}
 			}
 		}
 		return { songwriters: uniqueNames(names) };
