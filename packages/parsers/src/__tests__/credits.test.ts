@@ -78,6 +78,17 @@ describe("isCreditRole", () => {
 		expect(isCreditRole("我听见你的声音")).toBe(false);
 	});
 
+	it("reads a role with a Latin prefix or several roles joined by a separator", () => {
+		expect(isCreditRole("Rap作词")).toBe(true);
+		expect(isCreditRole("作曲/编曲")).toBe(true);
+		expect(isCreditRole("制作人&混音")).toBe(true);
+	});
+
+	it("does not read a joined singer list as a role", () => {
+		expect(isCreditRole("Travis Scott/The Notorious B.I.G.")).toBe(false);
+		expect(isCreditRole("周杰伦/方文山")).toBe(false);
+	});
+
 	it("does not read a singer as a role", () => {
 		expect(isCreditRole("Drake")).toBe(false);
 		expect(isCreditRole("王力宏")).toBe(false);
@@ -109,6 +120,11 @@ describe("songwritersInCreditLine", () => {
 	it("lists the names a songwriting credit gives", () => {
 		expect(songwritersInCreditLine("作曲 : 周杰伦/方文山")).toEqual(["周杰伦", "方文山"]);
 		expect(songwritersInCreditLine("Lyrics by: Sia Furler")).toEqual(["Sia Furler"]);
+	});
+
+	it("reads a songwriting role inside a compound or prefixed role", () => {
+		expect(songwritersInCreditLine("Rap作词：张三")).toEqual(["张三"]);
+		expect(songwritersInCreditLine("作曲/编曲：李四")).toEqual(["李四"]);
 	});
 
 	describe("edge cases", () => {

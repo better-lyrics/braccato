@@ -58,16 +58,37 @@ const CREDIT_ROLES = [
 // clause such as `我听见你的声音` would read as one.
 const ROLE_NOUN_SUFFIXES = ["词", "詞", "曲", "声", "聲", "音"];
 const ROLE_NOUN_MAX_LENGTH = 4;
+const ROLE_SEPARATORS = /[/&、,，]/;
 
 function normalizeRole(role: string): string {
 	return role.toLowerCase().replace(/\s+/g, "");
+}
+
+function isRoleNoun(part: string): boolean {
+	if (CREDIT_ROLES.includes(part)) return true;
+	return part.length <= ROLE_NOUN_MAX_LENGTH && ROLE_NOUN_SUFFIXES.some((noun) => part.endsWith(noun));
+}
+
+// QQ Music joins roles (`作曲/编曲`) and tags them in Latin (`Rap作词`), so a CJK role is read part by part.
+function cjkRoleParts(normalized: string): string[] {
+	return normalized
+		.replace(/[a-z]+/g, "")
+		.split(ROLE_SEPARATORS)
+		.filter(Boolean);
 }
 
 /** Whether the text before a colon names a credit role, such as `作词` or `Produced by`, rather than a singer. */
 export function isCreditRole(role: string): boolean {
 	const n = normalizeRole(role);
 	if (CREDIT_ROLES.includes(n)) return true;
-	return n.length <= ROLE_NOUN_MAX_LENGTH && ROLE_NOUN_SUFFIXES.some((noun) => n.endsWith(noun));
+	const parts = cjkRoleParts(n);
+	return parts.length > 0 && parts.every(isRoleNoun);
+}
+
+function isSongwriterRole(role: string): boolean {
+	const n = normalizeRole(role);
+	if (SONGWRITER_ROLES.includes(n)) return true;
+	return isCreditRole(role) && cjkRoleParts(n).some((part) => SONGWRITER_ROLES.includes(part));
 }
 
 /** Whether a lyric line's text is a credit, such as `作词：周杰伦`, rather than a sung line. */
@@ -79,7 +100,7 @@ export function isCreditLine(text: string): boolean {
 /** The names a songwriting credit line lists, or none when the line credits anything else. */
 export function songwritersInCreditLine(text: string): string[] {
 	const credit = text.trim().match(CREDIT_LINE_REGEX);
-	if (!credit || !SONGWRITER_ROLES.includes(normalizeRole(credit[1]))) return [];
+	if (!credit || !isSongwriterRole(credit[1])) return [];
 	return splitCreditNames(credit[2]);
 }
 

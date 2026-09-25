@@ -315,6 +315,15 @@ describe("QRCParser.metadata", () => {
 	});
 
 	describe("regressions", () => {
+		it("keeps compound and prefixed credit roles out of the parsed lyrics", () => {
+			const body = `[0,3000]Rap作词:(0,1500)张三(1500,1500)
+[3000,3000]作曲/编曲:(3000,1500)李四(4500,1500)
+[6000,2000]歌(6000,1000)词(7000,1000)`;
+
+			const sung = QRCParser.parse(body, 20000).filter((l) => !l.isInstrumental);
+			expect(sung.map((l) => ({ words: l.words, agent: l.agent }))).toEqual([{ words: "歌词", agent: undefined }]);
+		});
+
 		it("still keeps the credit lines out of the parsed lyrics", () => {
 			const body = `[0,3000]作词:(0,1500)周杰伦(1500,1500)
 [6000,2000]Real(6000,1000)lyric(7000,1000)`;
