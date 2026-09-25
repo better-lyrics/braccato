@@ -1122,6 +1122,11 @@ assert.ok(
   "Given songwriters, When the credits are built, Then the names sit in one inner block so the credits keep the lines' em inset"
 );
 
+assert.ok(
+  creditedChildren.at(-1)?.name === "p" && creditsText?.[0]?.name === "span",
+  "Given songwriters, When the credits are built, Then they are a paragraph rather than a div, so theme rules written for the lines as `.blyrics-container > div` never reach them"
+);
+
 assert.equal(
   creditsIn(buildCredits({ songwriters: ["Mara Quill", "Jonah Pike"] }))[0]?.textContent,
   "Mara Quill & Jonah Pike"
