@@ -90,11 +90,12 @@ function formatSongwriters(names: readonly string[]): string {
   return names.length > 1 ? `${names.slice(0, -1).join(", ")} & ${names.at(-1)}` : (names[0] ?? "");
 }
 
-function buildCredits(doc: Document, songwriters: readonly string[]): HTMLDivElement {
-  const credits = doc.createElement("div");
+function buildCredits(doc: Document, songwriters: readonly string[]): HTMLParagraphElement {
+  // Not a div: themes style the lines as `.blyrics-container > div`, and none of that is meant for the credits.
+  const credits = doc.createElement("p");
   credits.className = CREDITS_CLASS;
   // The smaller size lives on an inner block so the credits keep the lines' em, and with it their inset.
-  const text = doc.createElement("div");
+  const text = doc.createElement("span");
   text.className = CREDITS_TEXT_CLASS;
   const names = doc.createElement("span");
   names.className = CREDITS_NAMES_CLASS;

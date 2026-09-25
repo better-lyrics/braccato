@@ -240,7 +240,12 @@
 }
 
 .blyrics-container > .blyrics-credits {
+	box-sizing: border-box;
 	cursor: default;
+	margin: 0;
+	padding: var(--blyrics-padding) 0.25em;
+	transform: scale(var(--blyrics-scale));
+	transform-origin: left center;
 }
 
 .blyrics-credits {
@@ -250,6 +255,7 @@
 }
 
 .blyrics-credits__text {
+	display: block;
 	font-size: var(--blyrics-credits-font-size);
 }
 

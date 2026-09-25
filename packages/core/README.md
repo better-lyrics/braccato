@@ -252,6 +252,9 @@ show at full strength from the start.
 | `--blyrics-credits-opacity`          | `0.2`            | While the song plays.                                |
 | `--blyrics-credits-focused-opacity`  | `0.85`           | Once the song has ended.                             |
 
+The credits are a `p`, not a `div`, so rules a theme writes for the lines as `.blyrics-container > div`
+(hover scaling, per-line opacity and blur) never reach them. Style them through `.blyrics-credits`.
+
 The container carries `data-credits-focused` while the credits hold the focus. To hide them, a
 stylesheet can set `.blyrics-credits { display: none; }`, which the scroll then ignores, or a theme can
 declare `/* blyrics-hide-credits = true; */` so they are never built.
