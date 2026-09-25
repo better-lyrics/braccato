@@ -1085,8 +1085,11 @@ const creditsEngine = createAnimationEngineInstance(
   creditsHost
 );
 
-function buildCredits(options: { songwriters?: readonly string[]; noLyrics?: boolean }): FakeNode[] {
-  setLyrics(creditsEngine, asElement<HTMLElement>(creditsMount), LINE_SYNCED_LYRICS, {
+function buildCredits(
+  options: { songwriters?: readonly string[]; noLyrics?: boolean },
+  lyrics: Lyric[] = LINE_SYNCED_LYRICS
+): FakeNode[] {
+  setLyrics(creditsEngine, asElement<HTMLElement>(creditsMount), lyrics, {
     loaderVisible: false,
     noLyrics: false,
     ...options,
@@ -1140,12 +1143,14 @@ setThemeSettings(parseThemeConfig("/* blyrics-hide-credits = false; */"));
 // -- The credits take the focus once the last line has ended ------------------------------------
 
 const CREDITS_LINE_HEIGHT_PX = 60;
-const CREDITS_TOP_PX = 3 * CREDITS_LINE_HEIGHT_PX + 20;
+const CREDITS_GAP_PX = 20;
+const CREDITS_TOP_PX = LINE_SYNCED_LYRICS.length * CREDITS_LINE_HEIGHT_PX + CREDITS_GAP_PX;
 const CREDITS_HEIGHT_PX = 30;
 const TARGET_RATIO = 0.37;
 
-function layOutCredits(creditsHeight: number): FakeNode {
-  const children = buildCredits({ songwriters: ["Mara Quill", "Jonah Pike"] });
+function layOutCredits(creditsHeight: number, lyrics: Lyric[] = LINE_SYNCED_LYRICS): FakeNode {
+  const children = buildCredits({ songwriters: ["Mara Quill", "Jonah Pike"] }, lyrics);
+  const creditsTop = lyrics.length * CREDITS_LINE_HEIGHT_PX + CREDITS_GAP_PX;
   children
     .filter(child => child.classList.contains(LINE_CLASS))
     .forEach((line, index) => {
@@ -1153,10 +1158,10 @@ function layOutCredits(creditsHeight: number): FakeNode {
       line.offsetHeight = CREDITS_LINE_HEIGHT_PX;
     });
   const credits = creditsIn(children)[0];
-  credits.offsetTop = CREDITS_TOP_PX;
+  credits.offsetTop = creditsTop;
   credits.offsetHeight = creditsHeight;
   const container = asFakeNode(creditsEngine.lyricsContainer!);
-  container.scrollHeight = CREDITS_TOP_PX + creditsHeight;
+  container.scrollHeight = creditsTop + creditsHeight;
   relayout(creditsEngine, true);
   return container;
 }
@@ -1220,6 +1225,18 @@ assert.equal(
   hiddenCreditsContainer.dataset.creditsFocused,
   undefined,
   "Given credits a stylesheet hid, When the song ends, Then nothing takes the focus"
+);
+
+const creditsOutroContainer = layOutCredits(CREDITS_HEIGHT_PX, [
+  ...LINE_SYNCED_LYRICS,
+  { startTimeMs: LAST_LINE.startTimeMs + LAST_LINE.durationMs, durationMs: 20000, words: "", isInstrumental: true },
+]);
+tickCredits(SONG_ENDED_S);
+
+assert.equal(
+  creditsOutroContainer.dataset.creditsFocused,
+  "true",
+  "Given an instrumental outro, When the last sung line has ended, Then the credits take the focus without waiting out the outro"
 );
 
 creditsEngine.destroy();

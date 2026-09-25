@@ -3024,11 +3024,11 @@ export function tickView(
       }
     }
 
-    const lastLine = lines[lines.length - 1];
+    const lastSungLine = lines.findLast(lineData => lineData.lyricElement.dataset.instrumental !== "true");
     const creditsFocused =
-      lastLine !== undefined &&
+      lastSungLine !== undefined &&
       (engine.cachedCreditsItem?.height ?? 0) > 0 &&
-      lyricScrollTime >= lastLine.time + lastLine.duration;
+      lyricScrollTime >= lastSungLine.time + lastSungLine.duration;
     if (creditsFocused !== engine.creditsFocused) {
       engine.creditsFocused = creditsFocused;
       if (creditsFocused) lyricsElement.dataset.creditsFocused = "true";
