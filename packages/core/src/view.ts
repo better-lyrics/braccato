@@ -10,7 +10,14 @@
 // lines is where those values are first knowable: the container, the records, the sync type, the
 // size they were measured at, and the scrolls to swallow before the view has settled.
 
-import { CREDITS_CLASS, CREDITS_NAMES_CLASS, LINE_CLASS, LYRICS_CLASS, RTL_CLASS } from "./constants";
+import {
+  CREDITS_CLASS,
+  CREDITS_NAMES_CLASS,
+  CREDITS_TEXT_CLASS,
+  LINE_CLASS,
+  LYRICS_CLASS,
+  RTL_CLASS,
+} from "./constants";
 import { type AnimationEngineInstance, setupLineCullObserver } from "./engine";
 import {
   addSeekHandler,
@@ -86,11 +93,15 @@ function formatSongwriters(names: readonly string[]): string {
 function buildCredits(doc: Document, songwriters: readonly string[]): HTMLDivElement {
   const credits = doc.createElement("div");
   credits.className = CREDITS_CLASS;
+  // The smaller size lives on an inner block so the credits keep the lines' em, and with it their inset.
+  const text = doc.createElement("div");
+  text.className = CREDITS_TEXT_CLASS;
   const names = doc.createElement("span");
   names.className = CREDITS_NAMES_CLASS;
   names.dir = "auto";
   names.textContent = formatSongwriters(songwriters);
-  credits.appendChild(names);
+  text.appendChild(names);
+  credits.appendChild(text);
   return credits;
 }
 
