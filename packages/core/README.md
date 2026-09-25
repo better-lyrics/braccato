@@ -245,7 +245,7 @@ and once the last line has ended it brightens and takes the scroll focus, the wa
 song. Seeking back hands the focus to the lines again. Unsynced lyrics have no end, so their credits
 show at full strength from the start.
 
-| Property                             | Default          | What it sets                                         |
+| Custom property                      | Default          | What it sets                                         |
 | ------------------------------------ | ---------------- | ---------------------------------------------------- |
 | `--blyrics-credits-label`            | `"Written by"`   | The words before the names. Localise it here.        |
 | `--blyrics-credits-font-size`        | `max(0.7em, 10px)` | The size of the whole line.                        |

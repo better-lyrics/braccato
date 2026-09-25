@@ -181,7 +181,6 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   cachedTabRendererHeight: number | null;
   cachedFooterItem: LineScrollItem | null;
   cachedCreditsItem: LineScrollItem | null;
-  /** Whether the last line has ended and the credits hold the focus. */
   creditsFocused: boolean;
   cachedLineScrollTiming: Map<string, LineScrollTiming>;
   tabRendererResizeObserver: ResizeObserver | null;

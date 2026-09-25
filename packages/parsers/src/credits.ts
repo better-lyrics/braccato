@@ -1,6 +1,5 @@
 const FREE_TEXT_SEPARATORS = /[/、，,]/;
 
-/** Splits a free text credit such as "A / B、C" into names. */
 export function splitCreditNames(value: string): string[] {
 	return value
 		.split(FREE_TEXT_SEPARATORS)

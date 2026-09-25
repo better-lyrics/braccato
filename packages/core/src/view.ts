@@ -20,6 +20,7 @@ import {
   deriveSyncType,
   disableRichsync,
   findNearestAgent,
+  hideCredits,
   isNearestLyricRtl,
   type LineData,
   newLineData,
@@ -27,9 +28,6 @@ import {
 import { createInstrumentalElement } from "./instrumental";
 import type { Lyric } from "./types";
 import { applyLyricLanguage, resolveLyricLanguages } from "./language";
-import { registerThemeSetting } from "./themeSettings";
-
-const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
 
 const INITIAL_SKIP_SCROLLS = 2;
 const SKIP_SCROLL_DECAY_MS = 2000;
