@@ -1,6 +1,6 @@
 {
 	"name": "@braccato/parsers",
-	"version": "0.2.3",
+	"version": "0.3.0",
 	"description": "Lyrics format parsers: TTML, LRC, SRT, QRC, Plain",
 	"type": "module",
 	"license": "MIT",

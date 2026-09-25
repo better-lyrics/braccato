@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.12.0
+
+### Minor Changes
+
+- 6dd3dc7: Read songwriters from TTML, LRC and QRC files with `parser.metadata()`, pass them through every provider as `songwriters`, and close the lyrics view with a "Written by" line that brightens and takes the scroll focus once the song ends.
+
 ## 1.11.0
 
 ### Minor Changes

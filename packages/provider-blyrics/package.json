@@ -1,6 +1,6 @@
 {
 	"name": "@braccato/provider-blyrics",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "Lyrics provider chain with priority and validation",
 	"type": "module",
 	"license": "MIT",
@@ -32,7 +32,7 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
-		"@braccato/parsers": "workspace:^0.2.0"
+		"@braccato/parsers": "workspace:^0.3.0"
 	},
 	"devDependencies": {
 		"typescript": "^5.7.3",
