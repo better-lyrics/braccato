@@ -12,16 +12,16 @@
 // The package is imported dynamically rather than at the top of this module so that the state before
 // it loaded can be read at all: a static import is hoisted above every statement in the file.
 //
-// The stylesheets are the exception, and they are static because CSS has nothing to observe: they
-// are imported here rather than linked from the document so that they are package subpaths, the way
-// a consumer with a bundler writes them. Order is the cascade, so it is the order below: the
-// package's variables first because the other two read from them, and this page's own sheet last
-// because it overrides all three.
+// The stylesheets are the exception, and they are static because CSS has nothing to observe. Order
+// is the cascade: the package's variables first because the other two read from them, and this
+// page's own sheet last because it overrides all three.
 
 import "@braccato/core/styles/variables.css";
 import "@braccato/core/styles/lyrics.css";
 import "@braccato/core/styles/instrumental.css";
 import "./demo.css";
+
+import { TextMorph } from "torph";
 
 import {
   ATTRIBUTES,
@@ -41,36 +41,41 @@ import { THEMES } from "./themes.js";
 
 const TAG_NAME = "braccato-lyrics";
 const LOG_LIMIT = 24;
-const COPIED_LABEL_MS = 1600;
+const COPIED_ICON_MS = 1600;
 const THEME_APPLY_DELAY_MS = 250;
+const SWAP_OUT_MS = 200;
 const ARRAY_PREVIEW_LIMIT = 12000;
 const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|webm)$/i;
 // A typed URL becomes the player's `src`, and parsing one only says it is well formed. `javascript:`
 // and `data:` both parse, so the scheme is checked separately against what can carry audio here.
-// Object URLs are not in the list: those are minted from a picked file rather than typed.
 const AUDIO_URL_SCHEMES = new Set(["http:", "https:"]);
-const PANEL_OPEN_WIDTH = "(min-width: 1080px)";
+const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const NARROW = "(max-width: 900px)";
 
 const view = document.querySelector(TAG_NAME);
 const player = document.getElementById("player");
 const frame = document.getElementById("stage-frame");
+const stage = document.getElementById("stage");
 const stageStatus = document.getElementById("stage-status");
-const heroBand = document.getElementById("hero-band");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 const installTabs = document.getElementById("install-tabs");
 const installText = document.getElementById("install-text");
 const installCopy = document.getElementById("install-copy");
 
+const heroPlay = document.getElementById("hero-play");
+const heroPlayLabel = document.getElementById("hero-play-label");
 const playButton = document.getElementById("play");
 const resumeButton = document.getElementById("resume");
 const seekInput = document.getElementById("seek");
 const elapsedOutput = document.getElementById("elapsed");
 const durationOutput = document.getElementById("duration");
-const nowPlaying = document.getElementById("now-playing");
+const songSelect = document.getElementById("song-select");
 
-const panel = document.getElementById("panel");
-const panelToggle = document.getElementById("panel-toggle");
-const panelClose = document.getElementById("panel-close");
+const rail = document.getElementById("rail");
+const captionLabel = document.getElementById("caption-label");
+const captionSong = document.getElementById("now-playing");
+const captionTheme = document.getElementById("caption-theme");
 
 const songList = document.getElementById("song-list");
 const songFileButton = document.getElementById("song-file");
@@ -80,14 +85,14 @@ const songStatus = document.getElementById("song-status");
 
 const timingFieldset = document.getElementById("timing");
 const timingHint = document.getElementById("timing-hint");
-const lyricsFileButton = document.getElementById("lyrics-file");
+const lyricsFileInput = document.getElementById("lyrics-file");
 const lyricsTextArea = document.getElementById("lyrics-text");
 const lyricsImportButton = document.getElementById("lyrics-import");
 const lyricsStatus = document.getElementById("lyrics-status");
 const lyricsArray = document.getElementById("lyrics-array");
-const parsersNote = document.getElementById("parsers-note");
 
 const themeList = document.getElementById("theme-list");
+const themeSummary = document.getElementById("theme-summary");
 const themeEditor = document.getElementById("theme-text");
 const themePaint = document.getElementById("theme-paint");
 const themeStatus = document.getElementById("theme-status");
@@ -102,6 +107,7 @@ const injectTranslationsButton = document.getElementById("inject-translations");
 const injectBothButton = document.getElementById("inject-both");
 const animateDecorationsInput = document.getElementById("animate-decorations");
 
+const referenceTabs = document.getElementById("reference-tabs");
 const eventLog = document.getElementById("event-log");
 const dropzone = document.getElementById("dropzone");
 
@@ -146,7 +152,8 @@ function renderReadout(list, rows) {
 
 function renderTerms(list, rows) {
   list.replaceChildren(
-    ...rows.flatMap(row => {
+    ...rows.map(row => {
+      const group = document.createElement("div");
       const term = document.createElement("dt");
       const name = document.createElement("code");
       name.textContent = row.term;
@@ -161,7 +168,8 @@ function renderTerms(list, rows) {
 
       const definition = document.createElement("dd");
       definition.textContent = row.definition;
-      return [term, definition];
+      group.append(term, definition);
+      return group;
     })
   );
 }
@@ -174,19 +182,58 @@ function report(element, message, tone) {
 
 function wireCopy(button, label, read) {
   button.setAttribute("aria-label", label);
+  let timer = 0;
   button.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(read());
-      button.textContent = "Copied";
       button.dataset.copied = "";
+      button.setAttribute("aria-label", "Copied");
     } catch {
-      button.textContent = "Clipboard blocked";
+      button.setAttribute("aria-label", "Clipboard blocked");
     }
-    setTimeout(() => {
-      button.textContent = "Copy";
+    clearTimeout(timer);
+    timer = setTimeout(() => {
       button.removeAttribute("data-copied");
-    }, COPIED_LABEL_MS);
+      button.setAttribute("aria-label", label);
+    }, COPIED_ICON_MS);
   });
+}
+
+function copyButton(label, read) {
+  const button = document.createElement("button");
+  button.className = "icon-button";
+  button.type = "button";
+  button.innerHTML =
+    '<svg class="icon icon--idle" aria-hidden="true"><use href="#i-copy" /></svg>' +
+    '<svg class="icon icon--done" aria-hidden="true"><use href="#i-check" /></svg>';
+  wireCopy(button, label, read);
+  return button;
+}
+
+/** Text that changes in place, morphed a letter at a time so the box around it resizes smoothly. */
+const morphs = new Map();
+
+function morphText(element, text) {
+  let entry = morphs.get(element);
+  if (entry === undefined) {
+    entry = { morph: new TextMorph({ element, duration: 420, ease: EASE }), text: null };
+    morphs.set(element, entry);
+  }
+  if (entry.text === text) return;
+  entry.text = text;
+  entry.morph.update(text);
+}
+
+/** Moves a sliding indicator under whichever item is current, or fades it out when none is. */
+function slide(container, active) {
+  container.style.setProperty("--o", active ? "1" : "0");
+  if (!active) return;
+  container.style.setProperty("--x", `${active.offsetLeft}px`);
+  container.style.setProperty("--w", `${active.offsetWidth}px`);
+}
+
+function slideSegment(fieldset) {
+  slide(fieldset, fieldset.querySelector("input:checked")?.parentElement ?? null);
 }
 
 // -- Code samples --------------------------------------------
@@ -353,31 +400,22 @@ function renderSnippets() {
     const name = block.dataset.snippet;
     const source = SNIPPETS[name];
 
-    const bar = document.createElement("div");
-    bar.className = "code__bar";
-    const button = document.createElement("button");
-    button.className = "copy";
-    button.type = "button";
-    button.textContent = "Copy";
-    wireCopy(button, `Copy the ${name} example`, () => source);
-    bar.append(button);
-
     const pre = document.createElement("pre");
     const code = document.createElement("code");
     code.append(highlight(source));
     pre.append(code);
 
-    block.replaceChildren(bar, pre);
+    block.replaceChildren(
+      pre,
+      copyButton(`Copy the ${name} example`, () => source)
+    );
   }
 }
 
 // -- Install --------------------------------------------
 
 function renderInstall() {
-  const legend = installTabs.querySelector("legend");
-
-  installTabs.replaceChildren(
-    legend,
+  installTabs.append(
     ...INSTALLERS.map(installer => {
       const label = document.createElement("label");
       const input = document.createElement("input");
@@ -406,11 +444,8 @@ function installCommand() {
 }
 
 function paintInstall() {
-  const installer = INSTALLERS.find(candidate => candidate.id === state.installer);
-  const name = document.createElement("span");
-  name.className = "install__package";
-  name.textContent = PACKAGE.name;
-  installText.replaceChildren(`${installer.command} `, name);
+  morphText(installText, installCommand());
+  slideSegment(installTabs);
 }
 
 // -- The song, in four shapes --------------------------------------------
@@ -428,11 +463,13 @@ function scoreFor(songId) {
 // all start at zero are how a consumer says these came with no timing at all.
 const TIMINGS = {
   syllables: {
-    hint: "Every line carries parts, so the module reads it as richsync and animates inside the line.",
+    label: "Syllable timing",
+    hint: "Each line has parts, so every syllable lights up in turn.",
     shape: score => score,
   },
   lines: {
-    hint: "The same lines with their parts dropped. The line lights up, the words inside it do not.",
+    label: "Line synced",
+    hint: "The same lines without parts. The line lights up as a whole.",
     shape: score =>
       score.map(line => ({
         startTimeMs: line.startTimeMs,
@@ -442,12 +479,14 @@ const TIMINGS = {
       })),
   },
   plain: {
-    hint: "Every start time at zero, which is how the module tells that nothing was synchronised. Passive scroll is the only thing that moves these.",
+    label: "Unsynced",
+    hint: "Every start time is zero, which means unsynced. Only passive scroll moves them.",
     shape: score =>
       score.filter(line => !line.isInstrumental).map(line => ({ startTimeMs: 0, durationMs: 0, words: line.words })),
   },
   empty: {
-    hint: "One line, flagged noLyrics, which is what stops passive scrolling from drifting a message across the view for the length of the track.",
+    label: "No lyrics",
+    hint: "One message line with noLyrics set, so passive scroll leaves it alone.",
     shape: () => [{ startTimeMs: 0, durationMs: 0, words: "No lyrics for this one." }],
   },
 };
@@ -472,7 +511,7 @@ const DEFAULTS = {
   themeId: DEFAULT_THEME.id,
   offsetMs: 0,
   passiveScroll: false,
-  viewScroll: false,
+  viewScroll: true,
   pageRules: true,
 };
 
@@ -483,6 +522,9 @@ const state = {
   importedLyrics: null,
   importedName: "",
   audio: null,
+  // The chapters pick the song and the timing until the reader picks either themselves. After that
+  // scrolling changes nothing that is playing.
+  touring: true,
 };
 
 const applied = { lyrics: null, theme: null, audioUrl: null };
@@ -495,10 +537,16 @@ function readStateFromUrl() {
   const params = new URLSearchParams(location.search);
 
   const song = params.get("song");
-  if (song !== null && SONGS.some(candidate => candidate.id === song)) state.songId = song;
+  if (song !== null && SONGS.some(candidate => candidate.id === song)) {
+    state.songId = song;
+    state.touring = false;
+  }
 
   const lines = params.get("lines");
-  if (lines !== null && lines in TIMINGS) state.timing = lines;
+  if (lines !== null && lines in TIMINGS) {
+    state.timing = lines;
+    state.touring = false;
+  }
 
   const theme = params.get("theme");
   const starter = THEMES.find(candidate => candidate.id === theme);
@@ -520,12 +568,13 @@ function readStateFromUrl() {
 /**
  * The address bar as the one copy of the state worth sharing. Imported lyrics, a dropped file and a
  * hand written theme are all left out: they are kilobytes each, and a link nobody can send is worse
- * than a link that carries less than everything.
+ * than a link that carries less than everything. What the chapters chose on the reader's behalf is
+ * left out too, so a shared link starts the tour rather than pinning wherever it was.
  */
 function writeStateToUrl() {
   const params = new URLSearchParams();
-  if (state.audio === null && state.songId !== DEFAULTS.songId) params.set("song", state.songId);
-  if (state.importedLyrics === null && state.timing !== DEFAULTS.timing) params.set("lines", state.timing);
+  if (!state.touring && state.audio === null) params.set("song", state.songId);
+  if (!state.touring && state.importedLyrics === null) params.set("lines", state.timing);
   if (state.themeId !== null && state.themeId !== DEFAULTS.themeId) params.set("theme", state.themeId);
   if (state.offsetMs !== DEFAULTS.offsetMs) params.set("offset", String(state.offsetMs));
   if (state.passiveScroll !== DEFAULTS.passiveScroll) params.set("passive", state.passiveScroll ? "1" : "0");
@@ -542,8 +591,7 @@ function writeStateToUrl() {
  * Renders the view again against the last player snapshot. `tickOptions` and most theme settings are
  * read by the next tick rather than causing one, and the element only ticks while the media element
  * is playing, so a control moved during a pause would otherwise do nothing visible until playback
- * resumed. This is the door the module publishes for exactly that, and the element does not carry
- * it: `renderer` is why it is reachable.
+ * resumed. `renderer` is how that door is reachable.
  */
 function retick() {
   view.renderer?.retickFromPlaybackClock((eventCreationTime, isPlaying) => ({
@@ -553,14 +601,26 @@ function retick() {
   }));
 }
 
+let pendingStartS = 0;
+
 function applyAudio() {
   const url = state.audio?.url ?? `/generated/${state.songId}.wav`;
-  if (url === applied.audioUrl) return;
+  if (url === applied.audioUrl) {
+    if (pendingStartS > 0) player.currentTime = pendingStartS;
+    pendingStartS = 0;
+    return;
+  }
 
   const wasPlaying = !player.paused;
   applied.audioUrl = url;
   player.src = url;
   player.load();
+
+  // Always written, even to zero: a paused view only moves off the old song's position when the
+  // clock it follows reports a seek.
+  const startS = pendingStartS;
+  pendingStartS = 0;
+  player.addEventListener("loadedmetadata", () => (player.currentTime = startS), { once: true });
   if (wasPlaying) player.play().catch(error => report(songStatus, error.message, "bad"));
 }
 
@@ -606,15 +666,14 @@ function applyState() {
   retick();
 }
 
-/**
- * WebKit has no `::-moz-range-progress`, so the filled half of a track is a gradient stop. The
- * spoken value comes along for the ride: "0.42" is not what the control means, and the label beside
- * it is the sighted answer to the same question.
- */
 function paintSlider(input, spoken) {
   const min = Number(input.min);
   input.style.setProperty("--seek-progress", String((Number(input.value) - min) / (Number(input.max) - min)));
   input.setAttribute("aria-valuetext", spoken);
+}
+
+function currentTheme() {
+  return THEMES.find(theme => theme.id === state.themeId);
 }
 
 function paintControls() {
@@ -630,21 +689,22 @@ function paintControls() {
   for (const button of songList.querySelectorAll("button")) {
     button.setAttribute("aria-pressed", String(state.audio === null && button.value === state.songId));
   }
+  paintSongSelect();
 
   for (const button of themeList.querySelectorAll("button")) {
     button.setAttribute("aria-pressed", String(button.value === state.themeId));
   }
+  themeSummary.textContent = currentTheme()?.summary ?? "Edited. Pick a theme to start over.";
 
   for (const radio of timingFieldset.querySelectorAll("input[type=radio]")) {
     radio.checked = state.importedLyrics === null && radio.value === state.timing;
   }
+  slideSegment(timingFieldset);
 
   timingHint.textContent =
     state.importedLyrics === null
       ? TIMINGS[state.timing].hint
-      : `${state.importedName} is what the element is holding. Pick one of these to put the built-in song back.`;
-
-  nowPlaying.textContent = state.audio?.label ?? SONGS.find(candidate => candidate.id === state.songId).title;
+      : `Showing ${state.importedName}. Pick a timing to go back to the built-in song.`;
 
   // Never while the caret might be in it: the editor is the only control whose value a reader is
   // mid-way through typing.
@@ -652,12 +712,43 @@ function paintControls() {
     themeEditor.value = state.themeText;
     paintThemeEditor();
   }
+
+  paintCaption();
 }
 
-function commit() {
+function paintCaption() {
+  const label = state.importedLyrics === null ? TIMINGS[state.timing].label : `Imported ${state.importedName}`;
+  morphText(captionLabel, label);
+  morphText(captionSong, state.audio?.label ?? SONGS.find(song => song.id === state.songId).title);
+  morphText(captionTheme, currentTheme()?.title ?? "Edited theme");
+}
+
+let swapTimer = 0;
+
+/**
+ * The one way state reaches the element. A change the reader would see as a different song, a
+ * different timing or a different theme cross fades the view, and everything that lands while it is
+ * faded out goes in with the same swap, so a scroll across two chapters is one fade rather than two.
+ */
+function commit({ fade = false } = {}) {
   paintControls();
-  applyState();
   writeStateToUrl();
+  if (swapTimer !== 0) return;
+  if (!fade || reducedMotion.matches) {
+    applyState();
+    return;
+  }
+
+  frame.dataset.swapping = "";
+  swapTimer = setTimeout(() => {
+    swapTimer = 0;
+    applyState();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (swapTimer === 0) frame.removeAttribute("data-swapping");
+      })
+    );
+  }, SWAP_OUT_MS);
 }
 
 // -- Songs --------------------------------------------
@@ -666,7 +757,7 @@ function renderSongs() {
   songList.replaceChildren(
     ...SONGS.map(song => {
       const button = document.createElement("button");
-      button.className = "pick";
+      button.className = "song";
       button.type = "button";
       button.value = song.id;
 
@@ -676,15 +767,38 @@ function renderSongs() {
       summary.textContent = song.summary;
 
       button.append(title, summary);
-      button.addEventListener("click", () => {
-        releaseAudio();
-        state.songId = song.id;
-        report(songStatus, "");
-        commit();
-      });
+      button.addEventListener("click", () => chooseSong(song.id));
       return button;
     })
   );
+
+  songSelect.replaceChildren(...SONGS.map(song => new Option(song.title, song.id)));
+  songSelect.addEventListener("change", () => chooseSong(songSelect.value));
+}
+
+function paintSongSelect() {
+  let own = songSelect.querySelector("option[data-own]");
+  if (state.audio === null) {
+    own?.remove();
+    songSelect.value = state.songId;
+    return;
+  }
+  if (own === null) {
+    own = new Option("", "");
+    own.dataset.own = "";
+    songSelect.prepend(own);
+  }
+  own.textContent = state.audio.label;
+  songSelect.value = "";
+}
+
+function chooseSong(songId, startMs) {
+  releaseAudio();
+  state.songId = songId;
+  state.touring = false;
+  pendingStartS = (startMs ?? 0) / 1000;
+  report(songStatus, "");
+  commit({ fade: applied.audioUrl !== `/generated/${songId}.wav` });
 }
 
 function releaseAudio() {
@@ -695,10 +809,11 @@ function releaseAudio() {
 function loadAudio(url, label, objectUrl) {
   releaseAudio();
   state.audio = { url, label, objectUrl };
+  state.touring = false;
   report(
     songStatus,
     state.importedLyrics === null
-      ? `Playing ${label}. The lines are still the built-in song, so import a lyrics file to go with it.`
+      ? `Playing ${label}. The lyrics are still the built-in song's, so import a lyrics file to match.`
       : `Playing ${label}.`,
     "good"
   );
@@ -712,9 +827,10 @@ async function importLyrics(text, label) {
   if (parsers === null) {
     report(
       lyricsStatus,
-      `${PARSERS_SPECIFIER} could not be fetched, so there is nothing here to read a file with. Everything else on the page still works.`,
+      `Couldn't load ${PARSERS_SPECIFIER}, so files can't be read right now. The rest of the page still works.`,
       "bad"
     );
+    revealLyricsStatus();
     return;
   }
 
@@ -723,13 +839,20 @@ async function importLyrics(text, label) {
     read = parseLyrics(parsers, text, player.duration * 1000);
   } catch (error) {
     report(lyricsStatus, error.message, "bad");
+    revealLyricsStatus();
     return;
   }
 
   state.importedLyrics = read.lyrics;
   state.importedName = label;
+  state.touring = false;
   report(lyricsStatus, `Read ${label} as ${read.format}. ${read.lyrics.length} lines.`, "good");
-  commit();
+  commit({ fade: true });
+}
+
+/** A file dropped or pasted anywhere lands here, so a failure is brought to where it is explained. */
+function revealLyricsStatus() {
+  lyricsStatus.scrollIntoView({ block: "nearest" });
 }
 
 function readAsText(file) {
@@ -772,24 +895,44 @@ function pickFile(accept, onPicked) {
 
 // -- Theme --------------------------------------------
 
+function presetSample(themeId) {
+  const sample = document.createElement("span");
+  sample.className = "preset__sample";
+  sample.setAttribute("aria-hidden", "true");
+
+  const sung = document.createElement("span");
+  if (themeId === "karaoke") {
+    const past = document.createElement("i");
+    past.textContent = "The";
+    sung.append(past, " kettle");
+  } else {
+    sung.textContent = "The kettle";
+  }
+  const next = document.createElement("span");
+  next.textContent = "at six";
+  sample.append(sung, next);
+  return sample;
+}
+
 function renderThemes() {
   themeList.replaceChildren(
     ...THEMES.map(theme => {
       const button = document.createElement("button");
-      button.className = "pick";
+      button.className = "preset";
       button.type = "button";
       button.value = theme.id;
+      button.dataset.theme = theme.id;
 
-      const title = document.createElement("b");
-      title.textContent = theme.title;
-      const summary = document.createElement("span");
-      summary.textContent = theme.summary;
+      const name = document.createElement("span");
+      name.className = "preset__name";
+      name.textContent = theme.title;
 
-      button.append(title, summary);
+      button.append(presetSample(theme.id), name);
       button.addEventListener("click", () => {
+        if (state.themeId === theme.id && state.themeText === theme.css) return;
         state.themeId = theme.id;
         state.themeText = theme.css;
-        commit();
+        commit({ fade: true });
         describeTheme(theme.css);
       });
       return button;
@@ -800,7 +943,7 @@ function renderThemes() {
 function describeTheme(css) {
   const settings = [...parseThemeConfig(css).keys()];
   if (settings.length === 0) {
-    report(themeStatus, "No blyrics-* settings in here, so every one of them is at its default.");
+    report(themeStatus, "No blyrics-* settings, so all of them use their defaults.");
     return;
   }
   report(themeStatus, `${settings.length} setting${settings.length === 1 ? "" : "s"}: ${settings.join(", ")}.`);
@@ -857,7 +1000,9 @@ function renderReference() {
   document.getElementById("package-version").textContent = PACKAGE.version;
   document.getElementById("npm-link").href = PACKAGE.npmHref;
   document.getElementById("repo-link").href = PACKAGE.repoHref;
-  parsersNote.textContent = `Parsing is ${PARSERS_SPECIFIER}, loaded when the first file arrives.`;
+  document.getElementById("docs-link").href = PACKAGE.docsHref;
+  document.getElementById("renderer-guide-link").href = `${PACKAGE.docsHref}/renderer`;
+  document.getElementById("parsers-guide-link").href = `${PACKAGE.docsHref}/parsers`;
 
   renderTerms(
     document.getElementById("properties-list"),
@@ -903,6 +1048,15 @@ function renderReference() {
   );
 }
 
+function wireReferenceTabs() {
+  referenceTabs.addEventListener("change", event => {
+    for (const panel of document.querySelectorAll("[data-panel]")) {
+      panel.hidden = panel.dataset.panel !== event.target.value;
+    }
+    slideSegment(referenceTabs);
+  });
+}
+
 // -- The two proofs --------------------------------------------
 
 function describeElement(element) {
@@ -928,22 +1082,22 @@ function reportUpgrade(themeStyleId) {
 
   renderReadout(document.getElementById("upgrade-readout"), [
     {
-      label: "Registry, while the parser built the tag",
-      value: beforeUpgrade.registered ? "already defined" : "undefined",
+      label: "Defined when the HTML was read",
+      value: beforeUpgrade.registered ? "yes" : "no",
       state: startedUndefined ? undefined : "fail",
     },
     {
-      label: "Constructor, before and after the import",
+      label: "Class before and after the script loads",
       value: `${beforeUpgrade.constructorName} -> ${view.constructor.name}`,
       state: upgraded ? undefined : "fail",
     },
     {
-      label: "source attribute, resolved on upgrade",
+      label: "source attribute, after the script loads",
       value: `${beforeUpgrade.sourceAttribute} -> ${describeElement(view.mediaElement)}`,
       state: sourceArrived ? undefined : "fail",
     },
     {
-      label: `theme attribute, read off #${themeStyleId}`,
+      label: `theme attribute, read from #${themeStyleId}`,
       value: describeSettings(inForce),
       state: themeArrived ? undefined : "fail",
     },
@@ -954,8 +1108,8 @@ function reportUpgrade(themeStyleId) {
   const verdict = document.getElementById("upgrade-verdict");
   verdict.dataset.state = held ? "pass" : "fail";
   verdict.textContent = held
-    ? "Built by the parser, defined afterwards. Both markup attributes arrived with the upgrade."
-    : "Something did not line up. The rows below are what was observed.";
+    ? "Yes. Both attributes applied after the script loaded."
+    : "No. The rows below show what was found.";
 }
 
 function reportCascade(lineClass, lyricsClass) {
@@ -970,11 +1124,11 @@ function reportCascade(lineClass, lyricsClass) {
   renderReadout(document.getElementById("cascade-readout"), [
     { label: "view.shadowRoot", value: String(view.shadowRoot), state: view.shadowRoot === null ? undefined : "fail" },
     {
-      label: "Lines reachable from document scope",
+      label: "Lines your CSS can select",
       value: String(document.querySelectorAll(`.${lineClass}`).length),
     },
     {
-      label: "@property registration, computed on <body>",
+      label: "@property registered, read on <body>",
       value: registration === "" ? "not registered" : registration,
       state: registration === "" ? "fail" : undefined,
     },
@@ -1054,18 +1208,31 @@ function adoptDuration() {
   paintTransport();
 }
 
+function paintPlaying() {
+  const playing = String(!player.paused);
+  heroPlay.dataset.playing = playing;
+  playButton.dataset.playing = playing;
+  playButton.setAttribute("aria-label", player.paused ? "Play" : "Pause");
+  morphText(heroPlayLabel, player.paused ? "Play the demo" : "Pause the demo");
+}
+
 /**
- * The one way this page starts the song, so the transport button and a click on a line fail the same
- * way and paint the same label. The label is not written here: `play` is what paints it, and a
- * request the browser refuses never fires one.
+ * The one way this page starts the song, so the buttons, the Space key and a click on a line fail the
+ * same way. The label is not written here: `play` is what paints it, and a request the browser
+ * refuses never fires one.
  */
 function startPlayback() {
   if (!player.paused) return;
   player.play().catch(error => {
     stageStatus.hidden = false;
     stageStatus.dataset.failed = "";
-    stageStatus.textContent = `The browser would not start playback: ${error.message}`;
+    stageStatus.textContent = `The browser blocked playback: ${error.message}`;
   });
+}
+
+function togglePlayback() {
+  if (player.paused) startPlayback();
+  else player.pause();
 }
 
 function wireTransport() {
@@ -1074,26 +1241,35 @@ function wireTransport() {
   player.addEventListener("loadedmetadata", adoptDuration);
   adoptDuration();
 
-  playButton.addEventListener("click", () => {
-    if (player.paused) startPlayback();
-    else player.pause();
+  heroPlay.addEventListener("click", togglePlayback);
+  playButton.addEventListener("click", togglePlayback);
+
+  document.addEventListener("keydown", event => {
+    if (event.code !== "Space" || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("input, textarea, select, button, a, summary, [contenteditable]")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    togglePlayback();
   });
 
   player.addEventListener("play", () => {
-    playButton.textContent = "Pause";
-    // Pressing play after reading ahead is the same request the button at the foot of the view
-    // makes, so it is answered the same way. The module does this itself for unsynced lyrics and
-    // only for those, so a timed song needs saying.
+    paintPlaying();
+    // Pressing play after reading ahead is the same request the resume button makes, so it is
+    // answered the same way. The module does this itself for unsynced lyrics and only for those.
     resumeAutoscroll();
     followClock();
   });
   player.addEventListener("pause", () => {
-    playButton.textContent = "Play";
+    paintPlaying();
     paintTransport();
   });
   player.addEventListener("seeked", paintTransport);
   player.addEventListener("error", () => {
-    report(songStatus, `That did not load. ${player.error?.message ?? "The browser gave no reason."}`, "bad");
+    report(songStatus, `Couldn't load that audio. ${player.error?.message ?? "No reason given."}`, "bad");
   });
 
   seekInput.addEventListener("pointerdown", () => {
@@ -1113,10 +1289,7 @@ function wireTransport() {
 /**
  * Whether the module wants the way back offered. This page keeps no opinion of its own about whether
  * the reader has scrolled away: the renderer already tracks it, and `setResumeAffordanceVisible` is
- * how it says so.
- *
- * Written rather than toggled, because the call is not edge triggered. One gesture asks for the
- * button several times over.
+ * how it says so. Written rather than toggled, because the call is not edge triggered.
  */
 function showResumeAffordance(visible) {
   resumeButton.toggleAttribute("data-shown", visible);
@@ -1132,44 +1305,97 @@ function resumeAutoscroll() {
   retick();
 }
 
-// -- The room the view gets --------------------------------------------
+// -- Chapters --------------------------------------------
 
-/**
- * The view stops above the hero copy, and how much copy that is depends on the width: one line of
- * headline at 1440, four at 390. Measured rather than guessed, and the view is told each time,
- * because where the active line sits is worked out from the height of the frame.
- */
-function watchHeroBand() {
-  const observer = new ResizeObserver(() => {
-    document.documentElement.style.setProperty("--hero-band", `${heroBand.offsetHeight}px`);
-    view.renderer?.relayout();
-  });
-  observer.observe(heroBand);
+// What each chapter shows while the tour is running. A chapter with no entry leaves the view alone.
+const SCENES = {
+  intro: { songId: "kettle", timing: "syllables" },
+  syllables: { songId: "kettle", timing: "syllables" },
+  lines: { songId: "ring-road", timing: "lines" },
+  duets: { songId: "kettle", timing: "syllables", startMs: 9000 },
+  themes: { songId: "the-steps", timing: "syllables" },
+  formats: { songId: "the-choir", timing: "syllables" },
+};
+
+// The rail names the reference once, and the light DOM section belongs to it.
+const RAIL_TARGET = { "light-dom": "reference" };
+
+let chapter = "intro";
+let reading = "intro";
+// Set while the page travels to a chapter picked on the rail, so the chapters it passes on the way
+// do not each swap the song.
+let jumping = false;
+
+function paintRail() {
+  const target = RAIL_TARGET[chapter] ?? chapter;
+  let current = null;
+  for (const link of rail.querySelectorAll("a")) {
+    const on = link.dataset.go === target;
+    if (on) {
+      link.setAttribute("aria-current", "step");
+      current = link;
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  }
+  slide(rail, current);
 }
 
-// -- The panel --------------------------------------------
+function enterChapter(name) {
+  reading = name;
+  if (jumping || name === chapter) return;
+  chapter = name;
+  stage.dataset.chapter = name;
+  paintRail();
 
-// The label stays put. It sits in a grid track sized to its content, and a button that renames
-// itself moves the clock and the scrubber every time it is pressed.
-function setPanel(open) {
-  panel.hidden = !open;
-  panelToggle.setAttribute("aria-expanded", String(open));
+  const scene = SCENES[name];
+  if (!state.touring || scene === undefined) return;
+  if (state.songId === scene.songId && state.timing === scene.timing) return;
+
+  if (state.songId !== scene.songId) pendingStartS = (scene.startMs ?? 0) / 1000;
+  state.songId = scene.songId;
+  state.timing = scene.timing;
+  commit({ fade: true });
 }
 
-function wirePanel() {
-  panelToggle.addEventListener("click", () => setPanel(panel.hidden));
-  panelClose.addEventListener("click", () => {
-    setPanel(false);
-    panelToggle.focus();
-  });
+function wireChapters() {
+  // A band one percent tall across the middle of the story, or across the part of it the stage does
+  // not cover on a narrow screen. Whatever chapter is crossing it is the one being read.
+  const observer = new IntersectionObserver(
+    entries => {
+      for (const entry of entries) if (entry.isIntersecting) enterChapter(entry.target.dataset.chapter);
+    },
+    { rootMargin: matchMedia(NARROW).matches ? "-72% 0px -27% 0px" : "-50% 0px -49% 0px" }
+  );
+  for (const section of document.querySelectorAll(".story [data-chapter]")) observer.observe(section);
 
-  document.addEventListener("keydown", event => {
-    if (event.key !== "Escape" || panel.hidden) return;
-    setPanel(false);
-    panelToggle.focus();
-  });
+  for (const link of rail.querySelectorAll("a")) {
+    link.addEventListener("click", () => {
+      jumping = true;
+      slide(rail, link);
+      const arrive = () => {
+        if (!jumping) return;
+        jumping = false;
+        enterChapter(reading);
+      };
+      addEventListener("scrollend", arrive, { once: true });
+      setTimeout(arrive, 1200);
+    });
+  }
 
-  setPanel(window.matchMedia(PANEL_OPEN_WIDTH).matches);
+  for (const chip of document.querySelectorAll("[data-seek]")) {
+    chip.addEventListener("click", () => {
+      chooseSong("kettle", Number(chip.dataset.seek));
+      startPlayback();
+    });
+  }
+
+  const reslide = () => {
+    paintRail();
+    for (const fieldset of document.querySelectorAll(".seg")) slideSegment(fieldset);
+  };
+  addEventListener("resize", reslide);
+  document.fonts.ready.then(reslide);
 }
 
 // -- Files arriving from outside --------------------------------------------
@@ -1203,7 +1429,6 @@ function wireDropAndPaste() {
     event.preventDefault();
     depth = 0;
     dropzone.hidden = true;
-    setPanel(true);
     for (const file of event.dataTransfer.files) acceptFile(file);
   });
 
@@ -1213,7 +1438,6 @@ function wireDropAndPaste() {
     const text = event.clipboardData?.getData("text/plain") ?? "";
     if (text.trim().length < 8) return;
     event.preventDefault();
-    setPanel(true);
     importLyrics(text, "the clipboard");
   });
 }
@@ -1222,7 +1446,11 @@ function wireDropAndPaste() {
 
 function wireControls(lineClass, lyricsClass) {
   songFileButton.addEventListener("click", () => pickFile("audio/*", acceptFile));
-  lyricsFileButton.addEventListener("click", () => pickFile(".ttml,.xml,.lrc,.srt,.qrc,.txt,text/*", acceptFile));
+  lyricsFileInput.addEventListener("change", () => {
+    const file = lyricsFileInput.files?.[0];
+    if (file !== undefined) acceptFile(file);
+    lyricsFileInput.value = "";
+  });
 
   songUrlButton.addEventListener("click", () => {
     const typed = songUrlInput.value.trim();
@@ -1232,12 +1460,12 @@ function wireControls(lineClass, lyricsClass) {
     try {
       parsed = new URL(typed, location.href);
     } catch {
-      report(songStatus, "That is not a URL the browser will accept.", "bad");
+      report(songStatus, "That isn't a valid URL.", "bad");
       return;
     }
 
     if (!AUDIO_URL_SCHEMES.has(parsed.protocol)) {
-      report(songStatus, `${parsed.protocol} is not something this can play. Use http or https.`, "bad");
+      report(songStatus, "Only http and https links work here.", "bad");
       return;
     }
 
@@ -1251,7 +1479,7 @@ function wireControls(lineClass, lyricsClass) {
   lyricsImportButton.addEventListener("click", () => {
     const text = lyricsTextArea.value;
     if (text.trim() === "") {
-      report(lyricsStatus, "Nothing pasted yet.", "bad");
+      report(lyricsStatus, "Paste a lyrics file into the box first.", "bad");
       return;
     }
     importLyrics(text, "what you pasted");
@@ -1261,8 +1489,9 @@ function wireControls(lineClass, lyricsClass) {
     state.timing = event.target.value;
     state.importedLyrics = null;
     state.importedName = "";
+    state.touring = false;
     report(lyricsStatus, "");
-    commit();
+    commit({ fade: true });
   });
 
   offsetInput.addEventListener("input", () => {
@@ -1299,7 +1528,16 @@ function wireControls(lineClass, lyricsClass) {
   animateDecorationsInput.addEventListener("change", () => {
     view.style.setProperty("--blyrics-animate-decoration-entry", animateDecorationsInput.checked ? "1" : "0");
   });
+
+  resumeButton.addEventListener("click", resumeAutoscroll);
+
+  // The element never tells its renderer that someone scrolled the view, so autoscroll would keep
+  // pulling the song back under anyone reading ahead. `renderer` is published for reaching past the
+  // element exactly like this.
+  frame.addEventListener("scroll", () => view.renderer?.noteUserScroll(), { passive: true });
 }
+
+// -- Decorations --------------------------------------------
 
 const DECORATION_FADE_MS = 250;
 
@@ -1322,12 +1560,17 @@ function decorationSelector(kinds) {
   return kinds.map(kind => DECORATION_KINDS[kind].selector).join(", ");
 }
 
+function paintDecorationButton(button, shown, noun) {
+  button.setAttribute("aria-pressed", String(shown));
+  morphText(button.querySelector("[data-label]"), `${shown ? "Hide" : "Show"} ${noun}`);
+}
+
 function paintDecorationButtons() {
   const roman = liveDecorations(DECORATION_KINDS.romanization.selector).length > 0;
   const trans = liveDecorations(DECORATION_KINDS.translation.selector).length > 0;
-  injectRomanizationsButton.textContent = roman ? "Hide romanizations" : "Show romanizations";
-  injectTranslationsButton.textContent = trans ? "Hide translations" : "Show translations";
-  injectBothButton.textContent = roman && trans ? "Hide both" : "Show both";
+  paintDecorationButton(injectRomanizationsButton, roman, "romanizations");
+  paintDecorationButton(injectTranslationsButton, trans, "translations");
+  paintDecorationButton(injectBothButton, roman && trans, "both");
 }
 
 function repositionDecorations() {
@@ -1397,28 +1640,24 @@ async function boot() {
   }
 
   // The clock has already moved by the time this fires, so the song starts from the line rather than
-  // from where it was. Listened for rather than hooked onto `host.seek`, which runs before the seek
-  // lands. An alt-clicked word arrives here too: the module tells its host that a seek happened and
-  // nothing about which kind it was.
+  // from where it was. An alt-clicked word arrives here too: the module tells its host that a seek
+  // happened and nothing about which kind it was.
   view.addEventListener("braccato:line-click", startPlayback);
 
-  // The view is the page's background, and its frame is deliberately not a scroller: a scroll
-  // container under the pointer at the top of a page eats the wheel and nobody reaches the docs. The
-  // renderer looks for the nearest scrolling ancestor and, finding none, would take the document
-  // and scroll the whole page to follow the song. `host` is the published way to answer that
-  // question directly, and the element keeps its own seek and scroll-state wiring around it.
+  // The renderer looks for the nearest scrolling ancestor, and the frame only scrolls when the reader
+  // asks for it. `host` answers that question directly, and the element keeps its own seek and
+  // scroll-state wiring around it.
   view.host = { getScrollElement: () => frame, setResumeAffordanceVisible: showResumeAffordance };
 
   readStateFromUrl();
   renderReference();
   renderSnippets();
   renderInstall();
-  paintInstall();
   renderSongs();
   renderThemes();
 
   // Lyrics before the report, because the cascade panel has nothing to measure without lines, and
-  // the theme after it, because the Upgrade panel is reading the theme the markup delivered and this
+  // the theme after it, because the upgrade panel is reading the theme the markup delivered and this
   // page is about to write over it.
   applyLyrics();
   stageStatus.hidden = true;
@@ -1429,19 +1668,16 @@ async function boot() {
   describeTheme(state.themeText);
   reportCascade(LINE_CLASS, LYRICS_CLASS);
 
+  paintInstall();
+  paintPlaying();
+  paintRail();
   wireControls(LINE_CLASS, LYRICS_CLASS);
   wireThemeEditor();
-  watchHeroBand();
-  wirePanel();
+  wireReferenceTabs();
   wireDropAndPaste();
   wireTransport();
+  wireChapters();
   paintTransport();
-
-  // The element never tells its renderer that someone scrolled the view, so autoscroll would keep
-  // pulling the song back under anyone reading ahead. `renderer` is published for reaching past the
-  // element exactly like this.
-  frame.addEventListener("scroll", () => view.renderer?.noteUserScroll(), { passive: true });
-  resumeButton.addEventListener("click", resumeAutoscroll);
 }
 
 boot().catch(error => {

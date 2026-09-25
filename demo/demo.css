@@ -1,67 +1,60 @@
 /* The page's own chrome, plus the handful of rules that reach into the element. Loaded after the
    package's three stylesheets, so anything here that names the same property wins. */
 
+@property --glow-a {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}
+
+@property --glow-b {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}
+
+@property --glow-x {
+	syntax: "<percentage>";
+	inherits: true;
+	initial-value: 15%;
+}
+
 /* -- Tokens -------------------------------------------- */
 
 :root {
-	--bg: oklch(0.152 0.008 264);
-	--bg-sunken: oklch(0.126 0.008 264);
-	/* The floor the hero copy sits on. Pure black rather than near black, because the ramp the view
-	   fades down through is the module's own `--blyrics-gradient-stops`, and that one ends at #000. */
-	--bg-floor: oklch(0 0 0);
-	--surface: oklch(0.207 0.009 264);
-	--surface-raised: oklch(0.248 0.01 264);
-	--hairline: oklch(1 0 0 / 0.09);
-	--glass: oklch(0.152 0.008 264 / 0.78);
+	--paper: oklch(0.975 0.002 40);
+	--paper-2: oklch(0.945 0.003 40);
+	--card: oklch(1 0 0);
+	--ink: oklch(0.19 0.008 30);
+	--ink-2: oklch(0.42 0.008 30);
+	--ink-3: oklch(0.53 0.007 30);
+	--accent: oklch(0.7 0.18 33);
+	--accent-ink: oklch(0.52 0.19 30);
+	--good: oklch(0.5 0.12 150);
+	--bad: oklch(0.52 0.19 28);
+	--hair: oklch(0.19 0.008 30 / 0.1);
+	--hair-strong: oklch(0.19 0.008 30 / 0.22);
 
-	--text: oklch(0.965 0.003 264);
-	--text-2: oklch(0.762 0.008 264);
-	--text-3: oklch(0.605 0.009 264);
+	--panel: oklch(0.17 0.007 30);
+	--on-panel: oklch(0.975 0.003 40);
+	--on-panel-2: oklch(0.76 0.008 40);
+	--on-panel-3: oklch(0.6 0.008 40);
+	--hair-dark: oklch(1 0 0 / 0.09);
 
-	--accent: oklch(0.855 0.132 84);
-	--accent-quiet: oklch(0.855 0.132 84 / 0.14);
-	--bad: oklch(0.735 0.175 26);
+	--display: "Cabinet Grotesk", ui-sans-serif, sans-serif;
+	--body: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+	--mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-	--ring: 0 0 0 1px oklch(1 0 0 / 0.09);
-	--lift: 0 24px 60px oklch(0 0 0 / 0.5);
+	--inset: 16px;
+	/* One radius scale, kept concentric: a control 4px inside a surface sits in a corner 4px larger. */
+	--r-panel: 28px;
+	--r-card: 16px;
+	--r-control: 12px;
 
-	/* One radius scale, kept concentric: a control inside a surface with 12px of padding sits 12px
-	   inside its corner, so the surface is 8 + 12. */
-	--r-panel: 20px;
-	--r-card: 12px;
-	--r-control: 8px;
+	--ease: cubic-bezier(0.32, 0.72, 0, 1);
+	--ease-out: cubic-bezier(0.2, 0, 0, 1);
 
-	--font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-	--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-
-	--gutter: clamp(20px, 5vw, 56px);
-	--doc: 58rem;
-
-	--ease: cubic-bezier(0.2, 0, 0, 1);
-
-	--chrome-top: 56px;
-	--chrome-bottom: 68px;
-
-	/* The module's own tokens, sized for a full page rather than for a music player's side panel. */
-	--blyrics-font-size: clamp(1.75rem, 4.4vw, 3.25rem);
-	--blyrics-translated-font-size: calc(var(--blyrics-font-size) * 0.48);
-	--blyrics-line-height: 1.2;
-	--blyrics-padding: 0.8rem;
-
-	/* The word animation the package defaults to is a scaleX nudge, and at this size that reads as
-	   the letters stretching rather than as anything being sung. A syllable that lifts a fraction of
-	   its own height and stays lifted reads as the line rising into the voice instead. Four values,
-	   all of them switches the engine already publishes, so this stays a theme rather than a fork. */
-	--blyrics-word-wobble-transform-from: translateY(0);
-	--blyrics-word-wobble-transform-peak: translateY(-0.005em);
-	--blyrics-word-wobble-transform-settle: translateY(-0.028em);
-	--blyrics-word-wobble-transform-to: translateY(-0.0375em);
-}
-
-@media (max-width: 640px) {
-	:root {
-		--chrome-bottom: 60px;
-	}
+	--shadow-soft: 0 1px 2px oklch(0.2 0.02 30 / 0.06);
 }
 
 /* -- Base -------------------------------------------- */
@@ -75,18 +68,18 @@
 html {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	color-scheme: dark;
+	color-scheme: light;
+	scroll-behavior: smooth;
 }
 
 body {
-	background: var(--bg);
-	color: var(--text);
-	font-family: var(--font-ui);
-	font-size: 16px;
-	line-height: 1.55;
 	margin: 0;
-	padding: var(--chrome-top) 0 var(--chrome-bottom);
-	text-rendering: optimizeLegibility;
+	background: var(--paper);
+	color: var(--ink);
+	font-family: var(--body);
+	font-size: 17px;
+	line-height: 1.6;
+	overflow-x: hidden;
 }
 
 h1,
@@ -96,1447 +89,1219 @@ h3 {
 	text-wrap: balance;
 }
 
+h1,
+h2 {
+	font-family: var(--display);
+	font-weight: 800;
+	letter-spacing: -0.04em;
+}
+
+h3 {
+	font-size: 1rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
 p {
 	margin: 0;
 	text-wrap: pretty;
 }
 
-code,
-kbd {
-	font-family: var(--font-mono);
-	font-size: 0.875em;
-}
-
 a {
-	color: var(--text);
-	text-decoration-color: oklch(0.855 0.132 84 / 0.5);
+	color: inherit;
 	text-decoration-thickness: from-font;
-	text-underline-offset: 0.2em;
-	transition-duration: 150ms;
-	transition-property: color;
-	transition-timing-function: var(--ease);
+	text-underline-offset: 0.22em;
+	text-decoration-color: var(--hair-strong);
+	transition: text-decoration-color 150ms var(--ease-out);
 }
 
 a:hover {
-	color: var(--accent);
+	text-decoration-color: currentColor;
+}
+
+code {
+	font-family: var(--mono);
+	font-size: 0.84em;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
 }
 
 :focus-visible {
-	border-radius: 4px;
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--ink);
 	outline-offset: 3px;
 }
 
-::selection {
-	background: var(--accent-quiet);
+.stage :focus-visible {
+	outline-color: var(--on-panel);
+}
+
+.icon {
+	display: block;
+	flex: none;
+	width: 1em;
+	height: 1em;
+	fill: currentColor;
+}
+
+.sprite {
+	position: absolute;
+	width: 0;
+	height: 0;
+	overflow: hidden;
 }
 
 .visually-hidden {
-	clip-path: inset(50%);
+	position: absolute;
+	width: 1px;
 	height: 1px;
 	overflow: hidden;
-	position: absolute;
+	clip-path: inset(50%);
 	white-space: nowrap;
-	width: 1px;
 }
 
 .skip {
-	background: var(--surface-raised);
-	border-radius: var(--r-control);
-	box-shadow: var(--ring);
-	inset-block-start: 8px;
-	inset-inline-start: 8px;
-	padding: 10px 16px;
 	position: fixed;
+	top: 12px;
+	left: 12px;
+	z-index: 10;
+	padding: 10px 16px;
+	border-radius: 999px;
+	background: var(--ink);
+	color: var(--paper);
 	text-decoration: none;
 	translate: 0 -200%;
-	z-index: 9;
 }
 
 .skip:focus-visible {
 	translate: 0 0;
 }
 
-/* -- The stage -------------------------------------------- */
+/* -- Layout -------------------------------------------- */
 
-/* The element runs as the page's background for the whole scroll, so the thing on the screen is the
-   package rather than a picture of it. It stops above the hero copy rather than running under it:
-   the view is a column of large left aligned text and so is the copy, and the two on top of each
-   other are unreadable however the scrim is drawn. `--hero-band` is measured rather than guessed,
-   because the copy is one line at 1440 and four at 390. */
-.stage {
-	inset: var(--chrome-top) 0 calc(var(--chrome-bottom) + var(--hero-band, 220px));
-	position: fixed;
-	z-index: 0;
+.layout {
+	display: grid;
+	grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
+	grid-template-areas: "story stage";
 }
 
-/* Hidden rather than auto, because a scroller under the pointer at the top of a page eats the wheel
-   and the reader cannot get to anything below. The engine scrolls with `scrollTop`, which still
-   works, and the Playback panel hands the wheel back for anyone who wants to read ahead. */
-.stage__frame {
-	block-size: 100%;
-	overflow: hidden;
-	padding-inline: var(--gutter);
-	scrollbar-width: thin;
+.story {
+	grid-area: story;
+	min-width: 0;
+	padding-inline: clamp(24px, 4vw, 64px) clamp(24px, 3.2vw, 56px);
 }
-
-[data-view-scroll="on"] .stage__frame {
-	overflow-y: auto;
-}
-
-/* Only the top edge is the stage's to fade. It meets the top bar, so it fades into the page's own
-   colour. The bottom edge meets the black the copy sits on, and that fade has to travel with the
-   copy rather than stay where the stage stops, so the hero owns it instead. */
-.stage::before {
-	background: linear-gradient(to top, transparent, var(--bg) 78%);
-	content: "";
-	height: 104px;
-	inset: 0 0 auto;
-	pointer-events: none;
-	position: absolute;
-	z-index: 2;
-}
-
-.stage__status {
-	align-items: center;
-	background: oklch(0.126 0.008 264 / 0.94);
-	color: var(--text-2);
-	display: flex;
-	font-size: 14px;
-	inset: 0;
-	justify-content: center;
-	padding: 24px;
-	position: absolute;
-	text-align: center;
-	white-space: pre-wrap;
-	z-index: 3;
-}
-
-.stage__status[hidden] {
-	display: none;
-}
-
-.stage__status[data-failed] {
-	color: var(--bad);
-	font-family: var(--font-mono);
-	font-size: 13px;
-	text-align: start;
-}
-
-/* -- Top bar -------------------------------------------- */
 
 .topbar {
-	align-items: center;
-	-webkit-backdrop-filter: blur(20px);
-	backdrop-filter: blur(20px);
-	background: linear-gradient(to bottom, oklch(0.152 0.008 264 / 0.86), oklch(0.152 0.008 264 / 0.4));
-	block-size: var(--chrome-top);
 	display: flex;
-	gap: 16px;
-	inset: 0 0 auto;
+	align-items: center;
 	justify-content: space-between;
-	padding-inline: var(--gutter);
-	position: fixed;
-	z-index: 3;
-}
-
-.topbar__mark {
-	align-items: center;
-	display: flex;
-	gap: 10px;
-	min-width: 0;
+	gap: 16px;
+	height: 72px;
 }
 
 .wordmark {
+	display: inline-flex;
 	align-items: center;
-	display: flex;
-	gap: 9px;
-	white-space: nowrap;
-}
-
-/* The name of the thing, not the name of the package: the mono face and the accent stay with
-   `@braccato/core` where it appears as a specifier. */
-.wordmark b {
-	font-size: 14.5px;
-	font-weight: 600;
-	letter-spacing: -0.012em;
+	gap: 10px;
+	font-family: var(--display);
+	font-size: 1.2rem;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	text-decoration: none;
 }
 
 .wordmark img {
-	border-radius: 5px;
-	outline: 1px solid oklch(1 0 0 / 0.1);
+	border-radius: 50%;
+	outline: 1px solid oklch(0 0 0 / 0.1);
 	outline-offset: -1px;
 }
 
-.topbar__version {
-	border-radius: 999px;
-	box-shadow: var(--ring);
-	color: var(--text-3);
-	font-family: var(--font-mono);
-	font-size: 11px;
-	font-variant-numeric: tabular-nums;
+.wordmark__version {
 	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--paper-2);
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	font-weight: 400;
+	letter-spacing: 0;
+	font-variant-numeric: tabular-nums;
 }
 
-.topbar__links {
+.topbar nav {
 	display: flex;
 	gap: 4px;
 }
 
-.topbar__links a {
-	align-items: center;
-	border-radius: var(--r-control);
-	color: var(--text-2);
+.topbar nav a {
 	display: inline-flex;
-	font-size: 13px;
+	align-items: center;
+	gap: 6px;
 	min-height: 40px;
 	padding-inline: 12px;
+	border-radius: 999px;
+	color: var(--ink-2);
+	font-size: 0.94rem;
 	text-decoration: none;
-	transition-duration: 150ms;
-	transition-property: background-color, color;
-	transition-timing-function: var(--ease);
+	transition:
+		color 150ms var(--ease-out),
+		background-color 150ms var(--ease-out);
 }
 
-.topbar__links a:hover {
-	background: oklch(1 0 0 / 0.07);
-	color: var(--text);
+.topbar nav a:hover {
+	color: var(--ink);
+	background: var(--paper-2);
 }
 
-/* The version is the first thing to go: it is on the page twice over, once here and once in the
-   install command, and the three links are the ones a reader came for. */
-@media (max-width: 620px) {
-	.topbar {
-		gap: 8px;
+/* On a phone the three links keep their icons and drop their words, so the bar fits one line. */
+@media (max-width: 640px) {
+	.topbar nav a {
+		justify-content: center;
+		width: 40px;
+		padding-inline: 0;
+		font-size: 1.1rem;
 	}
 
-	.topbar__version {
-		display: none;
-	}
-
-	.topbar__links a {
-		font-size: 12.5px;
-		padding-inline: 8px;
+	.topbar__label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 }
 
 /* -- Hero -------------------------------------------- */
 
-/* The hero is a caption over a running element, not a card in front of it, so the whole column has
-   to be transparent to the pointer and each thing a reader can actually use opts back in. An
-   element with no background is still a hit target, which is why `main` is named here at all. */
-main {
-	pointer-events: none;
-	position: relative;
-	z-index: 1;
-}
-
 .hero {
-	align-content: end;
 	display: grid;
-	min-block-size: calc(100svh - var(--chrome-top) - var(--chrome-bottom));
-	pointer-events: none;
-	position: relative;
-}
-
-/* The copy reads on black rather than on the page colour, and the view falls into that black inside
-   the lines rather than meeting it at the first word of the headline.
-
-   Painted from `.hero` because that is the full width of the page. `.hero__band` is capped at the
-   width of a column of text, so a backdrop anchored to it would leave the right of the screen
-   unpainted. Both rules are sized off the same `--hero-band` the stage is inset by, so the fade and
-   the edge it lands on agree at every width without either being told the number twice.
-
-   A negative `z-index` puts them behind the copy without leaving main's stacking context, which
-   keeps them in front of the view and out of the way of the transport bar and the panel. They are
-   two rungs rather than one because `.resume` sits between them at -2, so the numbers here are the
-   whole ladder and none of it is left to document order. */
-.hero::before {
-	background: linear-gradient(to bottom, var(--blyrics-gradient-stops));
-	block-size: clamp(120px, 17vh, 224px);
-	content: "";
-	inset: auto 0 var(--hero-band, 220px);
-	pointer-events: none;
-	position: absolute;
-	z-index: -3;
-}
-
-/* Runs on under the transport bar, so the bar has the same black behind it as the copy above rather
-   than the leading edge of the docs slab. */
-.hero::after {
-	background: var(--bg-floor);
-	block-size: calc(var(--hero-band, 220px) + var(--chrome-bottom));
-	content: "";
-	inset: auto 0 calc(var(--chrome-bottom) * -1);
-	pointer-events: none;
-	position: absolute;
-	z-index: -1;
-}
-
-/* One column at every width, capped short of where the panel floats. Two columns would fit at 1440
-   and nowhere else, and a hero that reflows under its own controls is worse than a taller one. */
-.hero__band {
-	display: grid;
-	gap: clamp(18px, 2.6vh, 28px);
-	justify-items: start;
-	max-inline-size: calc(34rem + var(--gutter) * 2);
-	padding: clamp(16px, 2.5vh, 28px) var(--gutter) clamp(24px, 4vh, 40px);
-	pointer-events: auto;
-}
-
-.hero__lede {
-	max-width: 46ch;
+	grid-template-columns: minmax(0, 1fr);
+	align-content: center;
+	gap: 28px;
+	min-height: calc(100dvh - 72px);
+	padding-block: 24px 96px;
 }
 
 .hero h1 {
-	font-size: clamp(1.625rem, 3.2vw, 2.5rem);
+	max-width: 14ch;
+	font-size: clamp(2.75rem, 4.2vw, 4.5rem);
+	line-height: 0.98;
+	text-wrap: balance;
+}
+
+.hero h1 em {
+	color: var(--accent-ink);
+	font-style: normal;
+}
+
+.hero > p {
+	max-width: 40ch;
+	color: var(--ink-2);
+	font-size: 1.14rem;
+}
+
+.actions {
+	display: grid;
+	justify-items: start;
+	gap: 20px;
+	margin-top: 8px;
+}
+
+.primary {
+	display: inline-flex;
+	align-items: center;
+	gap: 14px;
+	min-height: 56px;
+	padding: 6px 24px 6px 6px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--ink);
+	color: var(--paper);
 	font-weight: 600;
-	letter-spacing: -0.026em;
-	line-height: 1.06;
+	box-shadow:
+		0 1px 2px oklch(0.2 0.02 30 / 0.2),
+		0 10px 24px -8px oklch(0.2 0.02 30 / 0.45);
+	transition:
+		scale 160ms var(--ease-out),
+		box-shadow 200ms var(--ease-out);
 }
 
-.hero__lede p {
-	color: var(--text-2);
-	font-size: 0.9375rem;
-	margin-top: 12px;
-	max-width: 52ch;
+.primary:hover {
+	box-shadow:
+		0 1px 2px oklch(0.2 0.02 30 / 0.2),
+		0 16px 32px -10px oklch(0.2 0.02 30 / 0.5);
 }
 
-/* -- Install -------------------------------------------- */
+.primary__icon {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	border-radius: 50%;
+	background: var(--accent);
+	color: var(--ink);
+	font-size: 18px;
+}
+
+.primary__label {
+	white-space: nowrap;
+}
+
+/* Both glyphs stay in the document, stacked, so the swap can fade both ways. */
+.primary__icon .icon,
+.transport__play .icon {
+	grid-area: 1 / 1;
+	transition-property: opacity, scale, filter;
+	transition-duration: 200ms;
+	transition-timing-function: var(--ease-out);
+}
+
+[data-playing="true"] .icon--play,
+[data-playing="false"] .icon--pause {
+	opacity: 0;
+	scale: 0.25;
+	filter: blur(4px);
+}
 
 .install {
-	max-width: min(100%, 26rem);
-	width: 100%;
+	display: grid;
+	gap: 8px;
 }
 
 .install__command {
+	display: inline-flex;
 	align-items: center;
-	-webkit-backdrop-filter: blur(20px);
-	backdrop-filter: blur(20px);
-	background: oklch(0.126 0.008 264 / 0.82);
-	border-radius: var(--r-card);
-	box-shadow: var(--ring);
-	display: flex;
-	gap: 12px;
-	margin-top: 10px;
-	padding: 6px 6px 6px 14px;
+	gap: 4px;
+	min-height: 52px;
+	padding: 0 4px 0 20px;
+	border-radius: 999px;
+	background: var(--paper-2);
+	box-shadow: inset 0 0 0 1px var(--hair);
 }
 
 .install__command code {
-	flex: 1 1 auto;
-	font-size: 13.5px;
-	overflow-x: auto;
-	scrollbar-width: none;
+	color: var(--ink);
+	font-size: 0.86rem;
 	white-space: nowrap;
 }
 
 .install__prompt {
-	color: var(--text-3);
+	color: var(--ink-3);
+	user-select: none;
 }
 
-.install__package {
-	color: var(--accent);
-}
-
-/* -- Docs -------------------------------------------- */
-
-/* An opaque enough slab over a fixed element: crossing this edge is what tells a reader they have
-   left the demonstration and arrived at the reference. */
-.docs,
-.colophon {
-	-webkit-backdrop-filter: blur(28px);
-	backdrop-filter: blur(28px);
-	background: oklch(0.152 0.008 264 / 0.92);
-	border-top: 1px solid var(--hairline);
-	pointer-events: auto;
-	position: relative;
-	z-index: 1;
-}
-
-.docs {
-	padding: clamp(48px, 9vh, 96px) var(--gutter);
-	scroll-margin-top: var(--chrome-top);
-}
-
-.doc h2,
-.doc h3 {
-	scroll-margin-top: calc(var(--chrome-top) + 16px);
-}
-
-.doc {
-	margin-inline: auto;
-	max-width: var(--doc);
-}
-
-.doc + .doc {
-	margin-top: clamp(56px, 9vh, 96px);
-}
-
-.doc h2 {
-	font-size: clamp(1.25rem, 2.2vw, 1.625rem);
-	font-weight: 600;
-	letter-spacing: -0.02em;
-}
-
-.doc > p {
-	color: var(--text-2);
-	margin-top: 14px;
-	max-width: 68ch;
-}
-
-.doc__aside {
-	color: var(--text-3);
-	font-size: 14px;
-}
-
-.doc__aside strong {
-	color: var(--text-2);
-	font-weight: 600;
-}
-
-/* -- Code -------------------------------------------- */
-
-.code {
-	margin-top: 20px;
-	position: relative;
-}
-
-.code pre {
-	background: var(--bg-sunken);
-	border-radius: var(--r-card);
-	box-shadow: var(--ring);
-	font-family: var(--font-mono);
-	font-size: 12.5px;
-	line-height: 1.7;
-	margin: 0;
-	overflow-x: auto;
-	padding: 16px 16px 16px 18px;
-	tab-size: 2;
-}
-
-.code__bar {
-	display: flex;
-	justify-content: flex-end;
-	margin-bottom: 8px;
-}
-
-.c-t {
-	color: oklch(0.78 0.06 264);
-}
-
-.c-s {
-	color: var(--accent);
-}
-
-.c-k {
-	color: oklch(0.8 0.1 330);
-}
-
-.c-b {
-	color: oklch(0.82 0.08 200);
-}
-
-.c-n {
-	color: oklch(0.85 0.09 150);
-}
-
-.c-c {
-	color: var(--text-3);
-}
-
-/* The `blyrics-*` lines inside a comment, which are the only comments the module reads. Weight as
-   well as colour, because "this comment is load-bearing" is the one thing on the page that should
-   not be carried by hue alone. */
-.c-a {
-	color: var(--accent);
-	font-weight: 600;
-}
-
-/* -- Buttons -------------------------------------------- */
-
-.button,
-.copy {
-	background: var(--surface-raised);
-	border: 0;
-	border-radius: var(--r-control);
-	box-shadow: var(--ring);
-	color: var(--text);
-	cursor: pointer;
-	flex: none;
-	font: inherit;
-	font-size: 13px;
-	font-weight: 500;
-	min-height: 40px;
-	padding: 0 16px;
-	transition-duration: 150ms;
-	transition-property: scale, background-color, color;
-	transition-timing-function: var(--ease);
-}
-
-.button:hover,
-.copy:hover {
-	background: oklch(0.29 0.011 264);
-}
-
-.button:active,
-.copy:active {
-	scale: 0.96;
-}
-
-.copy[data-copied] {
-	color: var(--accent);
-}
-
-.button--quiet {
-	background: transparent;
-	box-shadow: none;
-	color: var(--text-2);
-	padding: 0 12px;
-}
-
-.button--quiet:hover {
-	background: oklch(1 0 0 / 0.07);
-	color: var(--text);
-}
-
-.button[aria-pressed="true"] {
-	background: var(--accent-quiet);
-	color: var(--accent);
-}
-
-/* -- Transport -------------------------------------------- */
-
-.transport {
-	align-items: center;
-	-webkit-backdrop-filter: blur(20px);
-	backdrop-filter: blur(20px);
-	background: linear-gradient(to top, oklch(0.152 0.008 264 / 0.9), oklch(0.152 0.008 264 / 0.55));
-	block-size: var(--chrome-bottom);
-	border-top: 1px solid var(--hairline);
+.icon-button {
 	display: grid;
-	gap: 14px;
-	grid-template-columns: auto minmax(0, 10rem) minmax(0, 1fr) auto auto;
-	inset: auto 0 0;
-	padding-inline: var(--gutter);
-	position: fixed;
-	z-index: 3;
-}
-
-.transport__play {
-	background: var(--text);
+	place-items: center;
+	width: 44px;
+	height: 44px;
 	border: 0;
-	border-radius: var(--r-control);
-	color: var(--bg);
-	cursor: pointer;
-	font: inherit;
-	font-size: 13px;
-	font-weight: 600;
-	min-height: 40px;
-	min-width: 76px;
-	padding: 0 16px;
-	transition-duration: 150ms;
-	transition-property: scale, background-color;
-	transition-timing-function: var(--ease);
+	border-radius: 50%;
+	background: transparent;
+	color: var(--ink-2);
+	font-size: 18px;
+	transition:
+		background-color 150ms var(--ease-out),
+		color 150ms var(--ease-out),
+		scale 150ms var(--ease-out);
 }
 
-.transport__play:hover {
-	background: var(--accent);
+.icon-button:hover {
+	background: var(--card);
+	color: var(--ink);
 }
 
-.transport__play:active {
-	scale: 0.96;
+.icon-button .icon {
+	grid-area: 1 / 1;
+	transition-property: opacity, scale, filter;
+	transition-duration: 200ms;
+	transition-timing-function: var(--ease-out);
 }
 
-.transport__title {
-	color: var(--text-2);
-	font-size: 13px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.transport__clock {
-	color: var(--text-2);
-	font-family: var(--font-mono);
-	font-size: 12.5px;
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
-
-.transport__clock span:first-child {
-	color: var(--text);
-}
-
-@media (max-width: 860px) {
-	.transport {
-		grid-template-columns: auto minmax(0, 1fr) auto auto;
-	}
-
-	.transport__title {
-		display: none;
-	}
-}
-
-@media (max-width: 560px) {
-	.transport {
-		grid-template-columns: auto minmax(0, 1fr) auto;
-	}
-
-	.transport__clock {
-		display: none;
-	}
-}
-
-/* -- Resume autoscroll -------------------------------------------- */
-
-/* Centred at the foot of the view rather than docked to a corner: it answers a scroll the reader
-   just made, so it belongs where they are looking. It rides the same `--hero-band` measurement the
-   stage stops at, which is what keeps it off the hero copy at 390, where that copy is four lines
-   deep.
-
-   The button is fixed and the page is not, so its layer is what decides what happens to it once the
-   reader scrolls on. It lives in main and sits between the hero's two backdrops: over the fade,
-   because the fade's own bottom stop is black and a button under it cannot be read, and under the
-   floor, so the hero and then the docs slab cover it on the way past instead of leaving it stranded
-   over the reference. Main is under the transport bar and the panel whatever it does inside itself,
-   so the reader's own controls stay clear either way. `pointer-events` is main's, off by default and
-   opted back into here. */
-.resume {
-	-webkit-backdrop-filter: blur(20px);
-	backdrop-filter: blur(20px);
-	background: var(--glass);
-	border: 0;
-	border-radius: 999px;
-	box-shadow: var(--ring), var(--lift);
-	color: var(--text);
-	cursor: pointer;
-	font: inherit;
-	font-size: 13px;
-	font-weight: 500;
-	inset: auto 0 calc(var(--chrome-bottom) + var(--hero-band, 220px) + 14px);
-	margin-inline: auto;
-	min-height: 38px;
+.icon-button:not([data-copied]) .icon--done,
+.icon-button[data-copied] .icon--idle {
 	opacity: 0;
-	padding: 0 18px;
-	pointer-events: auto;
-	position: fixed;
-	visibility: hidden;
-	width: fit-content;
-	z-index: -2;
-
-	/* The exit is the half worth spelling out: `visibility` waits for the fade rather than running
-	   with it, so the button is still on the screen while it leaves and gone the moment it has. The
-	   shown rule takes that delay back off, so arriving is immediate. */
-	transition-delay: 0s, 0s, 0s, 0s, 0s, 220ms;
-	transition-duration: 150ms, 150ms, 150ms, 220ms, 220ms, 0s;
-	transition-property: background-color, color, scale, opacity, translate, visibility;
-	transition-timing-function: var(--ease);
+	scale: 0.25;
+	filter: blur(4px);
 }
 
-/* Hidden is hidden: `visibility` is what keeps a button nobody can see out of the tab order and out
-   of the accessibility tree, which opacity alone would not do. */
-.resume[data-shown] {
-	opacity: 1;
-	transition-delay: 0s;
-	visibility: visible;
-}
+/* -- Chapters -------------------------------------------- */
 
-.resume:hover {
-	background: oklch(0.29 0.011 264 / 0.86);
-	color: var(--accent);
-}
-
-.resume:active {
-	scale: 0.96;
-}
-
-/* -- Sliders -------------------------------------------- */
-
-/* One range control, two sizes. Both fill their track from `--seek-progress`, which WebKit needs
-   because it has no equivalent of Gecko's `::-moz-range-progress`. */
-.transport__seek,
-.slider {
-	appearance: none;
-	background: transparent;
-	cursor: pointer;
-	margin: 0;
-	width: 100%;
-}
-
-.transport__seek {
-	height: 40px;
-}
-
-.slider {
-	height: 32px;
-}
-
-.transport__seek::-webkit-slider-runnable-track,
-.slider::-webkit-slider-runnable-track {
-	background: linear-gradient(
-		to right,
-		var(--accent) calc(var(--seek-progress, 0) * 100%),
-		oklch(1 0 0 / 0.16) calc(var(--seek-progress, 0) * 100%)
-	);
-	border-radius: 999px;
-	height: 4px;
-}
-
-.transport__seek::-webkit-slider-thumb,
-.slider::-webkit-slider-thumb {
-	appearance: none;
-	background: var(--text);
-	border-radius: 50%;
-	height: 13px;
-	margin-top: -4.5px;
-	transition-duration: 150ms;
-	transition-property: scale;
-	transition-timing-function: var(--ease);
-	width: 13px;
-}
-
-.transport__seek:active::-webkit-slider-thumb,
-.slider:active::-webkit-slider-thumb {
-	scale: 1.2;
-}
-
-.transport__seek::-moz-range-track,
-.slider::-moz-range-track {
-	background: oklch(1 0 0 / 0.16);
-	border-radius: 999px;
-	height: 4px;
-}
-
-.transport__seek::-moz-range-progress,
-.slider::-moz-range-progress {
-	background: var(--accent);
-	border-radius: 999px;
-	height: 4px;
-}
-
-.transport__seek::-moz-range-thumb,
-.slider::-moz-range-thumb {
-	background: var(--text);
-	border: 0;
-	border-radius: 50%;
-	height: 13px;
-	width: 13px;
-}
-
-/* -- Panel -------------------------------------------- */
-
-.panel {
-	-webkit-backdrop-filter: blur(24px);
-	backdrop-filter: blur(24px);
-	background: var(--glass);
-	border-radius: var(--r-panel);
-	box-shadow: var(--ring), var(--lift);
-	display: flex;
-	flex-direction: column;
-	inset: auto 16px calc(var(--chrome-bottom) + 12px) auto;
-	max-block-size: min(78svh, 46rem);
-	padding: 12px;
-	position: fixed;
-	width: min(24rem, calc(100vw - 32px));
-	z-index: 4;
-}
-
-.panel[hidden] {
-	display: none;
-}
-
-.panel__head {
-	align-items: center;
-	display: flex;
-	justify-content: space-between;
-	padding: 2px 2px 10px 8px;
-}
-
-.panel h2 {
-	font-size: 13px;
-	font-weight: 600;
-	letter-spacing: 0.01em;
-}
-
-.panel__body {
+.chapter {
 	display: grid;
-	gap: 24px;
-	overflow-y: auto;
-	padding: 2px 8px 6px;
-	scrollbar-width: thin;
+	grid-template-columns: minmax(0, 1fr);
+	align-content: center;
+	gap: 22px;
+	min-height: 92dvh;
+	max-width: 62ch;
+	padding-block: 72px;
+	scroll-margin-top: 24px;
 }
 
-.group h3 {
-	color: var(--text-2);
-	font-size: 12px;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	margin-bottom: 10px;
+.chapter--wide {
+	max-width: none;
 }
 
-.group + .group {
-	border-top: 1px solid var(--hairline);
-	padding-top: 20px;
+.chapter h2 {
+	font-size: clamp(2rem, 3.1vw, 3rem);
+	line-height: 1.02;
 }
 
-.group__note {
-	color: var(--text-3);
-	font-size: 12.5px;
-	margin-top: 14px;
+.chapter > p {
+	color: var(--ink-2);
 }
 
-.group__hint {
-	color: var(--text-3);
-	font-size: 12px;
-	line-height: 1.45;
-	margin-top: 8px;
+.chapter p code,
+.terms dd code,
+.hint code {
+	padding: 0.1em 0.35em;
+	border-radius: 6px;
+	background: var(--paper-2);
+	color: var(--ink);
 }
 
-.group__hint code {
-	color: var(--text-2);
-	white-space: nowrap;
+.aside {
+	color: var(--ink-3);
+	font-size: 0.94rem;
 }
 
-.row {
-	align-items: center;
-	display: flex;
-	gap: 8px;
-	margin-top: 10px;
-}
-
-.input {
-	background: var(--bg-sunken);
-	border: 0;
-	border-radius: var(--r-control);
-	box-shadow: var(--ring);
-	color: var(--text);
-	flex: 1 1 auto;
-	font: inherit;
-	font-size: 13px;
-	min-height: 40px;
-	min-width: 0;
-	padding: 0 12px;
-}
-
-.input::placeholder {
-	color: var(--text-3);
-}
-
-.textarea {
-	background: var(--bg-sunken);
-	border: 0;
-	border-radius: var(--r-control);
-	box-shadow: var(--ring);
-	color: var(--text-2);
-	display: block;
-	font-family: var(--font-mono);
-	font-size: 12px;
-	line-height: 1.6;
-	margin-top: 10px;
-	overflow: auto;
-	padding: 10px 12px;
-	resize: vertical;
-	scrollbar-width: thin;
-	tab-size: 2;
-	width: 100%;
-}
-
-.textarea--tall {
-	line-height: 1.65;
-	min-height: 15rem;
-}
-
-.textarea::placeholder {
-	color: var(--text-3);
-}
-
-/* -- Theme editor -------------------------------------------- */
-
-/* The input and the layer painting its colours are the same box twice over, and they only stay
-   aligned while every property that decides where a glyph lands is identical. So the metrics are
-   declared once here and both of them read them from this element rather than each carrying its own
-   copy to drift. */
-.editor {
-	--editor-pad-block: 10px;
-	--editor-pad-inline: 12px;
-	background: var(--bg-sunken);
-	border-radius: var(--r-control);
-	box-shadow: var(--ring);
+.block {
 	display: grid;
-	font-family: var(--font-mono);
-	font-size: 12px;
-	letter-spacing: normal;
-	line-height: 1.65;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 12px;
 	margin-top: 10px;
-	position: relative;
-	tab-size: 2;
 }
 
-.editor__paint,
-.editor .textarea {
-	background: transparent;
-	box-shadow: none;
-	font: inherit;
-	letter-spacing: inherit;
-	margin: 0;
-	overflow-wrap: break-word;
-	padding: var(--editor-pad-block) var(--editor-pad-inline);
-	tab-size: inherit;
-	white-space: pre-wrap;
+.block > p {
+	color: var(--ink-2);
 }
 
-/* Scrolled with the input rather than clipped to it: an `overflow: hidden` box still has a scroll
-   position, and writing it is what keeps the colours under the text once the sheet is taller than
-   the box. */
-.editor__paint {
-	color: var(--text-2);
-	inset: 0;
-	overflow: hidden;
-	pointer-events: none;
-	position: absolute;
-	/* The input's scrollbar takes width off its content box and not off this one, which on its own
-	   is enough to wrap the two differently. Measured rather than assumed: it is zero where the
-	   platform draws scrollbars over the content, and zero again on a sheet short enough not to
-	   overflow. */
-	padding-inline-end: calc(var(--editor-pad-inline) + var(--editor-gutter, 0px));
-}
-
-.editor .textarea {
-	caret-color: var(--text);
-	position: relative;
-}
-
-/* Only once the layer behind it is being painted. A page whose script never ran keeps a text box
-   that can be read. */
-.editor .textarea[data-painted] {
-	color: transparent;
+.hint {
+	color: var(--ink-3);
+	font-size: 0.9rem;
 }
 
 .status {
-	color: var(--text-2);
-	font-size: 12px;
-	line-height: 1.45;
-	margin-top: 10px;
+	min-height: 1.6em;
+	color: var(--ink-2);
+	font-size: 0.9rem;
 }
 
-/* Left in the document rather than removed from it. A live region that only exists once it has
-   something to say is a live region a screen reader may not have been watching. */
 .status:empty {
-	margin-top: 0;
+	display: none;
+}
+
+.status[data-tone="good"] {
+	color: var(--good);
 }
 
 .status[data-tone="bad"] {
 	color: var(--bad);
 }
 
-.status[data-tone="good"] {
-	color: var(--accent);
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
 }
 
-/* -- Pickers -------------------------------------------- */
+/* -- Code -------------------------------------------- */
 
-.picker {
-	display: grid;
-	gap: 6px;
+.code {
+	position: relative;
 }
 
-.pick {
-	background: transparent;
+.code pre,
+.array {
+	margin: 0;
+	padding: 18px 20px;
+	border-radius: var(--r-card);
+	background: var(--paper-2);
+	box-shadow: inset 0 0 0 1px var(--hair);
+	overflow-x: auto;
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	line-height: 1.7;
+	tab-size: 2;
+}
+
+.code pre code {
+	font-size: inherit;
+}
+
+.code .icon-button {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 40px;
+	height: 40px;
+	font-size: 17px;
+}
+
+.c-c {
+	color: var(--ink-3);
+}
+
+.c-s {
+	color: oklch(0.48 0.1 150);
+}
+
+.c-t,
+.c-k {
+	color: oklch(0.45 0.11 265);
+}
+
+.c-b {
+	color: var(--ink);
+	font-weight: 500;
+}
+
+.c-n,
+.c-a {
+	color: oklch(0.52 0.12 70);
+}
+
+/* -- Controls -------------------------------------------- */
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 44px;
+	padding-inline: 16px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--card);
+	color: var(--ink);
+	font-size: 0.94rem;
+	font-weight: 500;
+	white-space: nowrap;
+	box-shadow:
+		inset 0 0 0 1px var(--hair),
+		var(--shadow-soft);
+	transition:
+		box-shadow 150ms var(--ease-out),
+		background-color 150ms var(--ease-out),
+		color 150ms var(--ease-out),
+		scale 150ms var(--ease-out);
+}
+
+.chip:hover {
+	box-shadow:
+		inset 0 0 0 1px var(--hair-strong),
+		0 2px 6px oklch(0.2 0.02 30 / 0.08);
+}
+
+.chip[aria-pressed="true"] {
+	background: var(--ink);
+	color: var(--paper);
+	box-shadow: none;
+}
+
+.chip .icon {
+	color: var(--ink-2);
+	font-size: 17px;
+}
+
+.primary:active,
+.chip:active,
+.icon-button:active,
+.preset:active,
+.song:active,
+.transport__play:active,
+.resume:active {
+	scale: 0.96;
+}
+
+.input {
+	width: 100%;
+	min-height: 44px;
+	padding: 0 16px;
 	border: 0;
 	border-radius: var(--r-control);
-	box-shadow: var(--ring);
-	color: var(--text-2);
-	cursor: pointer;
+	background: var(--card);
+	box-shadow: inset 0 0 0 1px var(--hair);
+	font-size: 0.94rem;
+	transition: box-shadow 150ms var(--ease-out);
+}
+
+.input:hover {
+	box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.input:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.input::placeholder {
+	color: var(--ink-3);
+}
+
+.input--area {
+	min-height: 104px;
+	padding: 12px 16px;
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	line-height: 1.6;
+	resize: vertical;
+}
+
+.url {
 	display: grid;
-	font: inherit;
-	gap: 2px;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 10px;
+}
+
+.paste {
+	display: grid;
 	justify-items: start;
+	gap: 10px;
+}
+
+/* Segmented control, built from radios so the arrow keys come for free. */
+.seg {
+	position: relative;
+	display: inline-grid;
+	grid-auto-flow: column;
+	justify-self: start;
+	gap: 4px;
+	min-width: 0;
+	max-width: 100%;
+	margin: 0;
+	padding: 4px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--paper-2);
+	box-shadow: inset 0 0 0 1px var(--hair);
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.seg--scroll label span {
+	padding-inline: 14px;
+}
+
+.seg label {
+	position: relative;
+	z-index: 1;
+	display: grid;
+	cursor: pointer;
+}
+
+.seg input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.seg label span {
+	display: grid;
+	place-items: center;
 	min-height: 40px;
-	padding: 9px 12px;
-	text-align: start;
-	transition-duration: 150ms;
-	transition-property: background-color, color;
-	transition-timing-function: var(--ease);
+	padding-inline: 18px;
+	border-radius: 999px;
+	color: var(--ink-2);
+	font-weight: 500;
+	white-space: nowrap;
+	transition: color 150ms var(--ease-out);
 }
 
-.pick:hover {
-	background: oklch(1 0 0 / 0.06);
-	color: var(--text);
+.seg label:hover span,
+.seg input:checked + span {
+	color: var(--ink);
 }
 
-.pick b {
-	font-size: 13px;
+.seg input:focus-visible + span {
+	outline: 2px solid var(--ink);
+	outline-offset: -2px;
+}
+
+.seg--small label span {
+	min-height: 32px;
+	padding-inline: 12px;
+	font-family: var(--mono);
+	font-size: 0.8rem;
+}
+
+.seg__thumb,
+.rail__pill {
+	position: absolute;
+	left: 0;
+	width: var(--w, 0);
+	translate: var(--x, 0) 0;
+	border-radius: 999px;
+	opacity: var(--o, 0);
+	pointer-events: none;
+	transition:
+		translate 480ms var(--ease),
+		width 480ms var(--ease),
+		opacity 240ms var(--ease-out);
+}
+
+.seg__thumb {
+	top: 4px;
+	bottom: 4px;
+	background: var(--card);
+	box-shadow: 0 1px 3px oklch(0.2 0.02 30 / 0.14);
+}
+
+.switch {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	gap: 14px;
+	cursor: pointer;
+}
+
+.switch input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.switch__track {
+	position: relative;
+	width: 40px;
+	height: 24px;
+	margin-top: 1px;
+	border-radius: 999px;
+	background: var(--hair-strong);
+	transition: background-color 200ms var(--ease-out);
+}
+
+.switch__track::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: var(--card);
+	box-shadow: 0 1px 3px oklch(0.2 0.02 30 / 0.3);
+	transition: translate 280ms var(--ease);
+}
+
+.switch input:checked + .switch__track {
+	background: var(--ink);
+}
+
+.switch input:checked + .switch__track::after {
+	translate: 16px 0;
+}
+
+.switch input:focus-visible + .switch__track {
+	outline: 2px solid var(--ink);
+	outline-offset: 3px;
+}
+
+.switch__text {
+	display: grid;
+	gap: 2px;
+}
+
+.switch__text b {
 	font-weight: 600;
 }
 
-.pick span {
-	color: var(--text-3);
-	font-size: 11.5px;
-	line-height: 1.4;
-	text-wrap: pretty;
+.switch__text span {
+	color: var(--ink-3);
+	font-size: 0.9rem;
 }
 
-.pick[aria-pressed="true"] {
-	background: var(--accent-quiet);
-	box-shadow: 0 0 0 1px oklch(0.855 0.132 84 / 0.4);
-	color: var(--accent);
-}
-
-.pick[aria-pressed="true"] span {
-	color: oklch(0.855 0.132 84 / 0.72);
-}
-
-/* -- Segmented control -------------------------------------------- */
-
-.segmented {
-	border: 0;
+.field {
 	display: grid;
-	gap: 4px;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.field__row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	font-weight: 600;
+}
+
+.field__row output {
+	color: var(--ink-2);
+	font-family: var(--mono);
+	font-size: 0.86rem;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+
+/* WebKit has no `::-moz-range-progress`, so the filled half of a track is a gradient stop. */
+.slider,
+.transport__seek {
+	--fill-color: var(--ink);
+	--rest-color: var(--hair-strong);
+	width: 100%;
+	height: 24px;
 	margin: 0;
-	padding: 0;
-}
-
-.segmented--install {
-	grid-template-columns: repeat(4, minmax(0, 1fr));
-	max-width: 20rem;
-}
-
-.segmented label {
+	background: transparent;
+	appearance: none;
 	cursor: pointer;
-	display: block;
 }
 
-.segmented input {
-	clip-path: inset(50%);
-	height: 1px;
-	position: absolute;
-	width: 1px;
+.slider::-webkit-slider-runnable-track,
+.transport__seek::-webkit-slider-runnable-track {
+	height: 4px;
+	border-radius: 4px;
+	background: linear-gradient(
+		to right,
+		var(--fill-color) calc(var(--seek-progress, 0) * 100%),
+		var(--rest-color) calc(var(--seek-progress, 0) * 100%)
+	);
 }
 
-.segmented span {
-	align-items: center;
-	background: var(--surface-raised);
-	border-radius: var(--r-control);
-	color: var(--text-2);
-	display: flex;
-	font-size: 12.5px;
-	justify-content: center;
-	min-height: 40px;
-	padding: 0 8px;
-	text-align: center;
-	transition-duration: 150ms;
-	transition-property: background-color, color;
-	transition-timing-function: var(--ease);
+.slider::-moz-range-track,
+.transport__seek::-moz-range-track {
+	height: 4px;
+	border-radius: 4px;
+	background: linear-gradient(
+		to right,
+		var(--fill-color) calc(var(--seek-progress, 0) * 100%),
+		var(--rest-color) calc(var(--seek-progress, 0) * 100%)
+	);
 }
 
-.segmented--install span {
-	-webkit-backdrop-filter: blur(20px);
-	backdrop-filter: blur(20px);
-	background: oklch(0.126 0.008 264 / 0.7);
-	box-shadow: var(--ring);
+.slider::-webkit-slider-thumb,
+.transport__seek::-webkit-slider-thumb {
+	width: 16px;
+	height: 16px;
+	margin-top: -6px;
+	border-radius: 50%;
+	background: var(--fill-color);
+	box-shadow: 0 1px 4px oklch(0 0 0 / 0.3);
+	appearance: none;
 }
 
-.segmented label:hover span {
-	color: var(--text);
+.slider::-moz-range-thumb,
+.transport__seek::-moz-range-thumb {
+	width: 16px;
+	height: 16px;
+	border: 0;
+	border-radius: 50%;
+	background: var(--fill-color);
 }
 
-.segmented input:checked + span {
-	background: var(--accent-quiet);
-	color: var(--accent);
+/* -- Songs -------------------------------------------- */
+
+.songs {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
 }
 
-.segmented input:focus-visible + span {
-	outline: 2px solid var(--accent);
-	outline-offset: 2px;
+.song {
+	display: grid;
+	align-content: start;
+	gap: 4px;
+	padding: 14px 16px;
+	border: 0;
+	border-radius: var(--r-card);
+	background: var(--card);
+	text-align: start;
+	box-shadow: inset 0 0 0 1px var(--hair);
+	transition:
+		box-shadow 200ms var(--ease-out),
+		scale 150ms var(--ease-out);
 }
 
-/* -- Disclosure and array view -------------------------------------------- */
+.song:hover {
+	box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
 
-/* The native marker is dropped in both spellings: `list-style` covers Gecko and the standards path,
-   and WebKit still needs its own pseudo-element told, or the triangle sits beside the chevron. */
-.disclosure summary {
-	align-items: center;
-	border-radius: var(--r-control);
-	color: var(--text-2);
-	cursor: pointer;
-	display: flex;
-	font-size: 12.5px;
+.song[aria-pressed="true"] {
+	box-shadow:
+		inset 0 0 0 2px var(--ink),
+		0 6px 16px -8px oklch(0.2 0.02 30 / 0.35);
+}
+
+.song b {
+	font-family: var(--display);
+	font-size: 1.15rem;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+.song span {
+	color: var(--ink-3);
+	font-size: 0.86rem;
+	line-height: 1.45;
+}
+
+/* -- Themes -------------------------------------------- */
+
+/* One row, always: the starters never leave an orphan, and a narrow screen scrolls the row. */
+.presets {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(84px, 1fr));
 	gap: 8px;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.preset {
+	display: grid;
+	gap: 8px;
+	padding: 6px 6px 10px;
+	border: 0;
+	border-radius: var(--r-card);
+	background: var(--card);
+	text-align: start;
+	box-shadow: inset 0 0 0 1px var(--hair);
+	transition:
+		box-shadow 200ms var(--ease-out),
+		scale 150ms var(--ease-out);
+}
+
+.preset:hover {
+	box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.preset[aria-pressed="true"] {
+	box-shadow:
+		inset 0 0 0 2px var(--ink),
+		0 6px 16px -8px oklch(0.2 0.02 30 / 0.35);
+}
+
+.preset__sample {
+	display: grid;
+	align-content: end;
+	height: 60px;
+	padding: 8px 10px;
+	border-radius: calc(var(--r-card) - 6px);
+	white-space: nowrap;
+	background: var(--panel);
+	color: var(--on-panel);
+	font-family: "Satoshi", ui-sans-serif, sans-serif;
+	font-size: 0.82rem;
+	font-weight: 700;
+	line-height: 1.2;
+	letter-spacing: -0.02em;
+	overflow: hidden;
+}
+
+.preset__sample span + span {
+	color: oklch(0.97 0.003 40 / 0.22);
+}
+
+.preset__name {
+	padding-inline: 4px;
+	font-size: 0.82rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+/* Each sample says in two lines what the theme does to the line after the one being sung. */
+.preset[data-theme="better-lyrics"] .preset__sample span:first-child {
+	text-shadow: 0 0 12px oklch(1 0 0 / 0.6);
+}
+
+.preset[data-theme="sustain"] .preset__sample {
+	font-weight: 600;
+}
+
+.preset[data-theme="sustain"] .preset__sample span + span {
+	color: oklch(0.97 0.003 40 / 0.8);
+	filter: blur(1.5px);
+}
+
+.preset[data-theme="karaoke"] .preset__sample span + span {
+	color: transparent;
+}
+
+.preset[data-theme="karaoke"] .preset__sample i {
+	color: oklch(0.97 0.003 40 / 0.7);
+	font-style: normal;
+}
+
+
+.editor {
+	--editor-pad-block: 16px;
+	--editor-pad-inline: 18px;
+	position: relative;
+	display: grid;
+	border-radius: var(--r-card);
+	background: var(--paper-2);
+	box-shadow: inset 0 0 0 1px var(--hair);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	line-height: 1.7;
+	tab-size: 2;
+	transition: box-shadow 150ms var(--ease-out);
+}
+
+.editor:focus-within {
+	box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.editor__paint,
+.editor__input {
+	margin: 0;
+	padding: var(--editor-pad-block) var(--editor-pad-inline);
+	border: 0;
+	background: transparent;
+	font: inherit;
+	letter-spacing: inherit;
+	tab-size: inherit;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+.editor__paint {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	color: var(--ink);
+	pointer-events: none;
+	/* The input's scrollbar takes width off its content box and not off this one, which on its own
+	   is enough to wrap the two differently. Measured, because it is zero where the platform draws
+	   scrollbars over the content. */
+	padding-inline-end: calc(var(--editor-pad-inline) + var(--editor-gutter, 0px));
+}
+
+.editor__input {
+	position: relative;
+	min-height: 320px;
+	caret-color: var(--ink);
+	resize: vertical;
+}
+
+.editor__input:focus-visible {
+	outline: none;
+}
+
+.editor__input[data-painted] {
+	color: transparent;
+}
+
+.disclosure summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 40px;
+	font-weight: 600;
+	cursor: pointer;
 	list-style: none;
-	margin: 14px -8px 0;
-	padding: 9px 8px;
-	transition-duration: 150ms;
-	transition-property: color;
-	transition-timing-function: var(--ease);
 }
 
 .disclosure summary::-webkit-details-marker {
 	display: none;
 }
 
-.disclosure summary:hover {
-	color: var(--text);
+.disclosure summary::before {
+	content: "";
+	width: 7px;
+	height: 7px;
+	margin-inline: 2px 4px;
+	border-right: 1.5px solid currentColor;
+	border-bottom: 1.5px solid currentColor;
+	rotate: -45deg;
+	transition: rotate 240ms var(--ease);
 }
 
-.chevron {
-	flex: none;
-	rotate: -90deg;
+.disclosure[open] summary::before {
+	rotate: 45deg;
 }
 
-.disclosure[open] .chevron {
-	rotate: 0deg;
-}
-
-/* The rotation is the state, so it stays either way. Only the travel between the two states is worth
-   taking away, which is what the rest of this page does with movement as well. */
-@media (prefers-reduced-motion: no-preference) {
-	.chevron {
-		transition-duration: 180ms;
-		transition-property: rotate;
-		transition-timing-function: var(--ease);
-	}
+.disclosure > :not(summary) {
+	margin-top: 12px;
 }
 
 .array {
-	background: var(--bg-sunken);
-	border-radius: var(--r-control);
-	box-shadow: var(--ring);
-	color: var(--text-3);
-	font-family: var(--font-mono);
-	font-size: 11.5px;
-	line-height: 1.6;
-	margin: 6px 0 0;
-	max-height: 16rem;
+	max-height: 360px;
 	overflow: auto;
-	padding: 10px 12px;
-	scrollbar-width: thin;
-	tab-size: 2;
+	color: var(--ink-2);
+	white-space: pre;
 }
 
-/* -- Fields and switches -------------------------------------------- */
+/* -- Formats -------------------------------------------- */
 
-.field__row {
-	align-items: baseline;
-	display: flex;
-	gap: 12px;
-	justify-content: space-between;
-}
-
-.field__row label {
-	color: var(--text-2);
-	font-size: 13px;
-}
-
-.field__value {
-	color: var(--accent);
-	font-family: var(--font-mono);
-	font-size: 12.5px;
-	font-variant-numeric: tabular-nums;
-}
-
-.switch {
-	align-items: center;
-	border-radius: var(--r-control);
-	cursor: pointer;
-	display: flex;
-	font-size: 13px;
-	gap: 11px;
-	margin: 16px -8px 0;
-	min-height: 40px;
-	padding: 0 8px;
-}
-
-.switch input {
-	appearance: none;
-	background: oklch(1 0 0 / 0.14);
-	border-radius: 999px;
-	cursor: pointer;
-	flex: none;
-	height: 22px;
-	margin: 0;
-	position: relative;
-	transition-duration: 180ms;
-	transition-property: background-color;
-	transition-timing-function: var(--ease);
-	width: 38px;
-}
-
-.switch input::before {
-	background: var(--text-2);
-	border-radius: 50%;
-	content: "";
-	height: 16px;
-	inset-block-start: 3px;
-	inset-inline-start: 3px;
-	position: absolute;
-	transition-duration: 180ms;
-	transition-property: translate, background-color;
-	transition-timing-function: var(--ease);
-	width: 16px;
-}
-
-.switch input:checked {
-	background: var(--accent);
-}
-
-.switch input:checked::before {
-	background: var(--bg);
-	translate: 16px 0;
-}
-
-.switch + .group__hint {
-	margin-top: 4px;
-}
-
-/* -- Event log -------------------------------------------- */
-
-.log {
-	display: grid;
-	gap: 9px;
-	list-style: none;
-	margin: 12px 0 0;
-	max-height: 13rem;
-	overflow-y: auto;
-	padding: 0;
-	scrollbar-width: thin;
-}
-
-.log:empty::after {
-	color: var(--text-3);
-	content: "Nothing yet.";
-	font-size: 12.5px;
-}
-
-.log li {
-	align-items: baseline;
+.formats {
 	display: flex;
 	flex-wrap: wrap;
-	font-family: var(--font-mono);
-	font-size: 11.5px;
-	gap: 0 8px;
-	line-height: 1.45;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
-.log__at {
-	color: var(--text-3);
-	font-variant-numeric: tabular-nums;
+.formats li {
+	display: grid;
+	place-items: center;
+	min-height: 32px;
+	padding-inline: 12px;
+	border-radius: 999px;
+	box-shadow: inset 0 0 0 1px var(--hair);
+	font-family: var(--mono);
+	font-size: 0.78rem;
 }
 
-.log b {
-	color: var(--accent);
-	font-weight: 400;
-}
-
-.log__detail {
-	color: var(--text-2);
-	overflow-wrap: anywhere;
-}
-
-.log li[data-phase="error"] b {
-	color: var(--bad);
-}
-
-/* -- Drop zone -------------------------------------------- */
-
-.dropzone {
-	align-items: center;
-	-webkit-backdrop-filter: blur(8px);
-	backdrop-filter: blur(8px);
-	background: oklch(0.126 0.008 264 / 0.82);
-	display: flex;
-	inset: 0;
-	justify-content: center;
-	padding: var(--gutter);
-	position: fixed;
-	z-index: 8;
-}
-
-.dropzone[hidden] {
-	display: none;
-}
-
-.dropzone p {
-	border: 2px dashed oklch(0.855 0.132 84 / 0.5);
-	border-radius: var(--r-panel);
-	color: var(--text);
-	font-size: clamp(1rem, 2.4vw, 1.25rem);
-	padding: clamp(32px, 6vh, 56px) clamp(28px, 6vw, 72px);
+.drop {
+	display: grid;
+	justify-items: center;
+	gap: 6px;
+	padding: 32px 20px;
+	border: 1.5px dashed var(--hair-strong);
+	border-radius: var(--r-card);
+	color: var(--ink-2);
 	text-align: center;
+	cursor: pointer;
+	transition:
+		background-color 150ms var(--ease-out),
+		border-color 150ms var(--ease-out);
+}
+
+.drop:hover {
+	border-color: var(--ink);
+	background: var(--card);
+}
+
+.drop:has(:focus-visible) {
+	outline: 2px solid var(--ink);
+	outline-offset: 3px;
+}
+
+.drop .icon {
+	font-size: 28px;
+}
+
+.drop strong {
+	color: var(--ink);
+	font-weight: 600;
 }
 
 /* -- Reference -------------------------------------------- */
 
-.reference {
-	align-items: start;
+.panel {
 	display: grid;
-	gap: clamp(30px, 4vw, 52px);
-	margin-top: clamp(26px, 4vh, 40px);
+	gap: 16px;
 }
 
-.reference__column {
-	display: grid;
-	gap: 0;
-}
-
-@media (min-width: 900px) {
-	.reference {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-}
-
-.reference h3 {
-	color: var(--text);
-	font-size: 13px;
-	font-weight: 600;
-}
-
-.reference__subhead {
-	margin-top: 32px;
-	padding-top: 26px;
-	position: relative;
-}
-
-.reference__subhead::before {
-	background: var(--hairline);
-	content: "";
-	height: 1px;
-	inset-inline: 0;
-	position: absolute;
-	top: 0;
-}
-
-.reference__note {
-	color: var(--text-3);
-	font-size: 13px;
-	margin-top: 8px;
-	max-width: 58ch;
-}
-
-/* An identifier is one word however many hyphens are in it, and a break after one reads as a
-   different name. */
-.reference__note code,
-.terms dd code,
-.doc > p code {
-	white-space: nowrap;
-}
-
-.reference__note code {
-	color: var(--text-2);
+.panel[hidden] {
+	display: none;
 }
 
 .terms {
-	margin: 18px 0 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+	gap: 20px 28px;
+	margin: 0;
+}
+
+.terms > div {
+	display: grid;
+	align-content: start;
+	gap: 4px;
 }
 
 .terms dt {
-	align-items: baseline;
-	color: var(--accent);
 	display: flex;
 	flex-wrap: wrap;
-	gap: 3px 10px;
-	margin-top: 22px;
-}
-
-.terms dt:first-child {
-	margin-top: 0;
+	align-items: baseline;
+	gap: 4px 10px;
 }
 
 .terms dt code {
-	font-size: 13px;
+	color: var(--ink);
+	font-size: 0.86rem;
+	font-weight: 500;
+	overflow-wrap: anywhere;
 }
 
 .terms__meta {
-	color: var(--text-3);
-	font-family: var(--font-mono);
-	font-size: 11.5px;
+	color: var(--ink-3);
+	font-family: var(--mono);
+	font-size: 0.74rem;
 }
 
 .terms dd {
-	color: var(--text-2);
-	font-size: 14px;
-	margin: 5px 0 0;
-	max-width: 58ch;
+	margin: 0;
+	color: var(--ink-2);
+	font-size: 0.92rem;
 }
 
-.terms dd code {
-	color: var(--text);
-}
-
-.terms--tight dt {
-	margin-top: 16px;
-}
-
-.terms--tight dd {
-	font-size: 13px;
-}
-
-#theme-settings-list {
-	margin-top: 26px;
-}
-
-/* -- The two proofs -------------------------------------------- */
-
-.proof {
-	align-items: start;
-	display: grid;
-	gap: 16px;
-	grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-	margin-top: 24px;
-}
-
-.proof__card {
-	background: var(--surface);
-	border-radius: var(--r-card);
-	box-shadow: var(--ring);
-	padding: 18px;
-}
-
-.proof h3 {
-	font-size: 13px;
+.more {
+	display: inline-flex;
+	align-items: center;
+	justify-self: start;
+	gap: 8px;
 	font-weight: 600;
+	text-decoration: none;
 }
 
-.proof__note {
-	color: var(--text-3);
-	font-size: 13px;
-	margin-top: 6px;
+.more .icon {
+	transition: translate 200ms var(--ease);
 }
 
-.proof__foot {
-	color: var(--text-3);
-	font-size: 12px;
-	line-height: 1.45;
-	margin-top: 16px;
-	opacity: 0.8;
+.more:hover .icon {
+	translate: 3px 0;
 }
 
-#upgrade-verdict[data-state="pass"] {
-	color: var(--text-2);
+/* -- Proof cards -------------------------------------------- */
+
+.cards {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 12px;
 }
 
-#upgrade-verdict[data-state="fail"] {
+.card {
+	display: grid;
+	align-content: start;
+	gap: 14px;
+	padding: 20px;
+	border-radius: var(--r-card);
+	background: var(--card);
+	box-shadow:
+		inset 0 0 0 1px var(--hair),
+		var(--shadow-soft);
+}
+
+.verdict {
+	font-weight: 500;
+}
+
+.verdict[data-state="pass"] {
+	color: var(--good);
+}
+
+.verdict[data-state="fail"] {
 	color: var(--bad);
 }
 
 .readout {
 	display: grid;
-	gap: 13px;
-	margin: 16px 0 0;
+	gap: 10px;
+	margin: 0;
+}
+
+.readout > div {
+	display: grid;
+	gap: 2px;
 }
 
 .readout dt {
-	color: var(--text-3);
-	font-size: 12px;
-	line-height: 1.4;
+	color: var(--ink-3);
+	font-size: 0.82rem;
 }
 
 .readout dd {
-	color: var(--accent);
-	font-family: var(--font-mono);
-	font-size: 12.5px;
-	font-variant-numeric: tabular-nums;
-	line-height: 1.45;
-	margin: 3px 0 0;
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 0.8rem;
 	overflow-wrap: anywhere;
 }
 
@@ -1545,64 +1310,407 @@ main {
 }
 
 .readout dd[data-state="off"] {
-	color: var(--text-3);
+	color: var(--ink-3);
+}
+
+.log {
+	display: grid;
+	gap: 2px;
+	max-height: 280px;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+	font-family: var(--mono);
+	font-size: 0.78rem;
+}
+
+.log:empty::before {
+	content: "Nothing yet. Play the song or click a line.";
+	color: var(--ink-3);
+	font-family: var(--body);
+	font-size: 0.9rem;
+}
+
+.log li {
+	display: grid;
+	grid-template-columns: 3.5em 9.5em minmax(0, 1fr);
+	gap: 8px;
+	padding: 6px 8px;
+	border-radius: 8px;
+}
+
+.log li:nth-child(odd) {
+	background: var(--paper);
+}
+
+.log__at {
+	color: var(--ink-3);
+	font-variant-numeric: tabular-nums;
+}
+
+.log b {
+	font-weight: 500;
+}
+
+.log li[data-phase="error"] b,
+.log li[data-phase="error"] .log__detail {
+	color: var(--bad);
+}
+
+.log__detail {
+	color: var(--ink-2);
+	overflow-wrap: anywhere;
 }
 
 /* -- Colophon -------------------------------------------- */
 
 .colophon {
-	align-items: center;
-	color: var(--text-3);
-	display: flex;
-	flex-wrap: wrap;
-	gap: 14px 32px;
-	justify-content: space-between;
-	padding: 28px var(--gutter) 40px;
-}
-
-.colophon p {
-	font-size: 13px;
+	display: grid;
+	gap: 16px;
 	max-width: 62ch;
+	padding-block: 40px 56px;
+	border-top: 1px solid var(--hair);
+	color: var(--ink-3);
+	font-size: 0.9rem;
 }
 
-/* The pill the rest of the ecosystem carries, in this page's tokens. */
 .ecosystem {
-	align-items: center;
-	background: var(--surface);
-	border-radius: 999px;
-	box-shadow: var(--ring);
-	color: var(--text-3);
 	display: inline-flex;
-	flex: none;
-	font-size: 13px;
-	gap: 9px;
-	padding: 7px 15px 7px 8px;
+	align-items: center;
+	justify-self: start;
+	gap: 10px;
+	min-height: 40px;
 	text-decoration: none;
-	transition-duration: 150ms;
-	transition-property: background-color, color;
-	transition-timing-function: var(--ease);
 }
 
-.ecosystem:hover {
-	background: var(--surface-raised);
-	color: var(--text-2);
-}
-
-/* Round rather than the squircle the top bar's copy of this mark wears: this one sits inside a
-   999px pill, so a circle is what stays concentric with the shape around it. */
 .ecosystem img {
-	border-radius: 1000rem;
-	outline: 1px solid oklch(1 0 0 / 0.1);
+	border-radius: 50%;
+	outline: 1px solid oklch(0 0 0 / 0.1);
 	outline-offset: -1px;
 }
 
 .ecosystem strong {
-	color: var(--text-2);
+	color: var(--ink-2);
 	font-weight: 600;
+	transition: color 150ms var(--ease-out);
 }
 
 .ecosystem:hover strong {
-	color: var(--text);
+	color: var(--ink);
+}
+
+/* -- Stage -------------------------------------------- */
+
+.stage {
+	grid-area: stage;
+	align-self: start;
+	position: sticky;
+	top: var(--inset);
+	display: grid;
+	grid-template-rows: auto auto minmax(0, 1fr) auto;
+	grid-template-areas: "rail" "caption" "view" "transport";
+	height: calc(100dvh - var(--inset) * 2);
+	margin: var(--inset) var(--inset) var(--inset) 0;
+	border-radius: var(--r-panel);
+	background:
+		radial-gradient(90% 70% at var(--glow-x) 108%, var(--glow-a), transparent 70%),
+		radial-gradient(70% 60% at 100% -10%, var(--glow-b), transparent 70%),
+		var(--panel);
+	box-shadow:
+		0 1px 0 oklch(1 0 0 / 0.06) inset,
+		0 30px 60px -30px oklch(0.2 0.03 30 / 0.5);
+	color: var(--on-panel);
+	isolation: isolate;
+	overflow: hidden;
+	color-scheme: dark;
+	transition:
+		--glow-a 1100ms var(--ease),
+		--glow-b 1100ms var(--ease),
+		--glow-x 1100ms var(--ease);
+
+	--glow-a: oklch(0.6 0.17 32 / 0.34);
+	--glow-b: oklch(0.7 0.12 65 / 0.14);
+	--glow-x: 12%;
+
+	/* The module's own tokens, sized for this panel. A theme sets the same names on
+	   `.blyrics-container`, which is nearer, so it wins wherever it says something. */
+	--blyrics-font-family: "Satoshi", ui-sans-serif, sans-serif;
+	--blyrics-font-size: clamp(1.75rem, 3.4vw, 3.5rem);
+	--blyrics-translated-font-size: calc(var(--blyrics-font-size) * 0.48);
+	--blyrics-font-weight: 700;
+	--blyrics-line-height: 1.14;
+	--blyrics-padding: 0.72rem;
+	--blyrics-blur-amount: 0px;
+	--blyrics-lyric-active-color: oklch(0.97 0.003 40);
+	--blyrics-lyric-inactive-color: oklch(0.97 0.003 40 / 0.22);
+	--blyrics-translated-color: oklch(0.97 0.003 40 / 0.6);
+
+	/* The word animation the package defaults to is a scaleX nudge, and at this size that reads as
+	   the letters stretching. A syllable that lifts a fraction of its height and stays lifted reads
+	   as the line rising into the voice instead. */
+	--blyrics-word-wobble-transform-from: translateY(0);
+	--blyrics-word-wobble-transform-peak: translateY(-0.005em);
+	--blyrics-word-wobble-transform-settle: translateY(-0.028em);
+	--blyrics-word-wobble-transform-to: translateY(-0.0375em);
+}
+
+.stage[data-chapter="lines"] {
+	--glow-a: oklch(0.5 0.12 25 / 0.3);
+	--glow-b: oklch(0.6 0.02 40 / 0.14);
+	--glow-x: 88%;
+}
+
+.stage[data-chapter="duets"] {
+	--glow-a: oklch(0.6 0.17 32 / 0.34);
+	--glow-b: oklch(0.72 0.13 65 / 0.26);
+	--glow-x: 0%;
+}
+
+.stage[data-chapter="themes"] {
+	--glow-a: oklch(0.5 0.01 40 / 0.3);
+	--glow-b: oklch(0.5 0.01 40 / 0.15);
+	--glow-x: 50%;
+}
+
+.stage:is([data-chapter="formats"], [data-chapter="playback"], [data-chapter="reference"], [data-chapter="light-dom"]) {
+	--glow-a: oklch(0.55 0.02 40 / 0.3);
+	--glow-b: oklch(0.6 0.17 32 / 0.12);
+	--glow-x: 70%;
+}
+
+.rail {
+	grid-area: rail;
+	position: relative;
+	display: flex;
+	gap: 2px;
+	padding: 14px 16px 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.rail a {
+	position: relative;
+	z-index: 1;
+	display: grid;
+	place-items: center;
+	flex: none;
+	min-height: 40px;
+	padding-inline: 12px;
+	border-radius: 999px;
+	color: var(--on-panel-3);
+	font-size: 0.88rem;
+	font-weight: 500;
+	text-decoration: none;
+	transition: color 150ms var(--ease-out);
+}
+
+.rail a:hover,
+.rail a[aria-current] {
+	color: var(--on-panel);
+}
+
+.rail__pill {
+	top: 14px;
+	height: 40px;
+	background: oklch(1 0 0 / 0.09);
+}
+
+.caption {
+	grid-area: caption;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 14px;
+	min-height: 44px;
+	margin: 8px 28px 0;
+	border-bottom: 1px solid var(--hair-dark);
+	color: var(--on-panel-2);
+	font-size: 0.86rem;
+}
+
+.caption__label {
+	color: var(--on-panel);
+	font-weight: 600;
+}
+
+.caption__sep {
+	width: 1px;
+	height: 14px;
+	background: var(--hair-dark);
+}
+
+.view {
+	grid-area: view;
+	min-height: 0;
+	padding-inline: clamp(20px, 3vw, 44px);
+	overflow: hidden;
+	overscroll-behavior: contain;
+	scrollbar-width: none;
+	-webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 84%, transparent);
+	mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 84%, transparent);
+}
+
+.view::-webkit-scrollbar {
+	display: none;
+}
+
+[data-view-scroll="on"] .view {
+	overflow-y: auto;
+}
+
+.view braccato-lyrics {
+	transition-property: opacity, translate, filter;
+	transition-duration: 460ms;
+	transition-timing-function: var(--ease);
+}
+
+/* Song, timing and theme changes cross fade the view: out quickly, swapped while hidden, then in. */
+.view[data-swapping] braccato-lyrics {
+	opacity: 0;
+	translate: 0 12px;
+	filter: blur(8px);
+	transition-duration: 200ms;
+	transition-timing-function: var(--ease-out);
+}
+
+.stage__status {
+	grid-area: view;
+	align-self: center;
+	justify-self: center;
+	max-width: 36ch;
+	padding: 24px;
+	color: var(--on-panel-2);
+	text-align: center;
+	white-space: pre-line;
+}
+
+.stage__status[hidden] {
+	display: none;
+}
+
+.stage__status[data-failed] {
+	color: oklch(0.8 0.12 28);
+}
+
+.resume {
+	grid-area: view;
+	align-self: end;
+	justify-self: center;
+	z-index: 1;
+	min-height: 40px;
+	margin-bottom: 16px;
+	padding-inline: 18px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--on-panel);
+	color: var(--panel);
+	font-size: 0.9rem;
+	font-weight: 600;
+	box-shadow: 0 8px 24px oklch(0 0 0 / 0.4);
+	opacity: 0;
+	pointer-events: none;
+	transition:
+		opacity 200ms var(--ease-out),
+		translate 320ms var(--ease),
+		scale 150ms var(--ease-out);
+}
+
+.resume[data-shown] {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.transport {
+	grid-area: transport;
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 14px;
+	margin: 0 12px 12px;
+	padding: 8px 18px 8px 8px;
+	border-radius: 20px;
+	background: oklch(0.21 0.008 30 / 0.72);
+	box-shadow: inset 0 0 0 1px var(--hair-dark);
+	backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.transport__play {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	border: 0;
+	border-radius: 12px;
+	background: var(--accent);
+	color: var(--panel);
+	font-size: 18px;
+	transition: scale 150ms var(--ease-out);
+}
+
+.transport__song {
+	min-height: 40px;
+	max-width: 14em;
+	padding: 0 32px 0 12px;
+	border: 0;
+	border-radius: 10px;
+	background: oklch(1 0 0 / 0.06)
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath fill='%23b9b4b0' d='M213.7 101.7l-80 80a8 8 0 0 1-11.4 0l-80-80a8 8 0 0 1 11.4-11.4L128 164.7l74.3-74.4a8 8 0 0 1 11.4 11.4Z'/%3E%3C/svg%3E")
+		no-repeat right 12px center;
+	font-size: 0.92rem;
+	font-weight: 500;
+	text-overflow: ellipsis;
+	appearance: none;
+	cursor: pointer;
+	transition: background-color 150ms var(--ease-out);
+}
+
+.transport__song:hover {
+	background-color: oklch(1 0 0 / 0.1);
+}
+
+.transport__song option {
+	background: var(--panel);
+}
+
+.transport__seek {
+	--fill-color: var(--on-panel);
+	--rest-color: oklch(1 0 0 / 0.14);
+}
+
+.transport__clock {
+	color: var(--on-panel-2);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* -- Files arriving from outside -------------------------------------------- */
+
+.dropzone {
+	position: fixed;
+	inset: 0;
+	z-index: 5;
+	display: grid;
+	place-items: center;
+	background: oklch(0.975 0.002 40 / 0.8);
+	backdrop-filter: blur(12px);
+	font-family: var(--display);
+	font-size: clamp(1.5rem, 3vw, 2.25rem);
+	font-weight: 700;
+	letter-spacing: -0.03em;
+	pointer-events: none;
+}
+
+.dropzone[hidden] {
+	display: none;
+}
+
+.dropzone p {
+	padding: 40px 56px;
+	border: 2px dashed var(--ink);
+	border-radius: var(--r-panel);
 }
 
 /* -- The page reaching into the element's light DOM --------------------------------------------
@@ -1610,10 +1718,7 @@ main {
    Everything below selects a class name @braccato/core emits, from this page's own stylesheet, at
    document level. In a shadow root not one of these rules would land, and neither would the
    `@property` registrations in the package's lyrics.css. That is the whole reason the element
-   builds into itself.
-
-   Colour is left to the theme, so the theme box in the panel owns every visible colour and nothing
-   here quietly outranks it. */
+   builds into itself. */
 
 braccato-lyrics {
 	display: block;
@@ -1646,42 +1751,33 @@ braccato-lyrics {
 }
 
 /* `--blyrics-glow-color` is documented as the bloom a word earns by being held, but the package
-   hands it to every word alike, so nothing on the screen distinguishes the held ones. The engine
-   already marks them: `data-long-word` goes on any part past `blyrics-long-word-threshold`. So the
-   rest give their glow up and the held ones keep whatever colour the theme chose. */
+   hands it to every word alike. The engine already marks the held ones with `data-long-word`, so
+   the rest give their glow up and those keep whatever colour the theme chose. */
 .blyrics-word-highlight:not([data-long-word]) {
 	--blyrics-glow-color: transparent;
 }
 
-/* -- Entrances -------------------------------------------- */
+/* -- Motion -------------------------------------------- */
 
 @media (prefers-reduced-motion: no-preference) {
-	.topbar,
-	.hero__lede,
-	.install {
-		animation: rise 460ms var(--ease) both;
+	.hero > * {
+		animation: rise 900ms var(--ease) both;
 	}
 
-	.hero__lede {
-		animation-delay: 120ms;
+	.hero > :nth-child(2) {
+		animation-delay: 90ms;
 	}
 
-	.install {
-		animation-delay: 200ms;
+	.hero > :nth-child(3) {
+		animation-delay: 180ms;
 	}
 
 	/* Opacity only: the renderer measures the lines it just built, and a transform or a filter on an
 	   ancestor is not something to hand it mid-measurement. */
 	.stage {
-		animation: appear 700ms var(--ease) both;
+		animation: appear 900ms var(--ease) 120ms both;
 	}
 
-	.panel:not([hidden]) {
-		animation: fly 180ms var(--ease) both;
-	}
-
-	/* The travel only. The fade underneath it is declared unconditionally, because a cross fade is
-	   what reduced motion asks for in place of movement rather than something to take away as well. */
 	.resume {
 		translate: 0 10px;
 	}
@@ -1695,11 +1791,35 @@ braccato-lyrics {
 	}
 }
 
+@supports (animation-timeline: view()) {
+	@media (prefers-reduced-motion: no-preference) {
+		.chapter > * {
+			animation: reveal linear both;
+			animation-timeline: view();
+			animation-range: entry 10% entry 60%;
+		}
+	}
+}
+
+@keyframes reveal {
+	from {
+		opacity: 0;
+		translate: 0 28px;
+		filter: blur(6px);
+	}
+}
+
 @keyframes rise {
 	from {
-		filter: blur(4px);
 		opacity: 0;
-		translate: 0 10px;
+		translate: 0 24px;
+		filter: blur(6px);
+	}
+}
+
+@keyframes appear {
+	from {
+		opacity: 0;
 	}
 }
 
@@ -1710,16 +1830,101 @@ braccato-lyrics {
 	}
 }
 
-@keyframes appear {
-	from {
-		opacity: 0;
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	.stage,
+	.view braccato-lyrics,
+	.rail__pill,
+	.seg__thumb,
+	.switch__track::after {
+		transition: none;
 	}
 }
 
-@keyframes fly {
-	from {
-		opacity: 0;
-		scale: 0.98;
-		translate: 0 8px;
+/* -- Narrow -------------------------------------------- */
+
+@media (max-width: 900px) {
+	.layout {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"stage"
+			"story";
+	}
+
+	.stage {
+		top: 8px;
+		z-index: 2;
+		height: 46dvh;
+		margin: 8px;
+		border-radius: 22px;
+		/* Covers the gap above the sticky stage, where the story would otherwise show through. */
+		box-shadow:
+			0 -8px 0 8px var(--paper),
+			0 20px 40px -24px oklch(0.2 0.03 30 / 0.5);
+		grid-template-rows: auto minmax(0, 1fr) auto;
+		grid-template-areas: "caption" "view" "transport";
+		--blyrics-font-size: clamp(1.5rem, 6.4vw, 2rem);
+	}
+
+	.rail {
+		display: none;
+	}
+
+	.caption {
+		min-height: 36px;
+		margin: 6px 18px 0;
+		font-size: 0.8rem;
+	}
+
+	.transport {
+		gap: 10px;
+		margin: 0 8px 8px;
+		padding: 6px 12px 6px 6px;
+	}
+
+	.transport__song {
+		max-width: 8.5em;
+	}
+
+	.transport__clock {
+		font-size: 0.72rem;
+	}
+
+	.story {
+		padding-inline: 20px;
+	}
+
+	.topbar {
+		height: 64px;
+	}
+
+	.hero {
+		min-height: auto;
+		padding-block: 24px 64px;
+	}
+
+	.hero h1 {
+		font-size: clamp(2.25rem, 10vw, 3rem);
+	}
+
+	.chapter {
+		min-height: 70dvh;
+		padding-block: 48px;
+		scroll-margin-top: calc(46dvh + 24px);
+	}
+
+	.songs {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.seg label span {
+		padding-inline: 14px;
+	}
+
+	.install__command code {
+		font-size: 0.78rem;
 	}
 }

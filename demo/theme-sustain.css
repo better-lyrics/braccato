@@ -1,16 +1,12 @@
-/* The font comes with the theme, which is why this is the first line: an @import has to precede
-   every rule in the sheet it sits in, and the theme is handed over as one sheet. */
+/* The theme brings its own font. An @import has to come before every other rule. */
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap");
 
-/* Cherry-picked from the Sustain theme for Better Lyrics. Everything that named YouTube Music was
-   left behind: the player chrome, the nav bar, the artwork and the panel sizes are the extension's
-   business, not the renderer's. What is left is the part that styles what this module builds, which
-   is the part that travels. */
+/* Taken from the Sustain theme for Better Lyrics, minus the parts that style YouTube Music itself. */
 
 /* blyrics-target-scroll-pos-ratio = 0.5; */
 
 .blyrics-container {
-  /* DM Sans is drawn tight enough already, so this theme opts out of the page's default tracking. */
+  /* DM Sans is already tight, so skip the page's extra letter spacing. */
   --demo-lyric-tracking: 0;
   --blyrics-font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --blyrics-font-size: clamp(1.8rem, 4.4vw, 3rem);
@@ -26,10 +22,9 @@
   --blyrics-letter-wave-duration: 0.9s;
 }
 
-/* The signature of this theme: every line is blurred and faded by how far it sits from the one being
-   sung, so the song reads as depth rather than as a list. `.blyrics--active` follows the scroll
-   clock and drops shortly before a line stops playing, `.blyrics--animating` follows the audio
-   clock, so matching either keeps the effect steady across both. */
+/* Lines blur and fade the further they are from the one being sung. `.blyrics--active` follows the
+   scroll and ends a little before the line does, `.blyrics--animating` follows the audio, so
+   matching either keeps the effect steady. */
 
 .blyrics--line:is(.blyrics--active, .blyrics--animating) + .blyrics--line:not(:is(.blyrics--active, .blyrics--animating)) {
   opacity: 0.88;
@@ -137,7 +132,7 @@
 		transform 0.166s var(--blyrics-anim-delay, 0s) !important;
 }
 
-/* Scrolling away is a request to read, so the depth effect gets out of the way. */
+/* When the reader scrolls away, drop the blur so every line is readable. */
 
 .blyrics-user-scrolling .blyrics--line {
   filter: none !important;
@@ -169,7 +164,7 @@
   transition: all 0.3s ease;
 }
 
-/* Only a word held past blyrics-long-word-threshold earns the glow. */
+/* Only words held longer than blyrics-long-word-threshold glow. */
 
 .blyrics-word-highlight {
   --blyrics-glow-color: color(display-p3 1 1 1 / 0.0001);
@@ -179,10 +174,9 @@
   --blyrics-glow-color: color(display-p3 1 1 1 / 1);
 }
 
-/* Where a line sits follows whoever is singing it. The renderer writes `data-agent` on every line,
-   filling it in from the neighbours for an instrumental, so this is the song's own answer rather
-   than a decision the theme makes on its behalf. The lead keeps the default edge; a second
-   vocalist answers from the other side; a group takes the middle. */
+/* Lines sit on the side of whoever sings them. The renderer sets `data-agent` on every line, and
+   instrumentals copy it from their neighbours. The lead stays left, a second singer goes right, and
+   a group sits in the middle. */
 
 .blyrics--line[data-agent="v2"] {
   text-align: right;

@@ -3,7 +3,6 @@
 
 .blyrics-container {
   --blyrics-font-weight: 700;
-  --blyrics-lyric-active-color: oklch(0.96 0.09 96);
   --blyrics-animate-word-wobble: 0;
   --blyrics-animate-highlight-swipe: 0;
   --blyrics-animate-line-scale: 0;

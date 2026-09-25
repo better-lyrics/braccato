@@ -68,7 +68,7 @@ export function parseLyrics(parsers, text, durationMs) {
   const lyrics = parser.parse(text, durationMs > 0 ? durationMs : ASSUMED_DURATION_MS);
 
   if (lyrics.length === 0 || lyrics.every(line => String(line.words ?? "").trim() === "")) {
-    throw new Error(`Read as ${format}, and no lines came out of it.`);
+    throw new Error(`Read as ${format}, but no lines came out.`);
   }
 
   return { lyrics, format };
