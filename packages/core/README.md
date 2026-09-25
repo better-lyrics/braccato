@@ -242,7 +242,8 @@ pair snaps at the halfway point instead of flowing.
 
 Given `songwriters`, the view ends with `A, B & C` after the last line. It sits dim through the song,
 and once the last line has ended it brightens and takes the scroll focus, the way Apple Music closes a
-song. Seeking back hands the focus to the lines again. Unsynced lyrics have no end, so their credits
+song. The scroll never carries the last sung line out of view to do it, so a long list of writers
+settles below that line rather than centred. Seeking back hands the focus to the lines again. Unsynced lyrics have no end, so their credits
 show at full strength from the start.
 
 | Custom property                      | Default          | What it sets                                         |

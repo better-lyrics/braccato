@@ -1252,6 +1252,16 @@ assert.equal(
   "Given an instrumental outro, When the last sung line has ended, Then the credits take the focus without waiting out the outro"
 );
 
+const tallCreditsContainer = layOutCredits(VIEWPORT_HEIGHT_PX);
+tickCredits(LAST_LINE_START_S);
+tickCredits(SONG_ENDED_S);
+
+assert.ok(
+  tallCreditsContainer.dataset.creditsFocused === "true" &&
+    creditsEngine.scrollPos === (LINE_SYNCED_LYRICS.length - 1) * CREDITS_LINE_HEIGHT_PX,
+  "Given credits too tall to centre without scrolling the last line away, When they take the focus, Then the view stops with that line's top still in view"
+);
+
 creditsEngine.destroy();
 
 console.log(
