@@ -22,6 +22,7 @@ export const PACKAGE = {
   version: corePackage.version,
   npmHref: "https://www.npmjs.com/package/@braccato/core",
   repoHref: "https://github.com/better-lyrics/braccato/tree/master/packages/core",
+  docsHref: "https://docs.betterlyrics.org/braccato",
 };
 
 export const INSTALLERS = [
@@ -43,7 +44,7 @@ export const SNIPPETS = {
   import "@braccato/core/styles/lyrics.css";
   import "@braccato/core/styles/instrumental.css";
 
-  // The array is the interface. Nothing in the package produces one for you.
+  // You build this array. The package doesn't read lyric files.
   document.querySelector("braccato-lyrics").lyrics = [
     {
       startTimeMs: 3000,
@@ -66,7 +67,7 @@ const player = document.querySelector("#player");
 
 const text = await fetch("song.ttml").then(response => response.text());
 
-// TTML, LRC, SRT, QRC and plain text, picked by reading the file.
+// Works out whether it is TTML, LRC, SRT, QRC or plain text.
 const parser = detectParser(text);
 view.lyrics = parser.parse(text, player.duration * 1000);`,
 
@@ -92,76 +93,76 @@ export const PROPERTIES = [
     type: "Lyric[] | null",
     writable: true,
     summary:
-      "The song. Null means it was never given one, and an empty array clears the view, so there is a way to say both. Nothing in the package parses LRC, TTML or anyone's JSON, so building the array is yours.",
+      "The song, as an array of lines. null means none was set, and an empty array clears the view. The package doesn't read LRC, TTML or any other format, so you build the array yourself or use @braccato/parsers.",
   },
   {
     member: "lyricsOptions",
     type: "{ loaderVisible?, noLyrics?, language? }",
     writable: true,
     summary:
-      "How the lines are built. noLyrics marks a message as a placeholder rather than a song, which is what keeps passive scrolling from drifting it across the view for the length of the track.",
+      "Options for building the lines. Set noLyrics when the array is a placeholder message, not a song, so passive scroll leaves it where it is.",
   },
   {
     member: "source",
     type: "string | HTMLMediaElement | null",
     writable: true,
     summary:
-      "A selector or the media element itself. It resolves when the element connects, so a media element the parser has not reached yet is not found. Put the <audio> first, or write this from script.",
+      "A CSS selector or a media element. The selector is looked up when the element connects, so the <audio> has to be in the document already. Put it first, or set this from script.",
   },
   {
     member: "mediaElement",
     type: "HTMLMediaElement | null",
     writable: false,
-    summary: "What source resolved to. Null while the element is disconnected, and null for a selector that missed.",
+    summary: "The media element that source points at. null while disconnected, or when the selector matched nothing.",
   },
   {
     member: "currentTime",
     type: "number",
     writable: true,
     summary:
-      "Seconds, not milliseconds. Writing it renders the view again, so whoever holds the clock drives the lyrics by writing this. Bind a source and it becomes an output instead, and a write is dropped.",
+      "The playback position in seconds. Set it to drive the lyrics from your own clock. Once a source is bound, the time comes from the media element and writes are ignored.",
   },
   {
     member: "playing",
     type: "boolean",
     writable: true,
     summary:
-      "A paused view animates differently from a playing one. Same bargain as currentTime once a source is bound.",
+      "Whether the clock is running. A paused view animates differently from a playing one. Like currentTime, writes are ignored once a source is bound.",
   },
   {
     member: "tickOptions",
     type: "ElementTickOptions",
     writable: true,
     summary:
-      "The rest of a tick: the four offsets subtracted from the clock before it is matched, whether passive scrolling is on, and the timestamp the clock was sampled at. Stored on write and read by the next tick.",
+      "Per-frame settings: four offsets taken off the clock, whether passive scroll is on, and when the clock was read. They apply from the next frame.",
   },
   {
     member: "theme",
     type: "string",
     writable: true,
     summary:
-      "A compiled stylesheet. The blyrics-* comments inside it are the settings; the sheet itself goes into the document head. An empty one puts every setting back to its default.",
+      "A stylesheet, as a string. Settings go in blyrics-* comments inside it, and the CSS is added to the document head. An empty string resets every setting.",
   },
   {
     member: "host",
     type: "Partial<LyricsRendererHost>",
     writable: true,
     summary:
-      "Overrides for what the renderer asks of its surroundings: is the view on screen, where does it scroll, where does a seek go, and whether to offer the reader a way back to the song. Every member has a default. Writing it while connected rebuilds the view.",
+      "Answers to what the renderer asks the page: is the view on screen, which element scrolls, how to seek, and when to show a resume button. Each has a default. Setting it while connected rebuilds the view.",
   },
   {
     member: "renderer",
     type: "LyricsRenderer | null",
     writable: false,
     summary:
-      "The renderer underneath, for the day the tag runs out. noteUserScroll, resumeAutoscroll and relayout live there, and the element reaches none of them on its own, so a page that lets people scroll or restyle the view calls them itself.",
+      "The renderer inside the element. It has noteUserScroll, resumeAutoscroll and relayout. The element never calls these for you, so if your page lets people scroll or restyle the view, call them yourself.",
   },
   {
     member: "status",
     type: "ElementStatus",
     writable: false,
     summary:
-      "idle, rendering, theme-conflict or no-browsing-context. Errors are dispatched a microtask after they happen, so this is the answer for anyone who was not listening yet.",
+      "idle, rendering, theme-conflict or no-browsing-context. Errors are dispatched a microtask late, so check this if you started listening afterwards.",
   },
 ];
 
@@ -173,24 +174,25 @@ export const ATTRIBUTES = [
   {
     attribute: "source",
     writes: "source",
-    summary: "The selector form only. Setting it to another selector moves the binding, and removing it unbinds.",
+    summary: "Selector only. Change it to bind somewhere else, remove it to unbind.",
   },
   {
     attribute: "theme",
     writes: "theme",
     summary:
-      "A whole stylesheet in an attribute value. It works, and it is the shortest proof that markup written before the module loaded still arrives, but nobody would ship a theme this way.",
+      "A whole stylesheet in an attribute. It works, and it shows that markup written before the module loads still applies, but set the property in real code.",
   },
   {
     attribute: "current-time",
     writes: "currentTime",
     summary:
-      "Seconds. A value that does not parse as a number is ignored rather than read as zero, so a half typed attribute cannot send the song back to the top.",
+      "Seconds. A value that isn't a number is ignored, not read as zero, so a half-typed value won't jump back to the start.",
   },
   {
     attribute: "playing",
     writes: "playing",
-    summary: 'An ordinary boolean attribute: its presence is what counts, so playing="false" is playing.',
+    summary:
+      'A normal boolean attribute: if it is there, the view is playing. playing="false" still counts as playing.',
   },
 ];
 
@@ -200,25 +202,24 @@ export const EVENTS = [
   {
     event: "braccato:lyrics-loaded",
     detail: "{ lineCount, syncType }",
-    summary:
-      "Lyrics were applied. A theme change that alters how lines are built rebuilds the song and reports itself the same way, so this counts rebuilds as well as songs.",
+    summary: "Lyrics were applied. A theme change that rebuilds the lines fires it too.",
   },
   {
     event: "braccato:line-click",
     detail: "{ timeS }",
-    summary: "A line was clicked. The seek has already reached the bound media element by the time you hear about it.",
+    summary: "A line was clicked. The media element has already seeked when this fires.",
   },
   {
     event: "braccato:scroll-state",
     detail: "{ userScrolling }",
     summary:
-      "Autoscroll stopped following the song, or started again. The same news host.setResumeAffordanceVisible carries, so take whichever suits. Both stay quiet until you wire renderer.noteUserScroll yourself, which the element never does.",
+      "Autoscroll stopped following the song, or started again. host.setResumeAffordanceVisible hears the same thing. Neither fires until you call renderer.noteUserScroll, which the element doesn't do for you.",
   },
   {
     event: "braccato:error",
     detail: "{ phase, error }",
     summary:
-      "Connecting, resolving a source, or applying lyrics or a theme went wrong. Nothing thrown by a tick lands here: sixty error events a second would bury the one that mattered.",
+      "Connecting, finding the source, or applying lyrics or a theme failed. Errors inside animation frames aren't sent here, since that could mean sixty a second.",
   },
 ];
 
@@ -228,29 +229,28 @@ export const EVENTS = [
 // checked, because a theme selects the value and only the constant is greppable.
 export const CLASS_NAMES = [
   { constant: "LYRICS_CLASS", value: "blyrics-container", summary: "The view. One per renderer." },
-  { constant: "LINE_CLASS", value: "blyrics--line", summary: 'One line, carrying its own dir="auto".' },
-  { constant: "CURRENT_LYRICS_CLASS", value: "blyrics--active", summary: "The line the song is on right now." },
-  { constant: "WORD_CLASS", value: "blyrics--word", summary: "One word, and the unit the sweep animates." },
+  { constant: "LINE_CLASS", value: "blyrics--line", summary: 'One line. Each has dir="auto".' },
+  { constant: "CURRENT_LYRICS_CLASS", value: "blyrics--active", summary: "The line being sung." },
+  { constant: "WORD_CLASS", value: "blyrics--word", summary: "One word. The sweep moves word by word." },
   {
     constant: "BACKGROUND_LYRIC_CLASS",
     value: "blyrics-background-lyric",
-    summary: "A background vocal, sung over the line it answers.",
+    summary: "A background vocal, shown under the line it answers.",
   },
   {
     constant: "USER_SCROLLING_CLASS",
     value: "blyrics-user-scrolling",
-    summary: "Set while a reader has scrolled away and autoscroll is waiting.",
+    summary: "Set while the reader has scrolled away and autoscroll is paused.",
   },
   {
     constant: "TRANSLATED_LYRICS_CLASS",
     value: "blyrics--translated",
-    summary: "A translation hung off a line that was already built.",
+    summary: "A translation added to a line after it was built.",
   },
   {
     constant: "CUSTOM_THEME_STYLE_ID",
     value: "blyrics-custom-style",
-    summary:
-      "The id of the <style> the theme lands in. Findable on purpose, so a second view can be handed the stylesheet the first one is running.",
+    summary: "The id of the <style> element the theme goes into. Read it to give a second view the same stylesheet.",
   },
 ];
 
@@ -265,75 +265,75 @@ export const THEME_SETTINGS = [
     key: "blyrics-target-scroll-pos-ratio",
     fallback: "0.37",
     rebuilds: false,
-    summary: "Where the active line sits, measured down from the top of the view. 0 is the top, 1 the bottom.",
+    summary: "Where the active line sits in the view. 0 is the top, 1 the bottom.",
   },
   {
     key: "blyrics-disable-richsync",
     fallback: "false",
     rebuilds: true,
-    summary: "Drops syllable timing and lights whole lines instead, however finely timed the array was.",
+    summary: "Ignores syllable timing and lights whole lines instead.",
   },
   {
     key: "blyrics-long-word-threshold",
     fallback: "1500",
     rebuilds: true,
-    summary: "Milliseconds a word has to be held before it earns the glow.",
+    summary: "How long a word has to be held, in milliseconds, before it glows.",
   },
   {
     key: "blyrics-long-word-wrap-threshold",
     fallback: "10",
     rebuilds: true,
-    summary: "Characters past which a held word is split, so the glow follows the letters rather than the whole word.",
+    summary: "Held words longer than this many characters are split, so the glow moves across the letters.",
   },
   {
     key: "blyrics-line-synced-animation-delay",
     fallback: "50",
     rebuilds: true,
-    summary: "Milliseconds a line-synced line takes to light up, since there is no word timing to follow.",
+    summary: "How long a line-synced line takes to light up, in milliseconds.",
   },
   {
     key: "blyrics-swipe-lead-ratio",
     fallback: "0.1",
     rebuilds: false,
-    summary: "How far into a word the sweep starts, as a fraction of that word's length.",
+    summary: "How far into a word the sweep starts, as a fraction of the word's duration.",
   },
   {
     key: "blyrics-swipe-duration-ratio",
     fallback: "1.6",
     rebuilds: false,
-    summary: "How long the sweep runs, in multiples of the word's own length. Above 1 it overruns into the next word.",
+    summary: "How long the sweep runs, as a multiple of the word's duration. Above 1 it runs into the next word.",
   },
   {
     key: "blyrics-lyric-ending-threshold-s",
     fallback: "0.5",
     rebuilds: false,
-    summary: "Seconds before a line ends at which it starts handing over to the next one.",
+    summary: "How many seconds before a line ends it starts handing over to the next one.",
   },
   {
     key: "blyrics-early-scroll-consider-s",
     fallback: "0.54",
     rebuilds: false,
     summary:
-      "Seconds of lookahead when a lyric triggers a scroll. Entering the window alone does not scroll, and included lines do not scroll again at their start. Independent of animation duration; there is no scroll gate or queue.",
+      "How many seconds ahead a line can trigger a scroll. Being inside the window doesn't scroll on its own, and a line that was already scrolled to doesn't scroll again when it starts. Scrolls never wait for an animation to finish.",
   },
   {
     key: "blyrics-passive-scroll-enabled",
     fallback: "true",
     rebuilds: false,
-    summary: "Whether unsynced lyrics drift at all. Only they read it; a timed song ignores it.",
+    summary: "Whether unsynced lyrics drift. Timed songs ignore it.",
   },
   {
     key: "blyrics-passive-scroll-seconds-per-line",
     fallback: "3.5",
     rebuilds: false,
-    summary: "How long a drifting view spends on each line.",
+    summary: "How long a drifting view stays on each line.",
   },
   {
     key: "blyrics-line-scroll-duration",
-    fallback: "a calc() off the line's distance from the active one",
+    fallback: "a calc() based on distance from the active line",
     rebuilds: false,
     summary:
-      "A CSS time rather than a number. Lines further from the active one take longer, and this is that curve. Animations overlap additively; their duration does not delay the next scroll.",
+      "A CSS time, not a number. Lines further from the active one take longer. A new scroll starts right away and adds to any that are still running.",
   },
 ];
 
@@ -344,20 +344,20 @@ export const CUSTOM_PROPERTIES = [
   {
     property: "--blyrics-font-family",
     summary:
-      "Overrides the default font stack. The default resolves separately for each lyric and translation language.",
+      "Replaces the default font stack, which otherwise picks a font for each language in the lyrics and translations.",
   },
-  { property: "--blyrics-font-size", summary: "Everything else is sized off it, including the instrumental dots." },
-  { property: "--blyrics-line-height", summary: "Unitless, so it follows the font size." },
+  { property: "--blyrics-font-size", summary: "Most other sizes follow it, including the instrumental dots." },
+  { property: "--blyrics-line-height", summary: "Unitless, so it scales with the font size." },
   {
     property: "--blyrics-padding",
-    summary: "Vertical room around each line, and the thing to reach for before line-height.",
+    summary: "Space above and below each line. Try this before line-height.",
   },
   { property: "--blyrics-lyric-active-color", summary: "The line being sung." },
   { property: "--blyrics-lyric-inactive-color", summary: "Every other line." },
   {
     property: "--blyrics-glow-color",
     summary:
-      "The bloom under a word. Every word is given it, so a theme that wants it to mean something selects on data-long-word, which the module sets on any part held past blyrics-long-word-threshold. This page does that.",
+      "The glow behind a word. Every word gets it. To glow only held words, select data-long-word, which is set on words held past blyrics-long-word-threshold. This page does that.",
   },
 ];
 
@@ -366,15 +366,14 @@ export const CUSTOM_PROPERTIES = [
 export const STYLESHEETS = [
   {
     file: "variables.css",
-    summary: "Every --blyrics-* default. It goes first, because the other two read from it.",
+    summary: "Every --blyrics-* default. Load it first, since the other two use it.",
   },
   {
     file: "lyrics.css",
-    summary:
-      "The container, the lines, the words and the sweep, plus two @property registrations the word animation interpolates through.",
+    summary: "The container, lines, words and sweep, plus two @property registrations the word animation needs.",
   },
   {
     file: "instrumental.css",
-    summary: "The waveform that fills a bar nobody sings over, and the animation that walks it.",
+    summary: "The waveform shown during a bar with no singing, and its animation.",
   },
 ];
