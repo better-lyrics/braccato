@@ -51,7 +51,7 @@
 	);
 
 	--blyrics-credits-label: "Written by";
-	--blyrics-credits-font-size: max(0.7em, 10px);
+	--blyrics-credits-font-size: max(0.4em, 12px);
 	--blyrics-credits-opacity: 0.2;
 	--blyrics-credits-focused-opacity: 0.85;
 

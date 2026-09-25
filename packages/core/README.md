@@ -248,7 +248,7 @@ show at full strength from the start.
 | Custom property                      | Default          | What it sets                                         |
 | ------------------------------------ | ---------------- | ---------------------------------------------------- |
 | `--blyrics-credits-label`            | `"Written by"`   | The words before the names. Localise it here.        |
-| `--blyrics-credits-font-size`        | `max(0.7em, 10px)` | The size of the whole line.                        |
+| `--blyrics-credits-font-size`        | `max(0.4em, 12px)` | The size of the whole line.                        |
 | `--blyrics-credits-opacity`          | `0.2`            | While the song plays.                                |
 | `--blyrics-credits-focused-opacity`  | `0.85`           | Once the song has ended.                             |
 
