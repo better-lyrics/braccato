@@ -55,7 +55,9 @@ jobs:
       - name: Version and publish
         id: version
         run: |
-          pnpm changeset version
+          if find .changeset -name '*.md' ! -name README.md | grep -q .; then
+            pnpm changeset version
+          fi
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
             git commit -m "chore: version packages [skip ci]"
