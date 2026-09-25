@@ -340,6 +340,26 @@ describe("LRCParser.metadata", () => {
 		expect(LRCParser.metadata("[lr:B]\n[au:A]\n[00:01.00]x").songwriters).toEqual(["B", "A"]);
 	});
 
+	it("reads the lyricist and composer from timed credit lines", () => {
+		const lrc = "[00:00.00] 作词 : 周杰伦\n[00:00.50] 作曲 : 方文山\n[00:29.36]故事的小黄花";
+		expect(LRCParser.metadata(lrc).songwriters).toEqual(["周杰伦", "方文山"]);
+	});
+
+	it("reads English songwriting credit lines", () => {
+		const lrc = "[00:00.00]Written by: Max Martin/Savan Kotecha\n[00:10.00]Real lyric";
+		expect(LRCParser.metadata(lrc).songwriters).toEqual(["Max Martin", "Savan Kotecha"]);
+	});
+
+	it("reads a credit line split into enhanced word timings", () => {
+		const lrc = "[00:00.00]<00:00.00>Lyrics <00:00.50>by: <00:01.00>Sia <00:01.50>Furler\n[00:10.00]Real lyric";
+		expect(LRCParser.metadata(lrc).songwriters).toEqual(["Sia Furler"]);
+	});
+
+	it("combines the credit tags with the credit lines", () => {
+		const lrc = "[au:A]\n[00:00.00]作词：A、B\n[00:10.00]Real lyric";
+		expect(LRCParser.metadata(lrc).songwriters).toEqual(["A", "B"]);
+	});
+
 	describe("edge cases", () => {
 		it("keeps every repeated tag rather than only the last", () => {
 			expect(LRCParser.metadata("[au:A]\n[au:B]\n[00:01.00]x").songwriters).toEqual(["A", "B"]);
@@ -357,6 +377,30 @@ describe("LRCParser.metadata", () => {
 			expect(LRCParser.metadata("[by:lrc maker]\n[00:01.00]x").songwriters).toEqual([]);
 		});
 
+		it("skips credit lines that are not songwriting", () => {
+			const lrc = "[00:00.00]编曲：钟兴民\n[00:00.50]Produced by: Someone\n[00:01.00]混音：Mixer";
+			expect(LRCParser.metadata(lrc).songwriters).toEqual([]);
+		});
+
+		it("reads Traditional Chinese songwriting credits", () => {
+			expect(LRCParser.metadata("[00:00.00]作詞：周杰倫\n[00:00.50]詞：方文山").songwriters).toEqual([
+				"周杰倫",
+				"方文山",
+			]);
+		});
+
+		it("leaves a background vocal out of the names", () => {
+			expect(LRCParser.metadata("[00:00.00]作词：A [bg:(B)]").songwriters).toEqual(["A"]);
+		});
+
+		it("ignores a credit line without a time tag, which parsing drops too", () => {
+			expect(LRCParser.metadata("作词：A\n[00:01.00]x").songwriters).toEqual([]);
+		});
+
+		it("does not read a singer label or a lyric with a colon as a songwriter", () => {
+			expect(LRCParser.metadata("[00:01.00]Drake: yeah\n[00:02.00]Listen: I wrote this").songwriters).toEqual([]);
+		});
+
 		it("reads nothing from a document without credit tags or from empty input", () => {
 			expect(LRCParser.metadata("[ti:Title]\n[ar:Artist]\n[00:01.00]x").songwriters).toEqual([]);
 			expect(LRCParser.metadata("").songwriters).toEqual([]);
@@ -368,6 +412,30 @@ describe("LRCParser.metadata", () => {
 		it("keeps credit tags out of the parsed lines", () => {
 			const result = LRCParser.parse("[au:A]\n[lr:B]\n[00:01.00]Only line", 5000);
 			expect(result.map((l) => l.words)).toEqual(["Only line"]);
+		});
+
+		it("keeps timed credit lines out of the parsed lines", () => {
+			const lrc =
+				"[00:00.00] 作词 : 周杰伦\n[00:00.50] 编曲 : 钟兴民\n[00:01.00]<00:01.00>Lyrics <00:01.50>by: <00:02.00>A\n[00:10.00]Only line";
+			expect(parseLRC(lrc, 20000).map((l) => l.words)).toEqual(["Only line"]);
+		});
+
+		it("keeps a sung line whose words before the colon end in a role noun", () => {
+			expect(parseLRC("[00:01.00]我听见你的声音：别走", 5000).map((l) => l.words)).toEqual(["我听见你的声音：别走"]);
+		});
+
+		it("keeps a lead line whose background vocal holds a colon", () => {
+			expect(parseLRC("[00:01.00]hello [bg:(回声: yeah)]", 5000)).toHaveLength(1);
+		});
+
+		it("drops a Traditional Chinese credit block as a whole", () => {
+			const lrc = "[00:00.00]作詞：周杰倫\n[00:00.50]作曲：周杰倫\n[00:01.00]編曲：鍾興民\n[00:10.00]Only line";
+			expect(parseLRC(lrc, 20000).map((l) => l.words)).toEqual(["Only line"]);
+		});
+
+		it("keeps a lyric that only happens to hold a colon", () => {
+			const lrc = "[00:01.00]Drake: yeah\n[00:02.00]Listen: I wrote this";
+			expect(parseLRC(lrc, 5000).map((l) => l.words)).toEqual(["Drake: yeah", "Listen: I wrote this"]);
 		});
 	});
 });

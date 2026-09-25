@@ -1,4 +1,4 @@
-import { splitCreditNames, uniqueNames } from "./credits.js";
+import { isCreditRole, songwritersInCreditLine, uniqueNames } from "./credits.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import { stringSimilarity } from "./stringSimilarity.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
@@ -52,51 +52,6 @@ function parseWords(src: string): ParsedWord[] {
 	}
 
 	return words;
-}
-
-// -- Metadata/Credit Detection --------------------------
-
-// The credits that name who wrote the song. `编曲` (arrangement) ends in `曲` too and is not one.
-const SONGWRITER_PREFIXES = ["词", "作词", "曲", "作曲", "writtenby", "lyricsby", "composedby", "lyricist", "composer"];
-
-const CREDIT_PREFIXES = [
-	...SONGWRITER_PREFIXES,
-	"编曲",
-	"和声",
-	"混音",
-	"吉他",
-	"制作人",
-	"演唱",
-	"原唱",
-	"翻唱",
-	"后期",
-	"和音",
-	"录音",
-	"策划",
-	"伴奏",
-	"美工",
-	"海报",
-	"旁白",
-	"producedby",
-	"arrangedby",
-	"mixing",
-	"mastering",
-	"vocal",
-	"vocals",
-	"guitar",
-	"bass",
-	"drums",
-	"producer",
-	"arranger",
-];
-
-function normalizePrefix(name: string): string {
-	return name.toLowerCase().replace(/\s+/g, "");
-}
-
-function isMetadataPrefix(name: string): boolean {
-	const n = normalizePrefix(name);
-	return CREDIT_PREFIXES.includes(n) || n.endsWith("词") || n.endsWith("曲") || n.endsWith("声") || n.endsWith("音");
 }
 
 // -- Singer/Agent Detection --------------------------
@@ -185,7 +140,7 @@ function extractSinger(
 	const fullMatch = accText.match(/^([^:：]+)\s*[:：]\s*$/);
 	if (fullMatch) {
 		const singerName = fullMatch[1].trim();
-		if (isMetadataPrefix(singerName)) return false;
+		if (isCreditRole(singerName)) return false;
 		if (singerName.length > 30) return true;
 
 		parsedLine.syllables = parsedLine.syllables.slice(syllablesToRemove);
@@ -201,7 +156,7 @@ function extractSinger(
 	if (!prefixBeforeColon) return true;
 
 	const singerName = prefixBeforeColon[1].trim();
-	if (isMetadataPrefix(singerName)) return false;
+	if (isCreditRole(singerName)) return false;
 	if (singerName.length > 20) return true;
 
 	const afterColon = prefixBeforeColon[2] || "";
@@ -322,8 +277,6 @@ export function parseQRC(qrcXml: string, songDurationMs: number, metadata?: QrcM
 	return insertInstrumentalBreaks(lyrics, songDurationMs);
 }
 
-const CREDIT_LINE_REGEX = /^([^:：]+)[:：]\s*(.+)$/;
-
 function readSongwriters(qrcXml: string): string[] {
 	const names: string[] = [];
 	for (const raw of unwrapEnvelope(qrcXml).split("\n")) {
@@ -333,8 +286,7 @@ function readSongwriters(qrcXml: string): string[] {
 		const text = parseWords(lineTime.rest)
 			.map((w) => w.text)
 			.join("");
-		const credit = text.match(CREDIT_LINE_REGEX);
-		if (credit && SONGWRITER_PREFIXES.includes(normalizePrefix(credit[1]))) names.push(...splitCreditNames(credit[2]));
+		names.push(...songwritersInCreditLine(text));
 	}
 	return uniqueNames(names);
 }
