@@ -861,6 +861,13 @@ async function importLyrics(text, label) {
   commit({ fade: true });
 }
 
+function dropImportedLyrics() {
+  state.importedLyrics = null;
+  state.importedName = "";
+  state.importedSongwriters = [];
+  report(lyricsStatus, "");
+}
+
 /** A file dropped or pasted anywhere lands here, so a failure is brought to where it is explained. */
 function revealLyricsStatus() {
   lyricsStatus.scrollIntoView({ block: "nearest" });
@@ -1498,11 +1505,8 @@ function wireControls(lineClass, lyricsClass) {
 
   timingFieldset.addEventListener("change", event => {
     state.timing = event.target.value;
-    state.importedLyrics = null;
-    state.importedName = "";
-    state.importedSongwriters = [];
+    dropImportedLyrics();
     state.touring = false;
-    report(lyricsStatus, "");
     commit({ fade: true });
   });
 
@@ -1539,6 +1543,7 @@ function wireControls(lineClass, lyricsClass) {
 
   seekEndingButton.addEventListener("click", () => {
     const lastLine = scoreFor("kettle").at(-1);
+    dropImportedLyrics();
     chooseSong("kettle", Math.max(0, lastLine.startTimeMs - 1500));
     startPlayback();
   });
