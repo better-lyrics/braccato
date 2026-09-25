@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitCreditNames, uniqueNames } from "../credits.js";
+import { isCreditLine, isCreditRole, songwritersInCreditLine, splitCreditNames, uniqueNames } from "../credits.js";
 
 describe("splitCreditNames", () => {
 	it("splits on slashes and commas", () => {
@@ -60,6 +60,62 @@ describe("uniqueNames", () => {
 		it("is idempotent", () => {
 			const once = uniqueNames(["B", "A", "B"]);
 			expect(uniqueNames(once)).toEqual(once);
+		});
+	});
+});
+
+describe("isCreditRole", () => {
+	it("recognises CJK and English roles whatever their spacing and case", () => {
+		expect(isCreditRole("作词")).toBe(true);
+		expect(isCreditRole(" Produced  By ")).toBe(true);
+	});
+
+	it("recognises an unlisted CJK role by the noun it ends in", () => {
+		expect(isCreditRole("填词")).toBe(true);
+	});
+
+	it("does not read a singer as a role", () => {
+		expect(isCreditRole("Drake")).toBe(false);
+		expect(isCreditRole("王力宏")).toBe(false);
+	});
+});
+
+describe("isCreditLine", () => {
+	it("recognises a credit of any role", () => {
+		expect(isCreditLine("编曲：钟兴民")).toBe(true);
+		expect(isCreditLine(" Written by: Max Martin ")).toBe(true);
+	});
+
+	describe("edge cases", () => {
+		it("rejects a lyric that only holds a colon", () => {
+			expect(isCreditLine("Listen: I wrote this")).toBe(false);
+		});
+
+		it("rejects a role with no names after it", () => {
+			expect(isCreditLine("作词：")).toBe(false);
+		});
+
+		it("rejects empty text", () => {
+			expect(isCreditLine("")).toBe(false);
+		});
+	});
+});
+
+describe("songwritersInCreditLine", () => {
+	it("lists the names a songwriting credit gives", () => {
+		expect(songwritersInCreditLine("作曲 : 周杰伦/方文山")).toEqual(["周杰伦", "方文山"]);
+		expect(songwritersInCreditLine("Lyrics by: Sia Furler")).toEqual(["Sia Furler"]);
+	});
+
+	describe("edge cases", () => {
+		it("lists nothing for a credit that is not songwriting", () => {
+			expect(songwritersInCreditLine("编曲：钟兴民")).toEqual([]);
+			expect(songwritersInCreditLine("Produced by: Someone")).toEqual([]);
+		});
+
+		it("lists nothing for a sung line or empty text", () => {
+			expect(songwritersInCreditLine("Drake: yeah")).toEqual([]);
+			expect(songwritersInCreditLine("")).toEqual([]);
 		});
 	});
 });

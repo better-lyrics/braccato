@@ -1,4 +1,4 @@
-import { splitCreditNames, uniqueNames } from "./credits.js";
+import { isCreditLine, songwritersInCreditLine, splitCreditNames, uniqueNames } from "./credits.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];
@@ -118,6 +118,7 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 
 		consumeSegment(leadText, false);
 		if (bgText !== null) consumeSegment(bgText, true);
+		if (isCreditLine(plainText)) continue;
 
 		const duration = lineEndTime - lineStartTime;
 
@@ -251,8 +252,13 @@ export const LRCParser: LyricParser = {
 	metadata(input: string): LyricMetadata {
 		const names: string[] = [];
 		for (const rawLine of input.split("\n")) {
-			const idTagMatch = rawLine.trim().match(ID_TAG_REGEX);
+			const line = rawLine.trim();
+			const idTagMatch = line.match(ID_TAG_REGEX);
 			if (idTagMatch && SONGWRITER_ID_TAGS.includes(idTagMatch[1])) names.push(...splitCreditNames(idTagMatch[2]));
+			else {
+				const text = line.replace(TIME_TAG_REGEX, "");
+				if (text !== line) names.push(...songwritersInCreditLine(text.replace(ENHANCED_WORD_REGEX, "")));
+			}
 		}
 		return { songwriters: uniqueNames(names) };
 	},
