@@ -3074,8 +3074,9 @@ export function tickView(
       scrollPos = Math.min(scrollPos, lastActiveLyric.position);
 
       const credits = engine.cachedCreditsItem;
-      if (engine.creditsFocused && credits) {
-        scrollPos = credits.position + credits.height / 2 - scrollPosOffset;
+      if (engine.creditsFocused && credits && lastSungLine) {
+        // Tall credits would otherwise carry the last line out of view while it is still being sung.
+        scrollPos = Math.min(credits.position + credits.height / 2 - scrollPosOffset, lastSungLine.position);
       }
 
       // Past either end the browser clamps the write and reports nothing, leaving the view aiming
