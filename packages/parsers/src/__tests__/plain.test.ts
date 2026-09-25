@@ -34,3 +34,13 @@ describe("PlainParser", () => {
 		});
 	});
 });
+
+describe("PlainParser.metadata", () => {
+	it("reads no songwriters, since plain text has nowhere to keep them", () => {
+		expect(PlainParser.metadata("Written by: Someone\nA line")).toEqual({ songwriters: [] });
+	});
+
+	it("reads nothing from empty input", () => {
+		expect(PlainParser.metadata("")).toEqual({ songwriters: [] });
+	});
+});

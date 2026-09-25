@@ -1,4 +1,4 @@
-export type { LyricParser, Lyric, LyricPart, SyncType } from "./types.js";
+export type { LyricMetadata, LyricParser, Lyric, LyricPart, SyncType } from "./types.js";
 export { TTMLParser, parseTTMLContent, parseTTMLTime } from "./ttml.js";
 export { LRCParser, lrcFixers, parseLRC } from "./lrc.js";
 export { SRTParser } from "./srt.js";

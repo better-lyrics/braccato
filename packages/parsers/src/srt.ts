@@ -1,4 +1,4 @@
-import type { Lyric, LyricParser } from "./types.js";
+import type { Lyric, LyricMetadata, LyricParser } from "./types.js";
 
 function parseSRTTime(timeStr: string): number {
 	const match = timeStr.trim().match(/^(\d+):(\d+):(\d+)[,.](\d+)$/);
@@ -46,5 +46,8 @@ export const SRTParser: LyricParser = {
 		}
 
 		return lyrics;
+	},
+	metadata(_input: string): LyricMetadata {
+		return { songwriters: [] };
 	},
 };

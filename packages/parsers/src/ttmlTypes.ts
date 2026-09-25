@@ -109,7 +109,7 @@ interface Songwriter {
 /**
  * A container for <songwriter> elements.
  */
-interface SongwriterContainer {
+export interface SongwriterContainer {
 	songwriter: Songwriter[];
 }
 
@@ -165,6 +165,8 @@ interface MetadataAttributes {
 	"@_id"?: string;
 	"@_lang"?: string;
 	"@_leadingSilence"?: string;
+	"@_key"?: string;
+	"@_value"?: string;
 }
 
 /**

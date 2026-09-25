@@ -9,8 +9,14 @@ export type { Lyric, LyricPart } from "@braccato/types";
 // alias so existing imports resolve.
 export type SyncType = LyricSyncType;
 
+/** Song-level credits a lyrics file carries alongside its lines. */
+export interface LyricMetadata {
+	songwriters: string[];
+}
+
 // The parser contract belongs to this package, so it stays declared here.
 export interface LyricParser {
 	parse(input: string, duration?: number): Lyric[];
+	metadata(input: string): LyricMetadata;
 	detect(input: string): boolean;
 }

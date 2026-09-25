@@ -324,3 +324,50 @@ describe("LRCParser", () => {
 		});
 	});
 });
+
+describe("LRCParser.metadata", () => {
+	it("reads the song author from [au:]", () => {
+		expect(LRCParser.metadata("[au:Freddie Mercury]\n[00:01.00]Is this the real life")).toEqual({
+			songwriters: ["Freddie Mercury"],
+		});
+	});
+
+	it("reads the lyricist from [lr:]", () => {
+		expect(LRCParser.metadata("[lr:方文山]\n[00:01.00]一").songwriters).toEqual(["方文山"]);
+	});
+
+	it("keeps the order the tags appear in", () => {
+		expect(LRCParser.metadata("[lr:B]\n[au:A]\n[00:01.00]x").songwriters).toEqual(["B", "A"]);
+	});
+
+	describe("edge cases", () => {
+		it("keeps every repeated tag rather than only the last", () => {
+			expect(LRCParser.metadata("[au:A]\n[au:B]\n[00:01.00]x").songwriters).toEqual(["A", "B"]);
+		});
+
+		it("splits a tag that lists several names", () => {
+			expect(LRCParser.metadata("[au: 周杰伦 / 方文山 ]\n[00:01.00]x").songwriters).toEqual(["周杰伦", "方文山"]);
+		});
+
+		it("names a person once when both tags credit them", () => {
+			expect(LRCParser.metadata("[au:A]\n[lr:A]\n[00:01.00]x").songwriters).toEqual(["A"]);
+		});
+
+		it("ignores [by:], which credits the file rather than the song", () => {
+			expect(LRCParser.metadata("[by:lrc maker]\n[00:01.00]x").songwriters).toEqual([]);
+		});
+
+		it("reads nothing from a document without credit tags or from empty input", () => {
+			expect(LRCParser.metadata("[ti:Title]\n[ar:Artist]\n[00:01.00]x").songwriters).toEqual([]);
+			expect(LRCParser.metadata("").songwriters).toEqual([]);
+			expect(LRCParser.metadata("[au:]\n[00:01.00]x").songwriters).toEqual([]);
+		});
+	});
+
+	describe("regressions", () => {
+		it("keeps credit tags out of the parsed lines", () => {
+			const result = LRCParser.parse("[au:A]\n[lr:B]\n[00:01.00]Only line", 5000);
+			expect(result.map((l) => l.words)).toEqual(["Only line"]);
+		});
+	});
+});

@@ -91,3 +91,15 @@ Valid line`;
 		});
 	});
 });
+
+describe("SRTParser.metadata", () => {
+	it("reads no songwriters, since SRT has nowhere to keep them", () => {
+		expect(SRTParser.metadata("1\n00:00:01,000 --> 00:00:02,000\nWritten by: Someone")).toEqual({
+			songwriters: [],
+		});
+	});
+
+	it("reads nothing from empty input", () => {
+		expect(SRTParser.metadata("")).toEqual({ songwriters: [] });
+	});
+});

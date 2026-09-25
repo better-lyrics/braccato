@@ -1,14 +1,17 @@
 import { type X2jOptions, XMLParser } from "fast-xml-parser";
+import { uniqueNames } from "./credits.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import type {
 	MetadataElement,
 	ParagraphElementOrBackground,
+	SongwriterContainer,
 	SpanElement,
 	TranslationContainer,
 	TransliterationContainer,
 	TtmlRoot,
+	TtmlRootObject,
 } from "./ttmlTypes.js";
-import type { Lyric, LyricParser, LyricPart } from "./types.js";
+import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 /**
  * Parse time in hh:mm:ss.xx or offset-time with unit indicators "h", "m", "s", "ms" (e.g 432.25s)
@@ -226,7 +229,7 @@ export interface ParsedTTML {
  */
 function findInMetadata(
 	metadataArray: MetadataElement[],
-	key: "translations" | "transliterations",
+	key: "translations" | "transliterations" | "songwriters",
 ): MetadataElement | null {
 	const direct = metadataArray.find((e) => key in e);
 	if (direct?.[key]) return direct;
@@ -242,39 +245,72 @@ function findInMetadata(
 	return null;
 }
 
-export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): ParsedTTML {
+/**
+ * Reads the document into its `<tt>` element, or null for anything that is not one.
+ *
+ * `parse` throws on a document it will not read at all, nesting past its own depth cap among them.
+ * Null is the only thing this says about input it cannot use, so a throw says it the same way rather
+ * than reaching a caller that has no channel for it.
+ */
+function readTtmlRoot(xml: string): TtmlRootObject | null {
 	const parser = new XMLParser(PARSER_OPTIONS);
 
 	// A TTML document that arrived inside a JSON string keeps its escaped quotes.
 	const cleanedXml = xml.replace(/\\"/g, '"');
 
-	// `parse` throws on a document it will not read at all, nesting past its own depth cap among
-	// them. The empty result is the only thing this function says about input it cannot use, so a
-	// throw says it the same way rather than reaching a caller that has no channel for it.
 	let rawObj: TtmlRoot;
 	try {
 		rawObj = parser.parse(declareMissingNamespaces(cleanedXml)) as TtmlRoot;
 	} catch {
-		return { lyrics: [], isWordSynced: false };
+		return null;
 	}
 
-	const ttContainer = Array.isArray(rawObj) ? rawObj.find((e) => "tt" in e) : undefined;
-	const tt = ttContainer?.tt;
+	return (Array.isArray(rawObj) ? rawObj.find((e) => "tt" in e) : undefined) ?? null;
+}
+
+function readMetadataElements(ttContainer: TtmlRootObject | null): MetadataElement[] {
+	return ttContainer?.tt?.find((e) => e.head)?.head?.find((e) => "metadata" in e)?.metadata ?? [];
+}
+
+// Apple and lrc.red keep a `<songwriters>` list inside their own metadata container; Composer writes
+// one `<composer:meta key="songwriter">` pair per name, which the namespace strip leaves as `meta`.
+function readSongwriters(metadataElements: MetadataElement[]): string[] {
+	const names: string[] = [];
+
+	const listElement = findInMetadata(metadataElements, "songwriters");
+	for (const container of (listElement?.songwriters ?? []) as SongwriterContainer[]) {
+		names.push(collectSpanText(container.songwriter));
+	}
+
+	for (const element of metadataElements) {
+		if (!("meta" in element)) continue;
+		const attributes = element[":@"];
+		const key = attributes?.["@_key"];
+		if ((key === "songwriter" || key === "songwriters") && attributes?.["@_value"]) names.push(attributes["@_value"]);
+	}
+
+	return uniqueNames(names);
+}
+
+export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): ParsedTTML {
+	const ttContainer = readTtmlRoot(xml);
+	if (!ttContainer) return { lyrics: [], isWordSynced: false };
+
+	const tt = ttContainer.tt;
 	if (!tt) return { lyrics: [], isWordSynced: false };
 
-	const ttHead = tt.find((e) => e.head)?.head;
 	const ttBodyContainer = tt.find((e) => e.body);
 	const ttBody = ttBodyContainer?.body;
 	const ttMeta = ttBodyContainer?.[":@"];
 
-	const language = ttContainer?.[":@"]?.["@_lang"] || ttMeta?.["@_lang"];
+	const language = ttContainer[":@"]?.["@_lang"] || ttMeta?.["@_lang"];
 
 	if (!ttBody) return { lyrics: [], isWordSynced: false, language };
 
 	const lyrics = new Map<string, Lyric>();
 	const lyricIds: Record<string, string[]> = {};
 
-	const metadataElements = ttHead?.find((e) => "metadata" in e)?.metadata ?? [];
+	const metadataElements = readMetadataElements(ttContainer);
 	const agentMapping = extractAgentMapping(metadataElements);
 
 	const lines = ttBody.flatMap((e) => e.div ?? []).filter((e) => e != null && "p" in e);
@@ -399,5 +435,8 @@ export const TTMLParser: LyricParser = {
 	// and a version that honoured the parameter would hand that call site a 0 song duration.
 	parse(input: string, _duration = 0): Lyric[] {
 		return parseTTMLContent(input).lyrics;
+	},
+	metadata(input: string): LyricMetadata {
+		return { songwriters: readSongwriters(readMetadataElements(readTtmlRoot(input))) };
 	},
 };

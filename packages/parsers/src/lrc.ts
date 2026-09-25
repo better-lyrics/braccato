@@ -1,6 +1,9 @@
-import type { Lyric, LyricParser, LyricPart } from "./types.js";
+import { splitCreditNames, uniqueNames } from "./credits.js";
+import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];
+// `au` is the song's author and `lr` its lyricist. `by` names whoever made the file, not a songwriter.
+const SONGWRITER_ID_TAGS = ["au", "lr"];
 
 const TIME_TAG_REGEX = /\[(\d+:\d+\.\d+)\]/g;
 const ENHANCED_WORD_REGEX = /<(\d+:\d+\.\d+)>/g;
@@ -244,5 +247,13 @@ export const LRCParser: LyricParser = {
 		const lyrics = parseLRC(input, duration);
 		lrcFixers(lyrics);
 		return lyrics;
+	},
+	metadata(input: string): LyricMetadata {
+		const names: string[] = [];
+		for (const rawLine of input.split("\n")) {
+			const idTagMatch = rawLine.trim().match(ID_TAG_REGEX);
+			if (idTagMatch && SONGWRITER_ID_TAGS.includes(idTagMatch[1])) names.push(...splitCreditNames(idTagMatch[2]));
+		}
+		return { songwriters: uniqueNames(names) };
 	},
 };
