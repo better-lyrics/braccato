@@ -106,6 +106,8 @@ const injectRomanizationsButton = document.getElementById("inject-romanizations"
 const injectTranslationsButton = document.getElementById("inject-translations");
 const injectBothButton = document.getElementById("inject-both");
 const animateDecorationsInput = document.getElementById("animate-decorations");
+const seekEndingButton = document.getElementById("seek-ending");
+const toggleCreditsButton = document.getElementById("toggle-credits");
 
 const referenceTabs = document.getElementById("reference-tabs");
 const eventLog = document.getElementById("event-log");
@@ -258,7 +260,7 @@ const TOKEN_PATTERN = new RegExp(
     // An arrow, a comparison and a dash are not a closing tag, whatever they end with.
     String.raw`(<\/?[A-Za-z][\w-]*|\/>|(?<![=!<>-])>)`,
     String.raw`\b(import|from|const|let|await|async|function|return|export|new|document|querySelector|fetch|then)\b`,
-    String.raw`\b(braccato-lyrics|startTimeMs|durationMs|lyricsOptions|tickOptions|mediaElement|currentTime|detectParser|renderer|playing|lyrics|source|status|theme|parts|words|host|parse)\b`,
+    String.raw`\b(braccato-lyrics|startTimeMs|durationMs|lyricsOptions|tickOptions|mediaElement|currentTime|detectParser|songwriters|renderer|metadata|playing|lyrics|source|status|theme|parts|words|host|parse)\b`,
     String.raw`\b(\d+(?:\.\d+)?)\b`,
     // A template literal in these samples is a stylesheet, because a theme is written as one. Its
     // contents go through the CSS pass instead of this one.
@@ -521,6 +523,7 @@ const state = {
   themeText: DEFAULT_THEME.css,
   importedLyrics: null,
   importedName: "",
+  importedSongwriters: [],
   audio: null,
   // The chapters pick the song and the timing until the reader picks either themselves. After that
   // scrolling changes nothing that is playing.
@@ -629,7 +632,13 @@ function applyLyrics() {
   if (lyrics === applied.lyrics) return;
 
   // Options first: they are read by the next build, and writing lyrics is what builds.
-  view.lyricsOptions = { noLyrics: state.importedLyrics === null && state.timing === "empty" };
+  view.lyricsOptions = {
+    noLyrics: state.importedLyrics === null && state.timing === "empty",
+    songwriters:
+      state.importedLyrics === null
+        ? SONGS.find(song => song.id === state.songId).songwriters
+        : state.importedSongwriters,
+  };
   view.lyrics = lyrics;
   applied.lyrics = lyrics;
 
@@ -845,8 +854,10 @@ async function importLyrics(text, label) {
 
   state.importedLyrics = read.lyrics;
   state.importedName = label;
+  state.importedSongwriters = read.songwriters;
   state.touring = false;
-  report(lyricsStatus, `Read ${label} as ${read.format}. ${read.lyrics.length} lines.`, "good");
+  const credits = read.songwriters.length > 0 ? ` Written by ${read.songwriters.join(", ")}.` : "";
+  report(lyricsStatus, `Read ${label} as ${read.format}. ${read.lyrics.length} lines.${credits}`, "good");
   commit({ fade: true });
 }
 
@@ -1489,6 +1500,7 @@ function wireControls(lineClass, lyricsClass) {
     state.timing = event.target.value;
     state.importedLyrics = null;
     state.importedName = "";
+    state.importedSongwriters = [];
     state.touring = false;
     report(lyricsStatus, "");
     commit({ fade: true });
@@ -1524,6 +1536,19 @@ function wireControls(lineClass, lyricsClass) {
   injectRomanizationsButton.addEventListener("click", () => toggleKinds(["romanization"]));
   injectTranslationsButton.addEventListener("click", () => toggleKinds(["translation"]));
   injectBothButton.addEventListener("click", toggleBothDecorations);
+
+  seekEndingButton.addEventListener("click", () => {
+    const lastLine = scoreFor("kettle").at(-1);
+    chooseSong("kettle", Math.max(0, lastLine.startTimeMs - 1500));
+    startPlayback();
+  });
+
+  toggleCreditsButton.addEventListener("click", () => {
+    const hidden = view.toggleAttribute("data-credits-hidden");
+    paintDecorationButton(toggleCreditsButton, !hidden, "credits");
+    // Hidden credits take up no room, so the view re-reads where its content ends.
+    view.renderer?.relayout();
+  });
 
   animateDecorationsInput.addEventListener("change", () => {
     view.style.setProperty("--blyrics-animate-decoration-entry", animateDecorationsInput.checked ? "1" : "0");

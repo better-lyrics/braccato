@@ -69,6 +69,7 @@ const text = await fetch("song.ttml").then(response => response.text());
 
 // Works out whether it is TTML, LRC, SRT, QRC or plain text.
 const parser = detectParser(text);
+view.lyricsOptions = { songwriters: parser.metadata(text).songwriters };
 view.lyrics = parser.parse(text, player.duration * 1000);`,
 
   theme: `view.theme = \`
@@ -97,10 +98,10 @@ export const PROPERTIES = [
   },
   {
     member: "lyricsOptions",
-    type: "{ loaderVisible?, noLyrics?, language? }",
+    type: "{ loaderVisible?, noLyrics?, language?, songwriters? }",
     writable: true,
     summary:
-      "Options for building the lines. Set noLyrics when the array is a placeholder message, not a song, so passive scroll leaves it where it is.",
+      "Options for building the lines. Set noLyrics when the array is a placeholder message, not a song, so passive scroll leaves it where it is. songwriters closes the view with a Written by line.",
   },
   {
     member: "source",
@@ -248,6 +249,11 @@ export const CLASS_NAMES = [
     summary: "A translation added to a line after it was built.",
   },
   {
+    constant: "CREDITS_CLASS",
+    value: "blyrics-credits",
+    summary: "The songwriter credits after the last line. The container has data-credits-focused once the song ends.",
+  },
+  {
     constant: "CUSTOM_THEME_STYLE_ID",
     value: "blyrics-custom-style",
     summary: "The id of the <style> element the theme goes into. Read it to give a second view the same stylesheet.",
@@ -272,6 +278,12 @@ export const THEME_SETTINGS = [
     fallback: "false",
     rebuilds: true,
     summary: "Ignores syllable timing and lights whole lines instead.",
+  },
+  {
+    key: "blyrics-hide-credits",
+    fallback: "false",
+    rebuilds: true,
+    summary: "Leaves the songwriter credits out of the view.",
   },
   {
     key: "blyrics-long-word-threshold",
@@ -359,6 +371,12 @@ export const CUSTOM_PROPERTIES = [
     summary:
       "The glow behind a word. Every word gets it. To glow only held words, select data-long-word, which is set on words held past blyrics-long-word-threshold. This page does that.",
   },
+  {
+    property: "--blyrics-credits-label",
+    summary: 'The words before the songwriters. "Written by" unless you localise it.',
+  },
+  { property: "--blyrics-credits-opacity", summary: "The credits while the song plays." },
+  { property: "--blyrics-credits-focused-opacity", summary: "The credits once the song has ended." },
 ];
 
 // -- Stylesheets --------------------------------------------

@@ -635,6 +635,7 @@ export const SONGS = [
     summary: "Syllable timing, two singers taking turns, and a background vocal.",
     beatMs: 750,
     bars: KETTLE,
+    songwriters: ["Mara Quill", "Jonah Pike"],
   },
   {
     id: "ring-road",
@@ -642,6 +643,7 @@ export const SONGS = [
     summary: "Faster, with more syllables per line.",
     beatMs: 500,
     bars: RING_ROAD,
+    songwriters: ["Ada Stone"],
   },
   {
     id: "the-steps",
@@ -649,6 +651,7 @@ export const SONGS = [
     summary: "Slow, with long held words that glow.",
     beatMs: 1000,
     bars: THE_STEPS,
+    songwriters: ["Theo Marsh", "Ines Vale", "Rui Okafor"],
   },
   {
     id: "the-choir",
@@ -656,6 +659,7 @@ export const SONGS = [
     summary: "Long background lines that wrap two or three times.",
     beatMs: 600,
     bars: THE_CHOIR,
+    songwriters: ["June Harrow", "Sol Ferrante"],
   },
 ];
 

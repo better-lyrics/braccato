@@ -199,6 +199,21 @@
                 </span>
               </label>
             </div>
+
+            <div class="block">
+              <h3>Credits close the song</h3>
+              <p class="hint">
+                Pass <code>songwriters</code> and the last line hands over to who wrote it. The credits wait, dim, and brighten once the song ends. One CSS rule hides them.
+              </p>
+              <div class="row">
+                <button class="chip" id="seek-ending" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#i-waveform" /></svg>Hear the ending
+                </button>
+                <button class="chip" id="toggle-credits" type="button" aria-pressed="true">
+                  <span data-label>Hide credits</span>
+                </button>
+              </div>
+            </div>
           </section>
 
           <section class="chapter" id="themes" data-chapter="themes" aria-labelledby="theme-heading">
