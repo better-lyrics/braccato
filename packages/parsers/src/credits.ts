@@ -9,6 +9,10 @@ const SONGWRITER_ROLES = [
 	"作詞",
 	"曲",
 	"作曲",
+	"词曲",
+	"詞曲",
+	"作词作曲",
+	"作詞作曲",
 	"writtenby",
 	"lyricsby",
 	"composedby",
@@ -58,7 +62,7 @@ const CREDIT_ROLES = [
 // clause such as `我听见你的声音` would read as one.
 const ROLE_NOUN_SUFFIXES = ["词", "詞", "曲", "声", "聲", "音"];
 const ROLE_NOUN_MAX_LENGTH = 4;
-const ROLE_SEPARATORS = /[/&、,，]/;
+const ROLE_SEPARATORS = /[/&、,，・·]/;
 
 function normalizeRole(role: string): string {
 	return role.toLowerCase().replace(/\s+/g, "");

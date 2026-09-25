@@ -82,6 +82,8 @@ describe("isCreditRole", () => {
 		expect(isCreditRole("Rap作词")).toBe(true);
 		expect(isCreditRole("作曲/编曲")).toBe(true);
 		expect(isCreditRole("制作人&混音")).toBe(true);
+		expect(isCreditRole("作詞・作曲")).toBe(true);
+		expect(isCreditRole("作词·作曲")).toBe(true);
 	});
 
 	it("does not read a joined singer list as a role", () => {
@@ -125,6 +127,9 @@ describe("songwritersInCreditLine", () => {
 	it("reads a songwriting role inside a compound or prefixed role", () => {
 		expect(songwritersInCreditLine("Rap作词：张三")).toEqual(["张三"]);
 		expect(songwritersInCreditLine("作曲/编曲：李四")).toEqual(["李四"]);
+		expect(songwritersInCreditLine("作詞・作曲：甲/乙")).toEqual(["甲", "乙"]);
+		expect(songwritersInCreditLine("词曲：王五")).toEqual(["王五"]);
+		expect(songwritersInCreditLine("作词作曲：赵六")).toEqual(["赵六"]);
 	});
 
 	describe("edge cases", () => {
