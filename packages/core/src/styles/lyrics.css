@@ -245,12 +245,15 @@
 
 .blyrics-credits {
 	color: var(--blyrics-ui-text-color);
-	font-size: var(--blyrics-credits-font-size);
 	opacity: var(--blyrics-credits-opacity);
 	transition: opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.blyrics-credits::before {
+.blyrics-credits__text {
+	font-size: var(--blyrics-credits-font-size);
+}
+
+.blyrics-credits__text::before {
 	content: var(--blyrics-credits-label) " ";
 }
 

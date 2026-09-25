@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { CREDITS_CLASS, LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import { CREDITS_CLASS, CREDITS_NAMES_CLASS, CREDITS_TEXT_CLASS, LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
 import {
   type AnimationEngineInstance,
   clearLyrics,
@@ -1112,6 +1112,14 @@ assert.equal(
   creditedChildren.at(-1)?.textContent,
   "Mara Quill, Jonah Pike & Ada Stone",
   "Given three songwriters, When they are joined, Then commas separate them and an ampersand joins the last two"
+);
+
+const creditsText = creditedChildren.at(-1)?.childNodes;
+assert.ok(
+  creditsText?.length === 1 &&
+    creditsText[0].classList.contains(CREDITS_TEXT_CLASS) &&
+    creditsText[0].childNodes[0]?.classList.contains(CREDITS_NAMES_CLASS),
+  "Given songwriters, When the credits are built, Then the names sit in one inner block so the credits keep the lines' em inset"
 );
 
 assert.equal(

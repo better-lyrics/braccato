@@ -10,6 +10,7 @@ export const WORD_CLASS = "blyrics--word" as const;
 export const LETTER_CLASS = "blyrics--letter" as const;
 export const FOOTER_CLASS = "blyrics-footer" as const;
 export const CREDITS_CLASS = "blyrics-credits" as const;
+export const CREDITS_TEXT_CLASS = "blyrics-credits__text" as const;
 export const CREDITS_NAMES_CLASS = "blyrics-credits__names" as const;
 
 // -- Playback state --------------------------------------------
