@@ -1,4 +1,4 @@
-import { parseQRC } from "@braccato/parsers";
+import { QRCParser, parseQRC } from "@braccato/parsers";
 import type { LyricSourceResult, ProviderFn } from "../types.js";
 
 const DEFAULT_API_URL = "https://lyrics-api.boidu.dev/qq/getLyrics";
@@ -35,6 +35,7 @@ export function createPortatoProvider(options: PortatoProviderOptions = {}): Pro
 
 		return {
 			lyrics,
+			songwriters: QRCParser.metadata(data.lyrics).songwriters,
 			source: "Better Lyrics Portato",
 			sourceHref: "https://boidu.dev/",
 			musicVideoSynced: false,

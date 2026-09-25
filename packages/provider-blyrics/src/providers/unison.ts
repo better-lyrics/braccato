@@ -1,8 +1,14 @@
-import { LRCParser, type Lyric, PlainParser, TTMLParser } from "@braccato/parsers";
+import { LRCParser, type LyricParser, PlainParser, TTMLParser } from "@braccato/parsers";
 import type { LyricSourceResult, ProviderFn } from "../types.js";
 
 const DEFAULT_API_URL = "https://unison.boidu.dev/lyrics";
 const DEFAULT_SOURCE_HREF = "https://unison.boidu.dev/";
+
+const PARSERS: Record<NonNullable<UnisonData["format"]>, LyricParser> = {
+	ttml: TTMLParser,
+	lrc: LRCParser,
+	plain: PlainParser,
+};
 
 interface UnisonData {
 	format?: "ttml" | "lrc" | "plain";
@@ -37,25 +43,15 @@ export function createUnisonProvider(options: UnisonProviderOptions = {}): Provi
 		const data: UnisonData | undefined = await response.json().then((json) => json?.data);
 		if (!data?.format || !data.lyrics) return null;
 
-		let lyrics: Lyric[];
-		switch (data.format) {
-			case "ttml":
-				lyrics = TTMLParser.parse(data.lyrics);
-				break;
-			case "lrc":
-				lyrics = LRCParser.parse(data.lyrics, ctx.duration * 1000);
-				break;
-			case "plain":
-				lyrics = PlainParser.parse(data.lyrics);
-				break;
-			default:
-				return null;
-		}
+		const parser = Object.hasOwn(PARSERS, data.format) ? PARSERS[data.format] : undefined;
+		if (!parser) return null;
 
+		const lyrics = parser.parse(data.lyrics, ctx.duration * 1000);
 		if (lyrics.length === 0) return null;
 
 		return {
 			lyrics,
+			songwriters: parser.metadata(data.lyrics).songwriters,
 			source: "Unison",
 			sourceHref,
 			cacheAllowed: false,

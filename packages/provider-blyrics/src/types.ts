@@ -3,6 +3,8 @@ import type { Lyric } from "@braccato/parsers";
 export interface LyricSourceResult {
 	lyrics: Lyric[] | null;
 	language?: string | null;
+	/** Who wrote the song, as the lyrics file credits them. Absent when the format cannot say. */
+	songwriters?: string[];
 	source: string;
 	sourceHref: string;
 	musicVideoSynced?: boolean | null;

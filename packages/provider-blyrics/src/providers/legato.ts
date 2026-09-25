@@ -32,6 +32,7 @@ export function createLegatoProvider(options: LegatoProviderOptions = {}): Provi
 
 		return {
 			lyrics,
+			songwriters: LRCParser.metadata(data.lyrics).songwriters,
 			source: "Better Lyrics Legato",
 			sourceHref: "https://boidu.dev/",
 			cacheAllowed: true,

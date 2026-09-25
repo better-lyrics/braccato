@@ -34,6 +34,7 @@ export function createLRCLibSyncedProvider(options: LRCLibProviderOptions = {}):
 			if (lyrics.length > 0) {
 				return {
 					lyrics,
+					songwriters: LRCParser.metadata(data.syncedLyrics).songwriters,
 					source: "LRCLib",
 					sourceHref: "https://lrclib.net/",
 					cacheAllowed: true,
