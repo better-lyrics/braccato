@@ -1438,7 +1438,7 @@ function startWordAnimations(
       fill: "forwards",
     };
     const wobbleStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, config.word.wobbleDurationMs);
-    for (const wordElement of [part.lyricElement, part.highlightElement]) {
+    for (const wordElement of part.wobbleElements) {
       const animation = trackLyricAnimationTiming(engine, wordElement.animate(wobbleKeyframes, wobbleOptions), {
         appliedTimingOffsetMs,
         offsetMs: 0,
