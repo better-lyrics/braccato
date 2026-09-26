@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.12.5
+
+### Patch Changes
+
+- f651ca4: Fix romanized/translated lyric text getting clipped at the bottom and adjust the romanized line box padding.
+
 ## 1.12.4
 
 ### Patch Changes
