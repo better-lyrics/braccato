@@ -117,6 +117,8 @@ export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
+  // Only a word's first syllable holds its groups, so a word split into syllables wobbles once, whole.
+  wobbleElements: HTMLElement[];
   // Set when the word's resolved glow renders nothing, so its per-frame blur is skipped.
   glowSuppressed?: boolean;
   wordState: WordState;
@@ -167,6 +169,7 @@ function newPartData(
   part: LyricPart,
   span: HTMLElement,
   highlight: HTMLElement,
+  wobbleElements: HTMLElement[],
   letterElements?: HTMLElement[],
   highlightLetterElements?: HTMLElement[]
 ): PartData {
@@ -177,6 +180,7 @@ function newPartData(
     highlightElement: highlight,
     letterElements,
     highlightLetterElements,
+    wobbleElements,
     animations: [],
     wordState: WORD_STATE_UPCOMING,
   };
@@ -422,7 +426,8 @@ function createWordGroup(
       wrapThreshold,
       perLetter
     );
-    lineData.parts.push(newPartData(token.part, span, highlight, letters, highlightLetters));
+    const wobbleElements = lyricGroup.childNodes.length === 0 ? [lyricGroup, highlightGroup] : [];
+    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters));
     lyricGroup.appendChild(span);
     highlightGroup.appendChild(highlight);
   }

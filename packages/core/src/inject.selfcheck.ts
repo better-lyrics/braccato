@@ -16,7 +16,15 @@ import {
 } from "./constants";
 import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
-import { asDocument, asElement, collectTree, FakeDocument, type FactoryName, type FakeNode } from "./selfcheck/fakeDom";
+import {
+  asDocument,
+  asElement,
+  asFakeNode,
+  collectTree,
+  FakeDocument,
+  type FactoryName,
+  type FakeNode,
+} from "./selfcheck/fakeDom";
 import { setThemeSettings } from "./themeSettings";
 import type { LyricPart } from "./types";
 
@@ -569,6 +577,57 @@ const bareSpacesIn = (root: FakeNode): FakeNode[] =>
   assert.ok(
     translationFirst.romanization < translationFirst.translation,
     "Given translation injected before romanization, When both are placed, Then romanization still sits above translation"
+  );
+}
+
+// -- A word wobbles once, as a whole, however many syllables it has --------------------------------------------
+
+for (const letterWaveSetting of ["true", "false"]) {
+  setThemeSettings(new Map([["blyrics-letter-wave", letterWaveSetting]]));
+  const wobbleDoc = new FakeDocument();
+  const wobbleElement = wobbleDoc.createElement("div");
+  const wobbleTarget = asElement<HTMLElement>(wobbleElement);
+  const wobbleLine = newLineData(wobbleTarget, 0, 4000);
+  createLyricsLine(
+    asDocument(wobbleDoc),
+    [
+      { startTimeMs: 0, words: "Sud", durationMs: 1000 },
+      { startTimeMs: 1000, words: "den", durationMs: 1000 },
+      { startTimeMs: 2000, words: "ly ", durationMs: 1000 },
+      { startTimeMs: 3000, words: "I", durationMs: 1000 },
+    ],
+    wobbleLine,
+    wobbleTarget
+  );
+  const [sud, den, ly, i] = wobbleLine.parts;
+  const groupsOf = (part: (typeof wobbleLine.parts)[number]) => [
+    part.lyricElement.parentElement,
+    part.highlightElement.parentElement,
+  ];
+
+  assert.deepEqual(
+    sud.wobbleElements,
+    groupsOf(sud),
+    `Given letter wave ${letterWaveSetting}, When a word is split into syllables, Then its first syllable wobbles the whole word`
+  );
+  assert.ok(
+    groupsOf(sud).every(group => group !== null && asFakeNode(group).classList.contains(WORD_GROUP_CLASS)),
+    `Given letter wave ${letterWaveSetting}, When a word wobbles, Then what moves is the word group on both runs`
+  );
+  assert.deepEqual(
+    [den.wobbleElements, ly.wobbleElements],
+    [[], []],
+    `Given letter wave ${letterWaveSetting}, When later syllables start, Then they do not wobble on their own and pull the word apart`
+  );
+  assert.deepEqual(
+    i.wobbleElements,
+    groupsOf(i),
+    `Given letter wave ${letterWaveSetting}, When a word has one syllable, Then it still wobbles`
+  );
+  assert.equal(
+    new Set(wobbleLine.parts.flatMap(part => part.wobbleElements)).size,
+    wobbleLine.parts.flatMap(part => part.wobbleElements).length,
+    `Given letter wave ${letterWaveSetting}, When a line is built, Then no word group is wobbled by two syllables`
   );
 }
 

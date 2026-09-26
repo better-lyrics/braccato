@@ -624,6 +624,69 @@ const THE_CHOIR = [
   { chord: "Am", instrumental: true },
 ];
 
+const STRETCH = [
+  { chord: "Am", instrumental: true },
+  {
+    chord: "Am",
+    syllables: [
+      ["Sud", A4, 1],
+      ["den", C5, 1],
+      ["ly ", A4, 1],
+      ["I", G4, 1],
+    ],
+  },
+  {
+    chord: "F",
+    syllables: [
+      ["re", G4, 0.5],
+      ["mem", A4, 2],
+      ["ber", G4, 1.5],
+    ],
+  },
+  {
+    chord: "C",
+    syllables: [
+      ["ev", E4, 1],
+      ["er", G4, 1],
+      ["y", A4, 2],
+    ],
+  },
+  {
+    chord: "G",
+    syllables: [
+      ["beau", D5, 2.5],
+      ["ti", C5, 0.5],
+      ["ful", A4, 1],
+    ],
+  },
+  {
+    chord: "Am",
+    syllables: [
+      ["so ", E4, 0.5],
+      ["slow", G4, 3.5],
+    ],
+  },
+  {
+    chord: "F",
+    syllables: [
+      ["won", C5, 0.25],
+      ["der", D5, 0.25],
+      ["ful", E5, 3.5],
+    ],
+  },
+  {
+    chord: "C",
+    syllables: [
+      ["un", A4, 1],
+      ["for", C5, 1],
+      ["get", D5, 1],
+      ["ta", C5, 0.5],
+      ["ble", A4, 0.5],
+    ],
+  },
+  { chord: "Am", instrumental: true },
+];
+
 /**
  * What the picker shows and what the audio generator walks. `beatMs` is the only tempo there is: a
  * bar is four beats, and every syllable duration below is measured in them.
@@ -660,6 +723,14 @@ export const SONGS = [
     beatMs: 600,
     bars: THE_CHOIR,
     songwriters: ["June Harrow", "Sol Ferrante"],
+  },
+  {
+    id: "stretch",
+    title: "Stretch",
+    summary: "Words drawn out over whole beats, so the swipe crosses each syllable slowly.",
+    beatMs: 1000,
+    bars: STRETCH,
+    songwriters: ["Wren Adler"],
   },
 ];
 
