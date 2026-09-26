@@ -478,13 +478,23 @@ const TIMINGS = {
         durationMs: line.durationMs,
         words: line.words,
         isInstrumental: line.isInstrumental,
+        romanization: line.romanization,
+        translations: line.translations,
       })),
   },
   plain: {
     label: "Unsynced",
     hint: "Every start time is zero, which means unsynced. Only passive scroll moves them.",
     shape: score =>
-      score.filter(line => !line.isInstrumental).map(line => ({ startTimeMs: 0, durationMs: 0, words: line.words })),
+      score
+        .filter(line => !line.isInstrumental)
+        .map(line => ({
+          startTimeMs: 0,
+          durationMs: 0,
+          words: line.words,
+          romanization: line.romanization,
+          translations: line.translations,
+        })),
   },
   empty: {
     label: "No lyrics",
@@ -762,6 +772,37 @@ function commit({ fade = false } = {}) {
 
 // -- Songs --------------------------------------------
 
+const SONG_KIND_ICONS = {
+  duet: "users",
+  tempo: "lightning",
+  held: "sparkle",
+  background: "users-three",
+  stretch: "arrows-out-line-horizontal",
+  language: "translate",
+};
+const OWN_AUDIO_ICON = "file-arrow-up";
+
+// A select without base-select shows an option's text content, so the rich markup would read as one run-on label.
+const richSongSelect = CSS.supports("appearance", "base-select");
+
+function songText(title, summary) {
+  const name = document.createElement("b");
+  name.textContent = title;
+  if (summary === undefined) return [name];
+  const blurb = document.createElement("span");
+  blurb.textContent = summary;
+  return [name, blurb];
+}
+
+function songOption(value, icon, title, summary) {
+  if (!richSongSelect) return new Option(title, value);
+  const option = document.createElement("option");
+  option.value = value;
+  option.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#i-${icon}" /></svg>`;
+  option.append(...songText(title, summary));
+  return option;
+}
+
 function renderSongs() {
   songList.replaceChildren(
     ...SONGS.map(song => {
@@ -769,35 +810,30 @@ function renderSongs() {
       button.className = "song";
       button.type = "button";
       button.value = song.id;
-
-      const title = document.createElement("b");
-      title.textContent = song.title;
-      const summary = document.createElement("span");
-      summary.textContent = song.summary;
-
-      button.append(title, summary);
+      button.append(...songText(song.title, song.summary));
       button.addEventListener("click", () => chooseSong(song.id));
       return button;
     })
   );
 
-  songSelect.replaceChildren(...SONGS.map(song => new Option(song.title, song.id)));
+  songSelect.append(...SONGS.map(song => songOption(song.id, SONG_KIND_ICONS[song.kind], song.title, song.summary)));
   songSelect.addEventListener("change", () => chooseSong(songSelect.value));
 }
 
 function paintSongSelect() {
-  let own = songSelect.querySelector("option[data-own]");
+  const own = songSelect.querySelector("option[data-own]");
   if (state.audio === null) {
     own?.remove();
     songSelect.value = state.songId;
     return;
   }
-  if (own === null) {
-    own = new Option("", "");
-    own.dataset.own = "";
-    songSelect.prepend(own);
+  // Rebuilt rather than relabelled, since setting textContent would drop the icon.
+  if (own?.textContent !== state.audio.label) {
+    own?.remove();
+    const next = songOption("", OWN_AUDIO_ICON, state.audio.label);
+    next.dataset.own = "";
+    songSelect.add(next, 0);
   }
-  own.textContent = state.audio.label;
   songSelect.value = "";
 }
 
@@ -1574,7 +1610,7 @@ const DECORATION_FADE_MS = 250;
 const DECORATION_KINDS = {
   romanization: {
     selector: ".blyrics--romanized",
-    inject: (line, pair) => injectRomanization(document, line.lyricElement, line, pair.roman),
+    inject: (line, pair) => injectRomanization(document, line.lyricElement, line, pair.roman, pair.timedRoman),
   },
   translation: {
     selector: ".blyrics--translated",
@@ -1614,7 +1650,11 @@ function showDecorations(kinds) {
   (view.renderer?.lines ?? []).forEach((line, index) => {
     const el = line.lyricElement;
     if (!el || el.dataset.instrumental) return;
-    const pair = DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
+    const lyric = view.lyrics?.[index];
+    const pair =
+      lyric?.romanization && lyric.translations?.en
+        ? { roman: lyric.romanization, timedRoman: lyric.timedRomanization, trans: lyric.translations.en }
+        : DEMO_DECORATIONS[index % DEMO_DECORATIONS.length];
     kinds.forEach(kind => DECORATION_KINDS[kind].inject(line, pair));
   });
   repositionDecorations();
@@ -1673,6 +1713,12 @@ async function boot() {
   // from where it was. An alt-clicked word arrives here too: the module tells its host that a seek
   // happened and nothing about which kind it was.
   view.addEventListener("braccato:line-click", startPlayback);
+
+  view.addEventListener("braccato:lyrics-loaded", () => {
+    if (view.lyrics?.some(line => line.romanization && line.translations?.en)) {
+      showDecorations(["romanization", "translation"]);
+    }
+  });
 
   // The renderer looks for the nearest scrolling ancestor, and the frame only scrolls when the reader
   // asks for it. `host` answers that question directly, and the element keeps its own seek and
