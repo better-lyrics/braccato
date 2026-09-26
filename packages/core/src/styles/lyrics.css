@@ -224,7 +224,7 @@
 	font-family: var(--blyrics-translated-font-family, var(--blyrics-font-family, var(--blyrics-default-font-family)));
 	font-size: var(--blyrics-translated-font-size);
 	font-weight: var(--blyrics-translated-font-weight);
-	line-height: 1.1;
+	line-height: normal;
 	margin-top: 8px;
 	max-width: 100%;
 	text-align: inherit;
@@ -275,7 +275,7 @@
 	box-sizing: border-box;
 	display: block;
 	font-size: calc(var(--blyrics-translated-font-size) / 1.25);
-	padding: 0.375rem 0.75rem;
+	padding: 0.25rem 0.75rem;
 	width: fit-content;
 }
 
