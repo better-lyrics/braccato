@@ -615,6 +615,12 @@ function retick() {
 }
 
 let pendingStartS = 0;
+let pendingStartWrite = null;
+
+function keepReaderSeek() {
+  pendingStartWrite?.abort();
+  pendingStartWrite = null;
+}
 
 function applyAudio() {
   const url = state.audio?.url ?? `/generated/${state.songId}.wav`;
@@ -633,7 +639,12 @@ function applyAudio() {
   // clock it follows reports a seek.
   const startS = pendingStartS;
   pendingStartS = 0;
-  player.addEventListener("loadedmetadata", () => (player.currentTime = startS), { once: true });
+  keepReaderSeek();
+  pendingStartWrite = new AbortController();
+  player.addEventListener("loadedmetadata", () => (player.currentTime = startS), {
+    once: true,
+    signal: pendingStartWrite.signal,
+  });
   if (wasPlaying) player.play().catch(error => report(songStatus, error.message, "bad"));
 }
 
@@ -1333,6 +1344,7 @@ function wireTransport() {
     scrubbing = false;
   });
   seekInput.addEventListener("input", () => {
+    keepReaderSeek();
     player.currentTime = Number(seekInput.value);
     paintTransport();
   });
@@ -1712,7 +1724,10 @@ async function boot() {
   // The clock has already moved by the time this fires, so the song starts from the line rather than
   // from where it was. An alt-clicked word arrives here too: the module tells its host that a seek
   // happened and nothing about which kind it was.
-  view.addEventListener("braccato:line-click", startPlayback);
+  view.addEventListener("braccato:line-click", () => {
+    keepReaderSeek();
+    startPlayback();
+  });
 
   view.addEventListener("braccato:lyrics-loaded", () => {
     if (view.lyrics?.some(line => line.romanization && line.translations?.en)) {
