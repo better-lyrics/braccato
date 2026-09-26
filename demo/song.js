@@ -65,6 +65,9 @@ export const CHORD_VOICINGS = {
 // inherits from its neighbours. Kettle is a duet so that a theme has something to align against,
 // which is the honest place for that decision: who is singing is a property of the song, not of the
 // stylesheet.
+//
+// A fourth entry on a syllable is its romanization, spaced the same way, which makes the line's
+// romanization synced. `translation` rides along beside it.
 
 const KETTLE = [
   { chord: "Am", instrumental: true },
@@ -687,6 +690,113 @@ const STRETCH = [
   { chord: "Am", instrumental: true },
 ];
 
+const YOAKE = [
+  { chord: "Am", instrumental: true },
+  {
+    chord: "Am",
+    agent: "v1",
+    translation: "until the night gives way to dawn",
+    syllables: [
+      ["夜", A4, 0.5, "yoru "],
+      ["が ", C5, 0.5, "ga "],
+      ["明", D5, 0.5, "a"],
+      ["け", C5, 0.25, "ke"],
+      ["る ", A4, 0.25, "ru "],
+      ["ま", G4, 0.5, "ma"],
+      ["で", A4, 1.5, "de"],
+    ],
+  },
+  {
+    chord: "F",
+    agent: "v1",
+    translation: "I was listening to your voice",
+    syllables: [
+      ["君", C5, 0.5, "kimi "],
+      ["の ", D5, 0.5, "no "],
+      ["声", E5, 0.5, "koe "],
+      ["を ", D5, 0.5, "wo "],
+      ["聴", C5, 0.5, "ki"],
+      ["い", A4, 0.25, "i"],
+      ["て", G4, 0.25, "te"],
+      ["い", A4, 0.5, "i"],
+      ["た", A4, 0.5, "ta"],
+    ],
+  },
+  {
+    chord: "C",
+    agent: "v2",
+    translation: "a star shining in the distant sky",
+    syllables: [
+      ["遠", E5, 0.5, "too"],
+      ["い ", D5, 0.25, "i "],
+      ["空", C5, 0.5, "sora "],
+      ["に ", A4, 0.25, "ni "],
+      ["光", C5, 0.5, "hika"],
+      ["る ", D5, 0.5, "ru "],
+      ["星", E5, 1.5, "hoshi"],
+    ],
+    echo: {
+      at: 2,
+      syllables: [
+        ["（ひ", E5, 0.5, "(hi"],
+        ["か", D5, 0.5, "ka"],
+        ["る）", C5, 1, "ru)"],
+      ],
+    },
+  },
+  {
+    chord: "G",
+    agent: "v2",
+    translation: "I wished that it would never fade",
+    syllables: [
+      ["消", D5, 0.5, "ki"],
+      ["え", C5, 0.25, "e"],
+      ["な", A4, 0.25, "na"],
+      ["い", C5, 0.5, "i "],
+      ["よ", D5, 0.25, "yo"],
+      ["う", C5, 0.25, "u "],
+      ["に", A4, 0.5, "ni "],
+      ["願", G4, 0.5, "nega"],
+      ["っ", A4, 0.25, "t"],
+      ["た", A4, 0.75, "ta"],
+    ],
+  },
+  {
+    chord: "Am",
+    agent: "v1000",
+    translation: "we sing together",
+    syllables: [
+      ["我", A4, 0.5, "wǒ"],
+      ["们 ", C5, 0.5, "men "],
+      ["一", D5, 0.5, "yì"],
+      ["起 ", E5, 0.5, "qǐ "],
+      ["唱", D5, 2, "chàng"],
+    ],
+    echo: {
+      at: 2,
+      syllables: [
+        ["（一", E5, 0.5, "(yì"],
+        ["起", D5, 0.5, "qǐ "],
+        ["唱）", C5, 1, "chàng)"],
+      ],
+    },
+  },
+  {
+    chord: "F",
+    agent: "v1000",
+    translation: "until the sky grows light",
+    syllables: [
+      ["直", C5, 0.5, "zhí"],
+      ["到", D5, 0.5, "dào "],
+      ["天", E5, 0.5, "tiān"],
+      ["亮", D5, 0.5, "liàng "],
+      ["为", C5, 0.5, "wéi"],
+      ["止", A4, 1.5, "zhǐ"],
+    ],
+  },
+  { chord: "Am", instrumental: true },
+];
+
 /**
  * What the picker shows and what the audio generator walks. `beatMs` is the only tempo there is: a
  * bar is four beats, and every syllable duration below is measured in them.
@@ -696,6 +806,7 @@ export const SONGS = [
     id: "kettle",
     title: "Kettle",
     summary: "Syllable timing, two singers taking turns, and a background vocal.",
+    kind: "duet",
     beatMs: 750,
     bars: KETTLE,
     songwriters: ["Mara Quill", "Jonah Pike"],
@@ -704,6 +815,7 @@ export const SONGS = [
     id: "ring-road",
     title: "Ring Road",
     summary: "Faster, with more syllables per line.",
+    kind: "tempo",
     beatMs: 500,
     bars: RING_ROAD,
     songwriters: ["Ada Stone"],
@@ -712,6 +824,7 @@ export const SONGS = [
     id: "the-steps",
     title: "The Steps",
     summary: "Slow, with long held words that glow.",
+    kind: "held",
     beatMs: 1000,
     bars: THE_STEPS,
     songwriters: ["Theo Marsh", "Ines Vale", "Rui Okafor"],
@@ -720,6 +833,7 @@ export const SONGS = [
     id: "the-choir",
     title: "The Choir",
     summary: "Long background lines that wrap two or three times.",
+    kind: "background",
     beatMs: 600,
     bars: THE_CHOIR,
     songwriters: ["June Harrow", "Sol Ferrante"],
@@ -728,19 +842,31 @@ export const SONGS = [
     id: "stretch",
     title: "Stretch",
     summary: "Words drawn out over whole beats, so the swipe crosses each syllable slowly.",
+    kind: "stretch",
     beatMs: 1000,
     bars: STRETCH,
     songwriters: ["Wren Adler"],
+  },
+  {
+    id: "yoake",
+    title: "Yoake",
+    summary: "Japanese and Chinese, one character per syllable, with two singers and a background vocal.",
+    kind: "language",
+    beatMs: 750,
+    bars: YOAKE,
+    songwriters: ["Aoi Mori"],
   },
 ];
 
 // -- Derivation --------------------------------------------
 
-function layParts(syllables, startMs, beatMs, isBackground) {
+function layParts(syllables, startMs, beatMs, isBackground, textIndex = 0) {
   const parts = [];
   let cursorMs = startMs;
 
-  for (const [words, , beats] of syllables) {
+  for (const syllable of syllables) {
+    const words = syllable[textIndex];
+    const beats = syllable[2];
     const durationMs = Math.round(beats * beatMs);
     parts.push({ startTimeMs: cursorMs, words, durationMs, isBackground });
     cursorMs += durationMs;
@@ -788,13 +914,19 @@ export function buildScore(songId) {
     const parts = layParts(bar.syllables, barStartMs, song.beatMs, false);
     notes.push(...layNotes(bar.syllables, barStartMs, song.beatMs, "lead"));
 
+    const echoStartMs = bar.echo ? barStartMs + bar.echo.at * song.beatMs : 0;
     if (bar.echo) {
-      const echoStartMs = barStartMs + bar.echo.at * song.beatMs;
       parts.push(...layParts(bar.echo.syllables, echoStartMs, song.beatMs, true));
       notes.push(...layNotes(bar.echo.syllables, echoStartMs, song.beatMs, "echo"));
     }
 
     const endMs = Math.max(...parts.map(part => part.startTimeMs + part.durationMs));
+    const timedRomanization = bar.syllables.every(syllable => syllable[3] !== undefined)
+      ? [
+          ...layParts(bar.syllables, barStartMs, song.beatMs, false, 3),
+          ...(bar.echo ? layParts(bar.echo.syllables, echoStartMs, song.beatMs, true, 3) : []),
+        ]
+      : null;
     lyrics.push({
       startTimeMs: barStartMs,
       durationMs: endMs - barStartMs,
@@ -806,6 +938,16 @@ export function buildScore(songId) {
       // Left off a bar that does not name one, rather than defaulted, because the renderer fills a
       // line's agent in from its neighbours and a default here would overwrite that.
       ...(bar.agent === undefined ? {} : { agent: bar.agent }),
+      ...(timedRomanization === null
+        ? {}
+        : {
+            romanization: bar.syllables
+              .map(syllable => syllable[3])
+              .join("")
+              .trimEnd(),
+            timedRomanization,
+          }),
+      ...(bar.translation === undefined ? {} : { translations: { en: bar.translation } }),
     });
 
     barStartMs += barMs;
