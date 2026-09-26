@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.12.4
+
+### Patch Changes
+
+- 60b24ce: Wobble a word once, as a whole, instead of once per syllable, so words split into syllables no longer pull apart.
+
 ## 1.12.3
 
 ### Patch Changes

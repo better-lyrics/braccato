@@ -1,6 +1,6 @@
 {
   "name": "@braccato/core",
-  "version": "1.12.3",
+  "version": "1.12.4",
   "description": "Synchronized lyrics renderer with word-by-word animations",
   "type": "module",
   "license": "MIT",
