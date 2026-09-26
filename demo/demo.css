@@ -1572,6 +1572,7 @@ button {
 	filter: blur(8px);
 	transition-duration: 200ms;
 	transition-timing-function: var(--ease-out);
+	pointer-events: none;
 }
 
 .stage__status {
