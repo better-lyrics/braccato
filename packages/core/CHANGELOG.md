@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.12.6
+
+### Patch Changes
+
+- 506784c: Sweep left-to-right words, such as the romanization of an Arabic or Hebrew line, in their own direction instead of the line's.
+
 ## 1.12.5
 
 ### Patch Changes
