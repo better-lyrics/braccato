@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LETTER_CLASS, ROMANIZED_LYRICS_CLASS, RTL_CLASS, WORD_HIGHLIGHT_CLASS } from "./constants";
@@ -12,16 +12,15 @@ import { setThemeSettings } from "./themeSettings";
 const STYLES_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "styles");
 
 function selectorsIn(css: string): string[] {
-  return css
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("}")
-    .map(block => block.split("{")[0])
+  return [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{};]+)\{/g)]
+    .map(match => match[1].trim())
+    .filter(prelude => !prelude.startsWith("@"))
     .flatMap(prelude => prelude.split(","))
     .map(selector => selector.trim())
     .filter(Boolean);
 }
 
-for (const sheet of ["lyrics.css", "instrumental.css"]) {
+for (const sheet of readdirSync(STYLES_DIR).filter(name => name.endsWith(".css"))) {
   const directionalHighlightSelectors = selectorsIn(readFileSync(resolve(STYLES_DIR, sheet), "utf8")).filter(
     selector => selector.includes(`.${RTL_CLASS}`) && selector.includes(`.${WORD_HIGHLIGHT_CLASS}`)
   );
