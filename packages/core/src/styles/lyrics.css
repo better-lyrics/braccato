@@ -156,8 +156,7 @@
 	);
 	--lyric-transition-amount-end: var(--blyrics-highlight-swipe-end-from, -0.1);
 }
-.blyrics-word-highlight.blyrics-rtl,
-.blyrics-rtl .blyrics-word-highlight {
+.blyrics-word-highlight.blyrics-rtl {
 	background-image: linear-gradient(
 		270deg,
 		var(--blyrics-lyric-active-color)
@@ -187,8 +186,7 @@
 	mask-position: 0% 0%;
 }
 
-.blyrics-word-highlight.blyrics-rtl .blyrics--letter,
-.blyrics-rtl .blyrics-word-highlight .blyrics--letter {
+.blyrics-word-highlight.blyrics-rtl .blyrics--letter {
 	-webkit-mask-image: linear-gradient(270deg, #000 0, #000 50%, #0000 calc(50% + var(--mask-fade, 3%)));
 	mask-image: linear-gradient(270deg, #000 0, #000 50%, #0000 calc(50% + var(--mask-fade, 3%)));
 	-webkit-mask-position: 100% 0%;
