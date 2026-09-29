@@ -1,5 +1,15 @@
 # @braccato/core
 
+## 1.15.0
+
+### Minor Changes
+
+- 1dbda62: Stage layout: render only the lines being sung, for subtitles over video.
+
+### Patch Changes
+
+- 1dbda62: Instrumental breaks animate in every renderer when two share a document.
+
 ## 1.14.0
 
 ### Minor Changes
