@@ -51,7 +51,6 @@ export const hideCredits = registerThemeSetting("blyrics-hide-credits", false, t
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-const RTL_SCRIPT_REGEX = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}]/u;
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const SPACE_REGEX = /^\s+$/u;
@@ -207,7 +206,7 @@ export function newLineData(lyricElement: HTMLElement, startTimeMs: number, dura
 
 function detectDirection(text: string): "rtl" | "ltr" | "auto" {
   for (const char of text) {
-    if (RTL_SCRIPT_REGEX.test(char)) return "rtl";
+    if (testRtl(char)) return "rtl";
     if (LTR_SCRIPT_REGEX.test(char)) return "ltr";
   }
   return "auto";

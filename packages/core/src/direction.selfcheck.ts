@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LETTER_CLASS, ROMANIZED_LYRICS_CLASS, RTL_CLASS, WORD_HIGHLIGHT_CLASS } from "./constants";
-import { createLyricsLine, injectRomanization, newLineData } from "./inject";
+import { applyDirection, createLyricsLine, injectRomanization, newLineData } from "./inject";
 import { asDocument, asElement, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
 import { setThemeSettings } from "./themeSettings";
 
@@ -91,6 +91,48 @@ for (const letterWave of ["true", "false"]) {
     romanizedHighlights.every(node => collectTree(node).some(hasClass(LETTER_CLASS))),
     letterWave === "true",
     `Given letter wave ${letterWave}, When the romanization is built, Then its highlights ${letterWave === "true" ? "are" : "are not"} split into letters`
+  );
+}
+
+// -- Right-to-left scripts are detected as RTL ----------------------------------------------------------------
+
+const RTL_SAMPLES: [script: string, word: string][] = [
+  ["Arabic", "حبيبي"],
+  ["Hebrew", "שלום"],
+  ["Syriac", "ܫܠܡܐ"],
+  ["Thaana", "ދިވެހި"],
+  ["N'Ko", "ߒߞߏ"],
+  ["Adlam", "\u{1E900}\u{1E923}\u{1E924}\u{1E922}\u{1E925}"],
+  ["Mandaic", "ࡌࡀࡍࡃࡀ"],
+  ["Hanifi Rohingya", "\u{10D0C}\u{10D1F}\u{10D11}"],
+  ["Samaritan", "ࠔࠌࠓ"],
+  ["Yezidi", "\u{10E80}\u{10E81}\u{10E82}"],
+  ["Mende Kikakui", "\u{1E800}\u{1E801}\u{1E802}"],
+  ["Old Hungarian", "\u{10CC0}\u{10CC1}\u{10CC2}"],
+];
+
+setThemeSettings(new Map());
+for (const [script, word] of RTL_SAMPLES) {
+  const doc = new FakeDocument();
+  const lyricElement = doc.createElement("div");
+  const target = asElement<HTMLElement>(lyricElement);
+  applyDirection(target, word);
+  createLyricsLine(
+    asDocument(doc),
+    [{ startTimeMs: 0, words: word, durationMs: 500 }],
+    newLineData(target, 0, 500),
+    target
+  );
+
+  assert.equal(
+    target.dataset.direction,
+    "rtl",
+    `Given a ${script} line, When its direction is applied, Then the line is marked RTL`
+  );
+  const highlights = collectTree(lyricElement).filter(hasClass(WORD_HIGHLIGHT_CLASS));
+  assert.ok(
+    highlights.length > 0 && highlights.every(node => node.classList.contains(RTL_CLASS)),
+    `Given a ${script} word, When built, Then its highlight is marked RTL so the swipe runs right to left`
   );
 }
 
