@@ -10,6 +10,7 @@
 // `debug` is the exception because there is nothing to default it to. A consumer that wants the
 // diagnostic overlay supplies the sink, and one that says nothing draws nothing.
 
+import { imageHighlights, refreshInstrumentalImages } from "./imageHighlights";
 import { CUSTOM_THEME_STYLE_ID } from "./constants";
 import {
   clearLyrics,
@@ -181,6 +182,20 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     host,
     rendererOptions.layout ?? "scroll"
   );
+  let imageMediaQueries: MediaQueryList[] = [];
+  const refreshImagePaint = () => refreshInstrumentalImages(engine.lyricsContainer, rendererWindow);
+  function syncImagePaint(): void {
+    if (imageHighlights.getBooleanValue() && imageMediaQueries.length === 0) {
+      imageMediaQueries = ["(dynamic-range: high)", "(forced-colors: active)"].map(query =>
+        rendererWindow.matchMedia(query)
+      );
+      for (const query of imageMediaQueries) query.addEventListener("change", refreshImagePaint);
+    } else if (!imageHighlights.getBooleanValue()) {
+      for (const query of imageMediaQueries) query.removeEventListener("change", refreshImagePaint);
+      imageMediaQueries = [];
+    }
+    refreshImagePaint();
+  }
 
   /**
    * Every re-measurement runs through here, which makes it the one place that knows the layout may
@@ -309,6 +324,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
         noLyrics: options?.noLyrics ?? false,
         songwriters: options?.songwriters,
       });
+      syncImagePaint();
       currentLyrics = lyrics;
       currentLanguage = normalizeLanguage(options?.language);
       measure();
@@ -328,6 +344,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
       // the theme it is answering about.
       const needsLyricRebuild = setThemeSettings(parseThemeConfig(css));
       adoptThemeStyleSheet(css);
+      syncImagePaint();
       // Everything the engine resolved off the document was resolved against the theme that just
       // went away.
       clearEngineStyleCaches(engine);
@@ -360,6 +377,8 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
       createdThemeStyleElement?.remove();
       createdThemeStyleElement = null;
       rendererWindow.removeEventListener("resize", remeasureForViewport);
+      for (const query of imageMediaQueries) query.removeEventListener("change", refreshImagePaint);
+      imageMediaQueries = [];
       engine.destroy();
     },
     noteUserScroll() {
