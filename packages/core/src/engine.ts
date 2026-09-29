@@ -2888,6 +2888,7 @@ const stageOpacityRegistrations = new WeakSet<object>();
 const STAGE_FADE_IN_MS = 300;
 const STAGE_FADE_IN_DELAY_MS = 70;
 const STAGE_FADE_OUT_MS = 220;
+const STAGE_EXIT_BLUR = "3px";
 const STAGE_GAP_EM = 0.32;
 
 function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement[]; items: StageItem[] } {
@@ -2970,7 +2971,12 @@ function placeStageElement(
   if (placement.visible) element.dataset.stageVisible = "";
   else if (fadeMs === 0) delete element.dataset.stageVisible;
   const fade = element.animate(
-    [{ [STAGE_OPACITY_PROPERTY]: fromOpacity }, { [STAGE_OPACITY_PROPERTY]: placement.visible ? 1 : 0 }],
+    placement.visible
+      ? [{ [STAGE_OPACITY_PROPERTY]: fromOpacity }, { [STAGE_OPACITY_PROPERTY]: 1 }]
+      : [
+          { [STAGE_OPACITY_PROPERTY]: fromOpacity, filter: "blur(0px)" },
+          { [STAGE_OPACITY_PROPERTY]: 0, filter: `blur(${STAGE_EXIT_BLUR})` },
+        ],
     {
       duration: fadeMs,
       delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,

@@ -1540,6 +1540,7 @@ assert.ok(
 );
 
 const STAGE_MOVE_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+const STAGE_EXIT_BLUR = "3px";
 const stageAnimationCount = (): number => stageLines.reduce((sum, line) => sum + line.animations.length, 0);
 
 assert.deepEqual(
@@ -1582,6 +1583,11 @@ assert.ok(
     keyframe => "--blyrics-stage-opacity" in keyframe && !("opacity" in keyframe)
   ),
   "Given a theme that forces opacity with !important, When a line fades, Then the fade drives the stage's own opacity property"
+);
+assert.deepEqual(
+  (leavingFade.keyframes as Keyframe[]).map(keyframe => keyframe.filter),
+  ["blur(0px)", `blur(${STAGE_EXIT_BLUR})`],
+  "Given a line leaving the stage, Then it softens out of focus as it fades"
 );
 leavingFade.finish();
 assert.deepEqual(
