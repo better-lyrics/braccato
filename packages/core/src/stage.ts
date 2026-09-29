@@ -104,7 +104,7 @@ export function layoutStage(
       case "queued":
         return { y: stageHeight - height + gap, visible: false };
       case "gone":
-        return { y: (previousY[index] ?? currentY) - gap, visible: false };
+        return { y: (previousY[index] ?? currentY) - gap - height / 2, visible: false };
     }
   });
 

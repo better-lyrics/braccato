@@ -2887,7 +2887,7 @@ const STAGE_OPACITY_PROPERTY = "--blyrics-stage-opacity";
 const stageOpacityRegistrations = new WeakSet<object>();
 const STAGE_FADE_IN_MS = 300;
 const STAGE_FADE_IN_DELAY_MS = 70;
-const STAGE_FADE_OUT_MS = 160;
+const STAGE_FADE_OUT_MS = 220;
 const STAGE_GAP_EM = 0.32;
 
 function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement[]; items: StageItem[] } {
@@ -2974,7 +2974,7 @@ function placeStageElement(
     {
       duration: fadeMs,
       delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,
-      easing: "ease-out",
+      easing: placement.visible ? "ease-out" : "ease",
       // Backwards too: the fade replaces one that was cancelled, and through its delay the line would
       // otherwise drop to the stylesheet's resting opacity of zero.
       fill: "both",

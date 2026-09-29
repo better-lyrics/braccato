@@ -154,7 +154,11 @@ const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1 };
 {
   const items = [line(0, 2), line(2, 4)];
   const { placements } = layoutStage(["gone", "current"], items, [metric(40), metric(40)], [460, null], GEOMETRY);
-  assert.equal(placements[0].y, 450, "a leaving line drifts up from where it was");
+  assert.equal(
+    placements[0].y,
+    430,
+    "a leaving line lifts half its height clear of where it was, out from under the incoming one"
+  );
 }
 
 console.log("stage scheduler self-check passed");
