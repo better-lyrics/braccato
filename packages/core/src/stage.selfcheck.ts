@@ -101,7 +101,7 @@ const metric = (height: number, left = 100, width = 300, originX = 0.5): StageMe
   width,
   originX,
 });
-const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1, inactiveScale: 0.95 };
+const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1 };
 
 {
   const items = [line(0, 2), line(2, 4)];
@@ -132,6 +132,11 @@ const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1, inactiveScale: 0.9
   assert.equal(placements[0].y, 410, "the overlapping line sits a gap above the current one");
   assert.ok(box !== null && box.y < 460 && box.y + box.height === 500, "an overlap grows the box upward");
   assert.ok(box !== null && box.x < 100, "and widens it to the wider line");
+  assert.deepEqual(
+    box,
+    { x: 50, y: 410, width: 400, height: 90 },
+    "regression: the overlapping line is still being sung, so the box holds it at its active size"
+  );
 }
 
 {

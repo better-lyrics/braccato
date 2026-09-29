@@ -3033,7 +3033,6 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
       stageHeight: container.clientHeight,
       gap: engine.stageFontSize * STAGE_GAP_EM,
       activeScale: getCSSNumber(engine, container, "--blyrics-active-scale", 1),
-      inactiveScale: getCSSNumber(engine, container, "--blyrics-scale", 0.95),
     }
   );
   // Only the elements whose place changed move. A line that stays where it is keeps its running

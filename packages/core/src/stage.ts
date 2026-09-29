@@ -57,7 +57,6 @@ export interface StageGeometry {
   stageHeight: number;
   gap: number;
   activeScale: number;
-  inactiveScale: number;
 }
 
 export interface StagePlacement {
@@ -113,7 +112,7 @@ export function layoutStage(
   roles.forEach((role, index) => {
     if ((role !== "current" && role !== "previous") || items[index].kind === "instrumental") return;
     const { height, left, width, originX } = metrics[index];
-    const scale = role === "current" ? geometry.activeScale : geometry.inactiveScale;
+    const scale = geometry.activeScale;
     box = unionBox(box, {
       x: left + width * originX * (1 - scale),
       y: placements[index].y + (height * (1 - scale)) / 2,
