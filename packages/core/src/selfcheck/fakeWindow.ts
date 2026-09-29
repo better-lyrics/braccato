@@ -216,6 +216,8 @@ export class FakeWindow {
   getComputedStyle(element: FakeNode): {
     overflowY: string;
     paddingBottom: string;
+    scrollPaddingBottom: string;
+    scrollPaddingTop: string;
     transform: string;
     transitionDuration: string;
     transitionTimingFunction: string;
@@ -226,6 +228,8 @@ export class FakeWindow {
     return {
       overflowY: this.overflowByElement.get(element) ?? "visible",
       paddingBottom: "0px",
+      scrollPaddingBottom: "auto",
+      scrollPaddingTop: "auto",
       transform: "none",
       // The probes the line scroll planner writes and reads back. Answering nothing leaves it on
       // the engine's own defaults, which is what a document carrying no theme resolves to.

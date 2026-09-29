@@ -176,6 +176,18 @@ before the theme is applied.
 }
 ```
 
+A view whose edges are hidden, for example faded out by a mask, declares that with
+`scroll-padding` on its scroll element. Active lines are then kept inside the band between the two
+insets instead of the full viewport. When several active lines do not fit, the one that started
+most recently keeps its top in view, and an earlier line's tail or the next line's lookahead gives way. Percentages resolve against the viewport height, and insets that
+leave no band are ignored. The insets are measured on resize and relayout, not every tick.
+
+```css
+.pip-view .scroller {
+  scroll-padding-block: 12% 16%;
+}
+```
+
 ### Autoscroll grouping and animation
 
 `blyrics-early-scroll-consider-s` is a comment setting with an independent default of `0.54`
