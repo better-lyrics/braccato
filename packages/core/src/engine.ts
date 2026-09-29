@@ -36,7 +36,15 @@ import {
 } from "./constants";
 import type { AnimationData, LineData, PartData } from "./inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
-import { layoutStage, planStage, type StageBox, type StageItem, type StageMetrics, type StagePlacement } from "./stage";
+import {
+  layoutStage,
+  planStage,
+  queuedStageY,
+  type StageBox,
+  type StageItem,
+  type StageMetrics,
+  type StagePlacement,
+} from "./stage";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsLayout, LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
 import { clamp, getRelativeLayoutBounds, positiveModulo, roundedMs, toMs } from "./util";
@@ -212,6 +220,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   animationTimingVisibilityLogUntil: number;
   layout: LyricsLayout;
   stageKey: string;
+  stageRemeasured: boolean;
+  stageHeight: number;
   stageBox: StageBox | null;
   stageMetrics: Map<HTMLElement, StageMetrics>;
   stageY: Map<HTMLElement, number>;
@@ -303,6 +313,8 @@ export function createAnimationEngineInstance(
     animationTimingVisibilityLogUntil: 0,
     layout,
     stageKey: "",
+    stageRemeasured: false,
+    stageHeight: 0,
     stageBox: null,
     stageMetrics: new Map(),
     stageY: new Map(),
@@ -477,6 +489,7 @@ function resetStage(engine: AnimationEngineInstance): void {
   engine.stageMetrics.clear();
   engine.stageY.clear();
   engine.stageKey = "";
+  engine.stageHeight = 0;
   if (engine.stageBox !== null) {
     engine.stageBox = null;
     engine.host.onStageLayout?.(null);
@@ -3011,6 +3024,7 @@ export function measureStage(engine: AnimationEngineInstance): void {
     });
   }
   engine.stageKey = "";
+  engine.stageRemeasured = true;
 }
 
 function currentTranslateY(engine: AnimationEngineInstance, element: HTMLElement, fallback: number): number {
@@ -3025,6 +3039,12 @@ interface StageMove {
   wasVisible: boolean;
   fromY: number;
   fromOpacity: number;
+}
+
+function snapStageElement(engine: AnimationEngineInstance, element: HTMLElement, y: number): void {
+  engine.stageMoves.get(element)?.cancel();
+  engine.stageMoves.set(element, element.animate([{ translate: `0 ${y}px` }], { duration: 0, fill: "forwards" }));
+  engine.stageY.set(element, y);
 }
 
 function placeStageElement(
@@ -3118,20 +3138,29 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
   const key = roles.join(",");
   if (key === engine.stageKey && !instant) return;
   engine.stageKey = key;
+  const remeasured = engine.stageRemeasured;
+  engine.stageRemeasured = false;
 
   const metrics = elements.map(
     element => engine.stageMetrics.get(element) ?? { height: 0, left: 0, width: 0, originX: 0 }
   );
+  const geometry = {
+    stageHeight: container.clientHeight,
+    gap: engine.stageFontSize * STAGE_GAP_EM,
+    activeScale: getCSSNumber(engine, container, "--blyrics-active-scale", 1),
+  };
+  // Lines sit on the floor, so a resize moves every place by how far the floor moved.
+  const floorShift = remeasured && engine.stageHeight > 0 ? geometry.stageHeight - engine.stageHeight : 0;
+  engine.stageHeight = geometry.stageHeight;
   const { placements, box } = layoutStage(
     roles,
     items,
     metrics,
-    elements.map(element => engine.stageY.get(element) ?? null),
-    {
-      stageHeight: container.clientHeight,
-      gap: engine.stageFontSize * STAGE_GAP_EM,
-      activeScale: getCSSNumber(engine, container, "--blyrics-active-scale", 1),
-    }
+    elements.map(element => {
+      const y = engine.stageY.get(element);
+      return y === undefined ? null : y + floorShift;
+    }),
+    geometry
   );
   // Only the elements whose place changed move. A line that stays where it is keeps its running
   // animations, and one already hidden stays hidden without being animated again.
@@ -3142,12 +3171,23 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
     const wasVisible = element.dataset.stageRole !== undefined && isStageRoleVisible(element.dataset.stageRole);
     const unchanged =
       previousY !== undefined && wasVisible === placement.visible && (!placement.visible || previousY === placement.y);
+    // After a resize a line still on screen, fading out included, jumps to its new place and keeps
+    // the fade and blur it was in the middle of.
+    const onScreen = placement.visible || element.dataset.stageVisible !== undefined;
+    if (remeasured && !instant && onScreen && element.dataset.stageRole === roles[index]) {
+      if (previousY !== placement.y) snapStageElement(engine, element, placement.y);
+      return;
+    }
     if (unchanged && !instant) return;
     moves.push({
       element,
       placement,
       wasVisible,
-      fromY: currentTranslateY(engine, element, previousY ?? placement.y),
+      // A queued line rises from below the floor as it is now, never from where an older size put it.
+      fromY:
+        element.dataset.stageRole === "queued" && placement.visible
+          ? queuedStageY(geometry.stageHeight, metrics[index].height, geometry.gap)
+          : currentTranslateY(engine, element, previousY ?? placement.y),
       fromOpacity: Number(engine.window.getComputedStyle(element).opacity) || 0,
     });
   });

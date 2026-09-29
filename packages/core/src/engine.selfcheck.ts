@@ -1557,6 +1557,9 @@ assert.equal(
   "Given a stage view, When it ticks again at the same time, Then no line is animated again"
 );
 
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX + 200;
+relayout(stageEngine, true);
+
 for (const time of [
   SECOND_LINE_S + 0.4,
   SECOND_LINE_S + 0.9,
@@ -1571,6 +1574,15 @@ assert.deepEqual(
   ["gone", "gone", "current"],
   "Given a stage view, When time advances into the third line, Then the second line leaves the stage"
 );
+const enteringMove = stageLines[2].animations.findLast(animation => animation.options.easing === STAGE_MOVE_EASING);
+const enteringFrom = (enteringMove?.keyframes as Keyframe[] | undefined)?.[0]?.translate;
+assert.ok(
+  enteringFrom !== undefined && Number.parseFloat(String(enteringFrom).split(" ")[1]) > VIEWPORT_HEIGHT_PX,
+  "regression: Given a stage that grew while a line waited, When the line enters, Then it rises from below the new floor, not from where the old size put it"
+);
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX;
+relayout(stageEngine, true);
+tickView(stageEngine, SECOND_LINE_S + 1.9, resolveTickOptions(newTickOptions()));
 assert.deepEqual(
   stageLines.map(line => line.dataset.stageVisible),
   [undefined, "", ""],
@@ -1600,12 +1612,52 @@ assert.ok(
   blursOf(stageLines[2]).some(filters => filters.join() === `blur(${STAGE_BLUR}),none`),
   "Given a line entering the stage, Then it blurs in as it fades, so the handoff reads as one morph"
 );
+const animationCountsBeforeResize = stageLines.map(line => line.animations.length);
+const leavingYBeforeResize = stageEngine.stageY.get(asElement<HTMLElement>(stageLines[1]))!;
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX + 200;
+relayout(stageEngine, true);
+tickView(stageEngine, SECOND_LINE_S + 1.95, resolveTickOptions(newTickOptions()));
+assert.equal(
+  stageEngine.stageY.get(asElement<HTMLElement>(stageLines[1])),
+  leavingYBeforeResize + 200,
+  "regression: Given a line still fading out, When the stage grows, Then it moves down with the floor"
+);
+const resizeAnimations = stageLines.flatMap((line, index) => line.animations.slice(animationCountsBeforeResize[index]));
+assert.ok(
+  resizeAnimations.length > 0 &&
+    resizeAnimations.every(animation => animation.options.duration === 0 && !isFade(animation) && !isBlur(animation)),
+  "regression: Given lines mid-transition, When the stage resizes, Then they snap to their new places without sliding"
+);
+assert.ok(
+  [leavingFade, ...stageLines.slice(1).flatMap(line => line.animations.filter(isBlur))].every(
+    animation => !animation.cancelled
+  ),
+  "regression: Given lines mid-transition, When the stage resizes, Then their fades and blurs keep running"
+);
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX;
+relayout(stageEngine, true);
+tickView(stageEngine, SECOND_LINE_S + 1.95, resolveTickOptions(newTickOptions()));
 leavingFade.finish();
 assert.deepEqual(
   stageLines.map(line => line.dataset.stageVisible),
   [undefined, undefined, ""],
   "Given a finished fade-out, Then the line is no longer marked visible"
 );
+
+const leftSlot = stageEngine.stageY.get(asElement<HTMLElement>(stageLines[1]));
+tickView(stageEngine, SECOND_LINE_S + 1.55, resolveTickOptions(newTickOptions()));
+const returnFrom = (
+  stageLines[1].animations.findLast(animation => animation.options.easing === STAGE_MOVE_EASING)?.keyframes as
+    | Keyframe[]
+    | undefined
+)?.[0]?.translate;
+assert.equal(stageLines[1].dataset.stageRole, "current", "Given a small rewind, Then the line that just left is back");
+assert.equal(
+  returnFrom,
+  `0 ${leftSlot}px`,
+  "regression: Given a small rewind, When the line that just left comes back, Then it returns from its own place, not from below the floor"
+);
+tickView(stageEngine, SECOND_LINE_S + 1.95, resolveTickOptions(newTickOptions()));
 
 const animationCountsBeforeJump = stageLines.map(line => line.animations.length);
 tickView(stageEngine, LINE_SYNCED_LYRICS[0].startTimeMs / 1000 + 1, resolveTickOptions(newTickOptions()));
@@ -1679,10 +1731,19 @@ for (const time of [200.2, 200.6, 201, 201.4, 201.8]) {
   tickView(overlapStageEngine, time, resolveTickOptions(newTickOptions()));
 }
 const sungLineBlurs = overlapStageLines[0].animations.filter(isBlur).length;
+asFakeNode(overlapStageEngine.lyricsContainer!).clientHeight = VIEWPORT_HEIGHT_PX + 200;
+relayout(overlapStageEngine, true);
 tickView(overlapStageEngine, 202.1, resolveTickOptions(newTickOptions()));
 assert.deepEqual(
   overlapStageLines.map(line => line.dataset.stageRole),
   ["previous", "current"]
+);
+assert.ok(
+  Number(
+    overlapStageLines[0].animations.findLast(animation => animation.options.easing === STAGE_MOVE_EASING)?.options
+      .duration
+  ) > 0,
+  "regression: Given a resize in the same pass as an overlap, When a line is pushed up, Then it still slides up rather than jumping"
 );
 assert.equal(
   overlapStageLines[0].animations.filter(isBlur).length,
