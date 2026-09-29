@@ -217,6 +217,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   stageY: Map<HTMLElement, number>;
   stageMoves: Map<HTMLElement, Animation>;
   stageFades: Map<HTMLElement, Animation>;
+  stageBlurs: Map<HTMLElement, Animation>;
   stageFontSize: number;
   /**
    * Releases everything the instance holds on its window: the reduced motion listener, the tab
@@ -307,6 +308,7 @@ export function createAnimationEngineInstance(
     stageY: new Map(),
     stageMoves: new Map(),
     stageFades: new Map(),
+    stageBlurs: new Map(),
     stageFontSize: 16,
     destroy: () => {
       liveEngines.delete(engine);
@@ -462,9 +464,16 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
 }
 
 function resetStage(engine: AnimationEngineInstance): void {
-  for (const animation of [...engine.stageMoves.values(), ...engine.stageFades.values()]) animation.cancel();
+  for (const animation of [
+    ...engine.stageMoves.values(),
+    ...engine.stageFades.values(),
+    ...engine.stageBlurs.values(),
+  ]) {
+    animation.cancel();
+  }
   engine.stageMoves.clear();
   engine.stageFades.clear();
+  engine.stageBlurs.clear();
   engine.stageMetrics.clear();
   engine.stageY.clear();
   engine.stageKey = "";
@@ -2888,7 +2897,8 @@ const stageOpacityRegistrations = new WeakSet<object>();
 const STAGE_FADE_IN_MS = 300;
 const STAGE_FADE_IN_DELAY_MS = 70;
 const STAGE_FADE_OUT_MS = 220;
-const STAGE_EXIT_BLUR = "3px";
+// Lines blur out and in across a handoff, so one reads as turning into the next.
+const STAGE_BLUR = "blur(3px)";
 const STAGE_GAP_EM = 0.32;
 
 function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement[]; items: StageItem[] } {
@@ -2971,12 +2981,7 @@ function placeStageElement(
   if (placement.visible) element.dataset.stageVisible = "";
   else if (fadeMs === 0) delete element.dataset.stageVisible;
   const fade = element.animate(
-    placement.visible
-      ? [{ [STAGE_OPACITY_PROPERTY]: fromOpacity }, { [STAGE_OPACITY_PROPERTY]: 1 }]
-      : [
-          { [STAGE_OPACITY_PROPERTY]: fromOpacity, filter: "blur(0px)" },
-          { [STAGE_OPACITY_PROPERTY]: 0, filter: `blur(${STAGE_EXIT_BLUR})` },
-        ],
+    [{ [STAGE_OPACITY_PROPERTY]: fromOpacity }, { [STAGE_OPACITY_PROPERTY]: placement.visible ? 1 : 0 }],
     {
       duration: fadeMs,
       delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,
@@ -2993,6 +2998,24 @@ function placeStageElement(
   }
   engine.stageFades.set(element, fade);
   engine.stageY.set(element, placement.y);
+
+  engine.stageBlurs.get(element)?.cancel();
+  engine.stageBlurs.delete(element);
+  if (fadeMs === 0 || reduced) return;
+  const blurs = ["none", STAGE_BLUR];
+  engine.stageBlurs.set(
+    element,
+    element.animate(
+      (placement.visible ? blurs.reverse() : blurs).map(filter => ({ filter })),
+      {
+        duration: fadeMs,
+        delay: placement.visible ? STAGE_FADE_IN_DELAY_MS : 0,
+        easing: placement.visible ? "ease-out" : "ease",
+        // Held only until the line is in focus, so a theme's own filter on the sung line stays its own.
+        fill: placement.visible ? "backwards" : "forwards",
+      }
+    )
+  );
 }
 
 // Registered from script rather than with @property, which Firefox ignores in a stylesheet

@@ -1540,7 +1540,7 @@ assert.ok(
 );
 
 const STAGE_MOVE_EASING = "cubic-bezier(0.2, 0, 0, 1)";
-const STAGE_EXIT_BLUR = "3px";
+const STAGE_BLUR = "3px";
 const stageAnimationCount = (): number => stageLines.reduce((sum, line) => sum + line.animations.length, 0);
 
 assert.deepEqual(
@@ -1576,7 +1576,9 @@ assert.deepEqual(
   [undefined, "", ""],
   "Given a line leaving the stage, When its fade-out has not finished, Then it stays marked visible"
 );
-const leavingFade = stageLines[1].animations.at(-1)!;
+const leavingFade = stageLines[1].animations.findLast(animation =>
+  (animation.keyframes as Keyframe[]).some(keyframe => "--blyrics-stage-opacity" in keyframe)
+)!;
 assert.ok(Number(leavingFade.options.duration) > 0, "Given a line leaving on a steady clock, Then it fades out");
 assert.ok(
   (leavingFade.keyframes as Keyframe[]).every(
@@ -1584,10 +1586,15 @@ assert.ok(
   ),
   "Given a theme that forces opacity with !important, When a line fades, Then the fade drives the stage's own opacity property"
 );
-assert.deepEqual(
-  (leavingFade.keyframes as Keyframe[]).map(keyframe => keyframe.filter),
-  ["blur(0px)", `blur(${STAGE_EXIT_BLUR})`],
-  "Given a line leaving the stage, Then it softens out of focus as it fades"
+const blursOf = (line: (typeof stageLines)[number]) =>
+  line.animations.map(animation => (animation.keyframes as Keyframe[]).map(keyframe => keyframe.filter));
+assert.ok(
+  blursOf(stageLines[1]).some(filters => filters.join() === `none,blur(${STAGE_BLUR})`),
+  "Given a line leaving the stage, Then it blurs out as it fades"
+);
+assert.ok(
+  blursOf(stageLines[2]).some(filters => filters.join() === `blur(${STAGE_BLUR}),none`),
+  "Given a line entering the stage, Then it blurs in as it fades, so the handoff reads as one morph"
 );
 leavingFade.finish();
 assert.deepEqual(
