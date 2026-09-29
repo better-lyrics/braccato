@@ -345,14 +345,15 @@ refactor. Import them from `@braccato/core/constants` instead of typing them out
 
 ## Stylesheets
 
-Three sheets ship with the package, and loading them is yours, the way any package's CSS is. Leave
+Four sheets ship with the package, and loading them is yours, the way any package's CSS is. Leave
 them out and you get lines that are in the document and unstyled, rather than lines that are missing.
 
 | File                                     | What it carries                                                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `@braccato/core/styles/variables.css`    | Every `--blyrics-*` default. It goes first, because the other two read from it.                                           |
+| `@braccato/core/styles/variables.css`    | Every `--blyrics-*` default. It goes first, because the others read from it.                                              |
 | `@braccato/core/styles/lyrics.css`       | The container, the lines, the words and the sweep, plus two `@property` registrations the word animation interpolates through. |
 | `@braccato/core/styles/instrumental.css` | The waveform that fills a bar nobody sings over, and the animation that walks it.                                          |
+| `@braccato/core/styles/stage.css`        | Placement for the stage layout, and nothing else. Only a renderer created with `layout: "stage"` needs it.                  |
 
 One thing they do not do for you. The module measures the room the first and last lines need to reach
 the view's target scroll position and writes it on the root as `--blyrics-padding-top` and
@@ -381,6 +382,16 @@ one onto a built line and call `renderer.scheduleLyricPositionUpdate` the way yo
 catch the layout up: the hung line floats into place while the lines around it slide to make room,
 rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-entry` set to `0` drops
 both for an instant insert, and reduced-motion does the same.
+
+`createLyricsRenderer({ layout: "stage" })` builds a view that shows only what is being sung, for
+subtitles over a video. It needs no scroll element and writes nothing to the document. `stage.preview`
+(or `renderer.setStageOptions({ preview })` later, without a rebuild) shows the next line under the
+current one; without it the view is one line, like subtitles. The engine places each line with
+`translate` and `opacity` Web Animations and marks it with `data-stage-role` (`current`, `next`,
+`previous`, `queued` or `gone`); the container carries `data-layout="stage"` and `data-stage-preview`.
+Themes style the lines as they would in a scrolling view. `host.onStageLayout(box)` reports the box
+around the lines being sung, in the container's coordinates, or null when nothing sung is on stage, so
+you can draw a backdrop outside the container the theme styles.
 
 `@braccato/core/element` registers `<braccato-lyrics>`, and `<better-lyrics>` beside it, on import.
 Registration is a side effect, which is why it is entered separately.
@@ -429,7 +440,8 @@ swapping `audio.src` between songs without playing goes on reporting the old pos
 
 Two renderers in one document write over each other, so the module supports one. It is a constraint
 rather than a setting, and it is stated rather than enforced: none of the points where two of them
-collide is a crash.
+collide is a crash. A stage renderer is the exception: it writes nothing to the document, so it can
+share one with a scrolling renderer.
 
 Two things are written per document and belong to whichever renderer wrote them last: the theme's
 `<style>` element, and the scroll padding on the root. Two more are per bundle, because a settings

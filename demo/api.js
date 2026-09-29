@@ -384,7 +384,7 @@ export const CUSTOM_PROPERTIES = [
 export const STYLESHEETS = [
   {
     file: "variables.css",
-    summary: "Every --blyrics-* default. Load it first, since the other two use it.",
+    summary: "Every --blyrics-* default. Load it first, since the others use it.",
   },
   {
     file: "lyrics.css",
@@ -393,5 +393,10 @@ export const STYLESHEETS = [
   {
     file: "instrumental.css",
     summary: "The waveform shown during a bar with no singing, and its animation.",
+  },
+  {
+    file: "stage.css",
+    summary:
+      'Placement for a renderer created with layout: "stage", which shows only the lines being sung. Lines carry data-stage-role, and the container data-layout and data-stage-preview.',
   },
 ];
