@@ -3,6 +3,7 @@
 import type { Lyric, LyricPart, LyricSyncType } from "@braccato/types";
 import type { AnimationTickStatus } from "./engine";
 import type { LineData } from "./inject";
+import type { StageBox } from "./stage";
 import type { SetLyricsOptions } from "./view";
 
 // -- Lyric data --------------------------------------------
@@ -97,10 +98,18 @@ export interface LyricsRendererHost {
    * Where the view's diagnostics go. The host owns the prefix and whether logging is on at all.
    */
   log(...args: unknown[]): void;
+  /**
+   * Stage layout only. Where the lines being sung sit, in the container's coordinates, or null when
+   * nothing sung is on stage. Called when it changes. A consumer draws its own backdrop from it,
+   * outside the container that themes style.
+   */
+  onStageLayout?(box: StageBox | null): void;
   debug?: LyricsRendererDebugSink;
 }
 
 // -- Renderer --------------------------------------------
+
+export type LyricsLayout = "scroll" | "stage";
 
 export interface LyricsRendererOptions {
   document: Document;
@@ -115,6 +124,8 @@ export interface LyricsRendererOptions {
    * nothing at all.
    */
   host?: Partial<LyricsRendererHost>;
+  /** `"scroll"` (default) is the scrolling lyrics view. `"stage"` shows only what is being sung. */
+  layout?: LyricsLayout;
 }
 
 /**

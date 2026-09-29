@@ -145,6 +145,7 @@ export function withHostDefaults(
           currentMount()?.dispatchEvent(new rendererWindow.CustomEvent(SEEK_EVENT, { detail: timeS, bubbles: true }));
         }),
       log: given.log ?? noop,
+      onStageLayout: given.onStageLayout,
       debug: given.debug,
     },
     forgetScrollElement() {
@@ -175,7 +176,12 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
   let currentLanguage = "";
 
   const { host, forgetScrollElement } = withHostDefaults(rendererOptions.host, rendererWindow, () => mount);
-  const engine = createAnimationEngineInstance(rendererDocument, rendererWindow, host);
+  const engine = createAnimationEngineInstance(
+    rendererDocument,
+    rendererWindow,
+    host,
+    rendererOptions.layout ?? "scroll"
+  );
   let imageMediaQueries: MediaQueryList[] = [];
   const refreshImagePaint = () => refreshInstrumentalImages(engine.lyricsContainer, rendererWindow);
   function syncImagePaint(): void {

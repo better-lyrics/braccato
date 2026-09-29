@@ -85,7 +85,7 @@ injectTranslation(buildDocument, buildTarget, "world");
 injectTranslation(buildDocument, buildTarget, "world");
 
 const instrumental = doc.createElement("div");
-createInstrumentalElement(buildDocument, asElement<HTMLDivElement>(instrumental), 3000, 4);
+createInstrumentalElement(buildDocument, asElement<HTMLDivElement>(instrumental), 3000);
 
 const unusedFactories = FACTORY_NAMES.filter(factory => doc.countOf(factory) === 0);
 assert.deepEqual(
@@ -650,5 +650,16 @@ for (const letterWaveSetting of ["true", "false"]) {
     `Given letter wave ${letterWaveSetting}, When a line is built, Then no word group is wobbled by two syllables`
   );
 }
+
+const instrumentalIds = [0, 1].flatMap(() => {
+  const view = doc.createElement("div");
+  createInstrumentalElement(buildDocument, asElement<HTMLDivElement>(view), 3000);
+  return collectTree(view).flatMap(node => (node.attributes.id ? [node.attributes.id] : []));
+});
+assert.equal(
+  new Set(instrumentalIds).size,
+  instrumentalIds.length,
+  "Given two views in one document, When both build the same instrumental line, Then their SVG ids do not collide"
+);
 
 console.log(`Renderer builder self-check passed across ${doc.calls.length} built node(s)`);

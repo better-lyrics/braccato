@@ -3,20 +3,20 @@ import { imageHighlights } from "./imageHighlights";
 export const INSTRUMENTAL_WAVE_PATH_HIGH = "M -4 3 Q 1 2 5 3 Q 10 4 14 3 Q 18 2 22 3 Q 26 4 30 3 L 30 4 L -4 4 Z";
 export const INSTRUMENTAL_WAVE_PATH_LOW = "M -4 3 Q 1 4 5 3 Q 10 2 14 3 Q 18 4 22 3 Q 26 2 30 3 L 30 4 L -4 4 Z";
 
+let nextInstrumentalId = 0;
+
 /**
  * Creates an HTML element representing an instrumental break in the lyrics.
  *
  * @param doc - Document the SVG nodes are created in
  * @param container - Element to place instrumental parts into
  * @param durationMs - Duration of the instrumental break in milliseconds
- * @param lineIndex - Line index for unique SVG element IDs
  * @returns HTMLDivElement representing the instrumental break
  */
 export function createInstrumentalElement(
   doc: Document,
   container: HTMLDivElement,
-  durationMs: number,
-  lineIndex: number
+  durationMs: number
 ): HTMLDivElement {
   container.classList.add("blyrics--instrumental");
   container.style.setProperty("--blyrics-duration", `${durationMs}ms`);
@@ -28,8 +28,11 @@ export function createInstrumentalElement(
 
   const defs = doc.createElementNS(svgNS, "defs");
 
-  const filterId = `blyrics-glow-${lineIndex}`;
-  const clipId = `blyrics-wave-clip-${lineIndex}`;
+  // Unique per document, not per view: two renderers sharing a document would otherwise resolve
+  // each other's url(#id) references.
+  const idSuffix = nextInstrumentalId++;
+  const filterId = `blyrics-glow-${idSuffix}`;
+  const clipId = `blyrics-wave-clip-${idSuffix}`;
 
   const filter = doc.createElementNS(svgNS, "filter");
   filter.setAttribute("id", filterId);

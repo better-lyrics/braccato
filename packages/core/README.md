@@ -345,14 +345,15 @@ refactor. Import them from `@braccato/core/constants` instead of typing them out
 
 ## Stylesheets
 
-Three sheets ship with the package, and loading them is yours, the way any package's CSS is. Leave
+Four sheets ship with the package, and loading them is yours, the way any package's CSS is. Leave
 them out and you get lines that are in the document and unstyled, rather than lines that are missing.
 
 | File                                     | What it carries                                                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `@braccato/core/styles/variables.css`    | Every `--blyrics-*` default. It goes first, because the other two read from it.                                           |
+| `@braccato/core/styles/variables.css`    | Every `--blyrics-*` default. It goes first, because the others read from it.                                              |
 | `@braccato/core/styles/lyrics.css`       | The container, the lines, the words and the sweep, plus two `@property` registrations the word animation interpolates through. |
 | `@braccato/core/styles/instrumental.css` | The waveform that fills a bar nobody sings over, and the animation that walks it.                                          |
+| `@braccato/core/styles/stage.css`        | Placement for the stage layout, and nothing else. Only a renderer created with `layout: "stage"` needs it.                  |
 
 One thing they do not do for you. The module measures the room the first and last lines need to reach
 the view's target scroll position and writes it on the root as `--blyrics-padding-top` and
@@ -381,6 +382,26 @@ one onto a built line and call `renderer.scheduleLyricPositionUpdate` the way yo
 catch the layout up: the hung line floats into place while the lines around it slide to make room,
 rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-entry` set to `0` drops
 both for an instant insert, and reduced-motion does the same.
+
+`createLyricsRenderer({ layout: "stage" })` builds a view for subtitles over a video: one line at a
+time, and only while it is being sung. It fills its nearest positioned ancestor. There is no scroll
+element to hand it, no scroll padding written and no line culling. Unsynced lyrics show nothing, because
+a stage places lines by their time and unsynced lines have none.
+
+The engine owns where a line is and whether you can see it. It moves each line with a `translate` Web
+Animation and fades it through `--blyrics-stage-opacity`, blurring it slightly on the way in and out so
+one line reads as turning into the next. Each line carries `data-stage-role` (`current`, `previous`,
+`queued` or `gone`) and the container carries `data-layout="stage"`. `stage.css` sets a stage line's
+`opacity` from that property with `!important` inside a cascade layer, and keeps the line
+`visibility: hidden` until it is marked `data-stage-visible`. Layered important declarations outrank
+unlayered ones whatever their specificity, so a theme that forces `opacity: 1 !important` on active
+lines, which some do, can neither reveal a queued line nor hold one that is leaving. In a duet (any line sung by `v2` or `v3`) the
+container also gets `data-stage-duet` and each singer keeps to their side, mirrored for right-to-left
+lines; lines for everyone stay centred.
+
+Everything else is the theme's. Lines are styled exactly as they would be in a scrolling view.
+`host.onStageLayout(box)` reports the box around the sung lines in the container's coordinates, or null
+when nothing sung is on stage, so you can draw a backdrop outside the container the theme styles.
 
 `@braccato/core/element` registers `<braccato-lyrics>`, and `<better-lyrics>` beside it, on import.
 Registration is a side effect, which is why it is entered separately.
@@ -429,7 +450,10 @@ swapping `audio.src` between songs without playing goes on reporting the old pos
 
 Two renderers in one document write over each other, so the module supports one. It is a constraint
 rather than a setting, and it is stated rather than enforced: none of the points where two of them
-collide is a crash.
+collide is a crash. A stage renderer is the exception. It writes no scroll padding, so it can sit in
+the same document as a scrolling one, with three rules: give both the same theme, tick both with the
+same time and wall time in the same frame (whichever ticks first is the one that sees a seek), and if
+the stage renderer applied the theme first, destroy it first, because its `<style>` element goes with it.
 
 Two things are written per document and belong to whichever renderer wrote them last: the theme's
 `<style>` element, and the scroll padding on the root. Two more are per bundle, because a settings

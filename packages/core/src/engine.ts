@@ -36,8 +36,9 @@ import {
 } from "./constants";
 import type { AnimationData, LineData, PartData } from "./inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "./instrumental";
+import { layoutStage, planStage, type StageBox, type StageItem, type StageMetrics, type StagePlacement } from "./stage";
 import { registerThemeSetting } from "./themeSettings";
-import type { LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
+import type { LyricsLayout, LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
 import { clamp, getRelativeLayoutBounds, positiveModulo, roundedMs, toMs } from "./util";
 
 const NO_LYRICS_ELEMENT_LOG = "No lyrics element found on the page, skipping lyrics injection";
@@ -209,6 +210,15 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   pendingLyricsUpdateFrame: number | null;
   learnedAnimationTimingOffsetMs: number;
   animationTimingVisibilityLogUntil: number;
+  layout: LyricsLayout;
+  stageKey: string;
+  stageBox: StageBox | null;
+  stageMetrics: Map<HTMLElement, StageMetrics>;
+  stageY: Map<HTMLElement, number>;
+  stageMoves: Map<HTMLElement, Animation>;
+  stageFades: Map<HTMLElement, Animation>;
+  stageBlurs: Map<HTMLElement, Animation>;
+  stageFontSize: number;
   /**
    * Releases everything the instance holds on its window: the reduced motion listener, the tab
    * renderer observer and any frame it still has queued.
@@ -236,7 +246,8 @@ export function forEveryLiveView(runOperation: (engine: AnimationEngineInstance)
 export function createAnimationEngineInstance(
   engineDocument: Document,
   engineWindow: EngineWindow,
-  host: LyricsRendererHost
+  host: LyricsRendererHost,
+  layout: LyricsLayout = "scroll"
 ): AnimationEngineInstance {
   const reducedMotionQuery = engineWindow.matchMedia(REDUCED_MOTION_QUERY);
   const handleReducedMotionChange = (): void => clearStyleCaches(engine);
@@ -290,6 +301,15 @@ export function createAnimationEngineInstance(
     pendingLyricsUpdateFrame: null,
     learnedAnimationTimingOffsetMs: 0,
     animationTimingVisibilityLogUntil: 0,
+    layout,
+    stageKey: "",
+    stageBox: null,
+    stageMetrics: new Map(),
+    stageY: new Map(),
+    stageMoves: new Map(),
+    stageFades: new Map(),
+    stageBlurs: new Map(),
+    stageFontSize: 16,
     destroy: () => {
       liveEngines.delete(engine);
       reducedMotionQuery.removeEventListener("change", handleReducedMotionChange);
@@ -388,6 +408,7 @@ export function noteContainerResize(engine: AnimationEngineInstance, width: numb
 export function clearOnScreenLyrics(engine: AnimationEngineInstance): boolean {
   if (!engine.lyricsContainer) return false;
   engine.lyricsContainer.replaceChildren();
+  resetStage(engine);
   return true;
 }
 
@@ -439,6 +460,27 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.creditsFocused = false;
   engine.lyricsContainer = null;
   engine.waveAnimationPool.length = 0;
+  resetStage(engine);
+}
+
+function resetStage(engine: AnimationEngineInstance): void {
+  for (const animation of [
+    ...engine.stageMoves.values(),
+    ...engine.stageFades.values(),
+    ...engine.stageBlurs.values(),
+  ]) {
+    animation.cancel();
+  }
+  engine.stageMoves.clear();
+  engine.stageFades.clear();
+  engine.stageBlurs.clear();
+  engine.stageMetrics.clear();
+  engine.stageY.clear();
+  engine.stageKey = "";
+  if (engine.stageBox !== null) {
+    engine.stageBox = null;
+    engine.host.onStageLayout?.(null);
+  }
 }
 
 function resetPartAnimations(part: AnimationData): void {
@@ -2310,6 +2352,10 @@ function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {
 export function setupLineCullObserver(engine: AnimationEngineInstance): void {
   engine.lineCullObserver?.disconnect();
   clearOffscreenLineCulling(engine);
+  if (engine.layout === "stage") {
+    engine.lineCullObserver = null;
+    return;
+  }
 
   const ObserverConstructor = engine.window.IntersectionObserver;
   if (typeof ObserverConstructor !== "function" || engine.lines.length === 0) {
@@ -2908,6 +2954,214 @@ function resolvePlaybackRate(rate: number | undefined): number {
   return rate !== undefined && Number.isFinite(rate) && rate > 0 ? rate : 1;
 }
 
+// -- Stage layout --------------------------------------------
+
+const STAGE_MOTION = { durationMs: 380, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+// Read by an important rule in stage.css, so a theme's own important opacity cannot reveal a line
+// the stage is hiding or fading.
+const STAGE_OPACITY_PROPERTY = "--blyrics-stage-opacity";
+const stageOpacityRegistrations = new WeakSet<object>();
+const STAGE_FADE_IN_MS = 300;
+const STAGE_FADE_IN_DELAY_MS = 70;
+const STAGE_FADE_OUT_MS = 220;
+// Lines blur out and in across a handoff, so one reads as turning into the next.
+const STAGE_BLUR = "blur(3px)";
+const STAGE_GAP_EM = 0.32;
+
+function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement[]; items: StageItem[] } {
+  const elements: HTMLElement[] = [];
+  const items: StageItem[] = [];
+  let lastEnd = 0;
+  for (const line of engine.lines) {
+    const end = line.time + line.duration;
+    lastEnd = Math.max(lastEnd, end);
+    elements.push(line.lyricElement);
+    items.push({
+      kind: line.lyricElement.dataset.instrumental === "true" ? "instrumental" : "line",
+      start: line.time,
+      end,
+    });
+  }
+  const credits = engine.lyricsContainer?.querySelector<HTMLElement>(`:scope > .${CREDITS_CLASS}`);
+  if (credits) {
+    elements.push(credits);
+    items.push({ kind: "credits", start: lastEnd, end: Number.POSITIVE_INFINITY });
+  }
+  return { elements, items };
+}
+
+function originXOf(engine: AnimationEngineInstance, element: HTMLElement): number {
+  const align = engine.window.getComputedStyle(element).textAlign;
+  if (align === "center") return 0.5;
+  if (align === "right" || align === "end") return 1;
+  return 0;
+}
+
+export function measureStage(engine: AnimationEngineInstance): void {
+  engine.stageMetrics.clear();
+  const container = engine.lyricsContainer;
+  if (!container) return;
+  engine.stageFontSize = Number.parseFloat(engine.window.getComputedStyle(container).fontSize) || 16;
+  for (const element of stageElements(engine).elements) {
+    engine.stageMetrics.set(element, {
+      height: element.offsetHeight,
+      left: element.offsetLeft,
+      width: element.offsetWidth,
+      originX: originXOf(engine, element),
+    });
+  }
+  engine.stageKey = "";
+}
+
+function currentTranslateY(engine: AnimationEngineInstance, element: HTMLElement, fallback: number): number {
+  const parts = engine.window.getComputedStyle(element).translate.split(" ");
+  const y = Number.parseFloat(parts[1] ?? "");
+  return Number.isFinite(y) ? y : fallback;
+}
+
+interface StageMove {
+  element: HTMLElement;
+  placement: StagePlacement;
+  wasVisible: boolean;
+  fromY: number;
+  fromOpacity: number;
+}
+
+function placeStageElement(
+  engine: AnimationEngineInstance,
+  { element, placement, wasVisible, fromY, fromOpacity }: StageMove,
+  instant: boolean,
+  reduced: boolean
+): void {
+  engine.stageMoves.get(element)?.cancel();
+  engine.stageFades.get(element)?.cancel();
+
+  const moveMs = instant || reduced ? 0 : STAGE_MOTION.durationMs;
+  engine.stageMoves.set(
+    element,
+    element.animate([{ translate: `0 ${fromY}px` }, { translate: `0 ${placement.y}px` }], {
+      duration: moveMs,
+      easing: STAGE_MOTION.easing,
+      fill: "forwards",
+    })
+  );
+  const fadeMs = instant ? 0 : placement.visible ? STAGE_FADE_IN_MS : STAGE_FADE_OUT_MS;
+  if (placement.visible) element.dataset.stageVisible = "";
+  else if (fadeMs === 0) delete element.dataset.stageVisible;
+  const fade = element.animate(
+    [{ [STAGE_OPACITY_PROPERTY]: fromOpacity }, { [STAGE_OPACITY_PROPERTY]: placement.visible ? 1 : 0 }],
+    {
+      duration: fadeMs,
+      delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,
+      easing: placement.visible ? "ease-out" : "ease",
+      // Backwards too: the fade replaces one that was cancelled, and through its delay the line would
+      // otherwise drop to the stylesheet's resting opacity of zero.
+      fill: "both",
+    }
+  );
+  if (!placement.visible && fadeMs > 0) {
+    fade.onfinish = () => {
+      if (engine.stageFades.get(element) === fade) delete element.dataset.stageVisible;
+    };
+  }
+  engine.stageFades.set(element, fade);
+  engine.stageY.set(element, placement.y);
+
+  engine.stageBlurs.get(element)?.cancel();
+  engine.stageBlurs.delete(element);
+  if (fadeMs === 0 || reduced || wasVisible === placement.visible) return;
+  const blurs = ["none", STAGE_BLUR];
+  engine.stageBlurs.set(
+    element,
+    element.animate(
+      (placement.visible ? blurs.reverse() : blurs).map(filter => ({ filter })),
+      {
+        duration: fadeMs,
+        delay: placement.visible ? STAGE_FADE_IN_DELAY_MS : 0,
+        easing: placement.visible ? "ease-out" : "ease",
+        // Added to the theme's own filter rather than replacing it, and held only until the line is in focus.
+        composite: "add",
+        fill: placement.visible ? "backwards" : "forwards",
+      }
+    )
+  );
+}
+
+// Registered from script rather than with @property, which Firefox ignores in a stylesheet
+// cross-origin to the document. Unregistered, the fade would snap instead of interpolating.
+function registerStageOpacity(engine: AnimationEngineInstance): void {
+  const css = engine.window.CSS;
+  if (stageOpacityRegistrations.has(engine.window) || typeof css?.registerProperty !== "function") return;
+  stageOpacityRegistrations.add(engine.window);
+  try {
+    css.registerProperty({ name: STAGE_OPACITY_PROPERTY, syntax: "<number>", inherits: false, initialValue: "0" });
+  } catch (error) {
+    engine.host.log("Stage opacity property was already registered", error);
+  }
+}
+
+function isStageRoleVisible(role: string): boolean {
+  return role !== "queued" && role !== "gone";
+}
+
+function sameBox(a: StageBox | null, b: StageBox | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boolean): void {
+  const container = engine.lyricsContainer;
+  if (!container) return;
+  registerStageOpacity(engine);
+  const { elements, items } = stageElements(engine);
+  const roles = planStage(items, timeS);
+  const key = roles.join(",");
+  if (key === engine.stageKey && !instant) return;
+  engine.stageKey = key;
+
+  const metrics = elements.map(
+    element => engine.stageMetrics.get(element) ?? { height: 0, left: 0, width: 0, originX: 0 }
+  );
+  const { placements, box } = layoutStage(
+    roles,
+    items,
+    metrics,
+    elements.map(element => engine.stageY.get(element) ?? null),
+    {
+      stageHeight: container.clientHeight,
+      gap: engine.stageFontSize * STAGE_GAP_EM,
+      activeScale: getCSSNumber(engine, container, "--blyrics-active-scale", 1),
+    }
+  );
+  // Only the elements whose place changed move. A line that stays where it is keeps its running
+  // animations, and one already hidden stays hidden without being animated again.
+  const moves: StageMove[] = [];
+  elements.forEach((element, index) => {
+    const placement = placements[index];
+    const previousY = engine.stageY.get(element);
+    const wasVisible = element.dataset.stageRole !== undefined && isStageRoleVisible(element.dataset.stageRole);
+    const unchanged =
+      previousY !== undefined && wasVisible === placement.visible && (!placement.visible || previousY === placement.y);
+    if (unchanged && !instant) return;
+    moves.push({
+      element,
+      placement,
+      wasVisible,
+      fromY: currentTranslateY(engine, element, previousY ?? placement.y),
+      fromOpacity: Number(engine.window.getComputedStyle(element).opacity) || 0,
+    });
+  });
+  const reduced = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
+  elements.forEach((element, index) => {
+    if (element.dataset.stageRole !== roles[index]) element.dataset.stageRole = roles[index];
+  });
+  for (const move of moves) placeStageElement(engine, move, instant, reduced);
+  if (!sameBox(box, engine.stageBox)) {
+    engine.stageBox = box;
+    engine.host.onStageLayout?.(box);
+  }
+}
+
 /**
  * Renders one view against a tick with nothing left out.
  */
@@ -2935,6 +3189,8 @@ export function tickView(
   }
 
   if (hasUnsyncedLyrics(engine)) {
+    // The stage shows lines by their time, and unsynced lines have none.
+    if (engine.layout === "stage") return "ok";
     if (!playbackClock.lastPlayState && isPlaying) {
       engine.scrollResumeTime = 0;
     }
@@ -2996,19 +3252,22 @@ export function tickView(
     const { config: animationConfig, scrollTiming } = getAnimationSettings(engine, lyricsElement);
 
     // Read layout values before the loop writes class changes, to avoid forced reflow
-    const tabRenderer = engine.host.getScrollElement();
-    if (!tabRenderer) {
+    const isStage = engine.layout === "stage";
+    const tabRenderer = isStage ? null : engine.host.getScrollElement();
+    if (!isStage && !tabRenderer) {
       clearVisibleLyricWillChange(engine);
       return "ok";
     }
-    if (tabRenderer !== engine.observedTabRenderer) {
+    if (tabRenderer && tabRenderer !== engine.observedTabRenderer) {
       setupTabRendererObserver(engine, tabRenderer);
     }
-    const tabRendererHeight = engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height;
+    const tabRendererHeight = tabRenderer
+      ? (engine.cachedTabRendererHeight ?? tabRenderer.getBoundingClientRect().height)
+      : 0;
     // Read before the loop's class writes so this layout read is batched and forces no mid-frame reflow.
-    let scrollTop = tabRenderer.scrollTop;
-    const maxScrollTop = Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight);
-    if (animationConfig.enabled.scroll) {
+    let scrollTop = tabRenderer?.scrollTop ?? 0;
+    const maxScrollTop = tabRenderer ? Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight) : 0;
+    if (!isStage && animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
         engine,
         lines,
@@ -3196,6 +3455,11 @@ export function tickView(
       if (creditsFocused) lyricsElement.dataset.creditsFocused = "true";
       else delete lyricsElement.dataset.creditsFocused;
       newLyricSelected = true;
+    }
+
+    if (isStage || !tabRenderer) {
+      if (isStage) applyStage(engine, currentTime, timeJumped);
+      return "ok";
     }
 
     if (engine.scrollResumeTime < Date.now() || engine.scrollPos === -1) {
@@ -3530,6 +3794,12 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
  *   nothing to work from once rendering resumes.
  */
 export function relayout(engine: AnimationEngineInstance, measureLines: boolean): void {
+  if (engine.layout === "stage") {
+    if (!measureLines || !engine.lyricsContainer) return;
+    engine.cachedCreditsItem = measureTrailingItem(engine.lyricsContainer, CREDITS_CLASS);
+    measureStage(engine);
+    return;
+  }
   applyScrollPadding(engine);
   const scrollElement = engine.host.getScrollElement();
   if (scrollElement) measureScrollViewport(engine, scrollElement);
@@ -3601,7 +3871,7 @@ function lineDecorators(lineElement: HTMLElement): HTMLElement[] {
  */
 function captureDecorationSlide(engine: AnimationEngineInstance): (() => void) | null {
   const container = engine.lyricsContainer;
-  if (!container || !decorationSlideAllowed(engine, container)) return null;
+  if (!container || engine.layout === "stage" || !decorationSlideAllowed(engine, container)) return null;
 
   const before = engine.lines.map(line => ({
     line,
