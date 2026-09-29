@@ -4,9 +4,11 @@ import {
   type AnimationEngineInstance,
   clearLyrics,
   clearOnScreenLyrics,
+  computeActiveLinesScrollTop,
   computeLetterSwipeWindows,
   computeScrollPadding,
   createAnimationEngineInstance,
+  findScrollAnchor,
   forEveryLiveView,
   getRenderedLines,
   getRenderedSyncType,
@@ -15,6 +17,7 @@ import {
   parseColorAlpha,
   planLetterMaskSweep,
   relayout,
+  resolveScrollInsets,
   resolveTickOptions,
   scheduleLyricPositionUpdate,
   setupLineCullObserver,
@@ -58,8 +61,8 @@ const PLAYBACK_TIME_S = 0.2;
 
 // -- Fake host --------------------------------------------
 
-// The scroll container belongs to the host, not to the module, so it is not built from either
-// document. It answers only what the tick reads off it, and it clamps a `scrollTop` write the way a
+// The scroll container belongs to the host, not to the module, so the module never builds it. It
+// still lives in the view's document, as it would in a browser. It answers only what the tick reads off it, and it clamps a `scrollTop` write the way a
 // browser does: silently, which is what a module aiming past the end of its content relies on.
 class FakeScrollElement {
   private currentScrollTop = 0;
@@ -73,7 +76,8 @@ class FakeScrollElement {
 
   constructor(
     readonly viewportHeight: number,
-    readonly scrollHeight = viewportHeight * 100
+    readonly scrollHeight = viewportHeight * 100,
+    readonly ownerDocument: FakeDocument | null = null
   ) {}
 
   get clientHeight(): number {
@@ -98,8 +102,8 @@ class FakeHost implements LyricsRendererHost {
   readonly logs: unknown[][] = [];
   readonly scrollElement: FakeScrollElement;
 
-  constructor(contentHeight?: number) {
-    this.scrollElement = new FakeScrollElement(VIEWPORT_HEIGHT_PX, contentHeight);
+  constructor(contentHeight?: number, ownerDocument: FakeDocument | null = null) {
+    this.scrollElement = new FakeScrollElement(VIEWPORT_HEIGHT_PX, contentHeight, ownerDocument);
   }
 
   isViewVisible(): boolean {
@@ -237,13 +241,13 @@ function soleMediaQuery(fakeWindow: FakeWindow): FakeMediaQueryList {
 
 const panelDocument = new FakeDocument();
 const panelWindow = new FakeWindow(PANEL_STYLE);
-const panelHost = new FakeHost();
+const panelHost = new FakeHost(undefined, panelDocument);
 const panelMount = panelDocument.createElement("div");
 const panelEngine = createAnimationEngineInstance(asDocument(panelDocument), asWindow(panelWindow), panelHost);
 
 const floatingDocument = new FakeDocument();
 const floatingWindow = new FakeWindow(FLOATING_STYLE);
-const floatingHost = new FakeHost();
+const floatingHost = new FakeHost(undefined, floatingDocument);
 const floatingMount = floatingDocument.createElement("div");
 const floatingEngine = createAnimationEngineInstance(
   asDocument(floatingDocument),
@@ -621,6 +625,207 @@ assert.ok(
   computeScrollPadding({ ...renderedMeasurements, viewportHeight: 580 }).bottom < rendered.bottom,
   "Given a smaller viewport, When the padding is sized, Then it asks for less room than fullscreen did"
 );
+
+// -- Several active lines stay inside the visible band --------------------------------------------
+
+const NO_INSETS = resolveScrollInsets("auto", "auto", 400);
+
+assert.deepEqual(
+  [
+    resolveScrollInsets("12%", "16%", 250),
+    resolveScrollInsets("30px", "0px", 250),
+    resolveScrollInsets("-10px", "", 250),
+    NO_INSETS,
+  ],
+  [
+    { top: 30, bottom: 40 },
+    { top: 30, bottom: 0 },
+    { top: 0, bottom: 0 },
+    { top: 0, bottom: 0 },
+  ],
+  "Given scroll-padding in percent, pixels, a negative or nothing, When the insets are resolved, Then each is a pixel inset and only positive ones count"
+);
+
+assert.deepEqual(
+  resolveScrollInsets("60%", "50%", 250),
+  { top: 0, bottom: 0 },
+  "Given insets that leave no band, When they are resolved, Then they are ignored rather than obeyed"
+);
+
+const bandTop = (scrollTop: number, insets: { top: number }) => scrollTop + insets.top;
+const bandBottom = (scrollTop: number, height: number, insets: { bottom: number }) =>
+  scrollTop + height - insets.bottom;
+const isInBand = (
+  line: { position: number; height: number },
+  scrollTop: number,
+  height: number,
+  insets: { top: number; bottom: number }
+) =>
+  line.position >= bandTop(scrollTop, insets) && line.position + line.height <= bandBottom(scrollTop, height, insets);
+
+const shortPair = [
+  { time: 10, duration: 4, position: 1000, height: 40 },
+  { time: 12, duration: 4, position: 1050, height: 40 },
+];
+assert.deepEqual(
+  computeActiveLinesScrollTop(shortPair, shortPair[0], 400, NO_INSETS, 148),
+  { scrollTop: 1045 - 148, overflowsBand: false },
+  "Given two active lines that fit, When the scroll target is computed, Then their shared centre sits at the target"
+);
+
+for (const insets of [NO_INSETS, resolveScrollInsets("12%", "16%", 260)]) {
+  for (const anchor of shortPair) {
+    const { scrollTop } = computeActiveLinesScrollTop(shortPair, anchor, 260, insets, 96);
+    assert.ok(
+      shortPair.every(line => isInBand(line, scrollTop, 260, insets)),
+      "Given active lines that fit the band, When the scroll target is computed, Then every one of them is inside it whichever is the anchor"
+    );
+  }
+}
+
+const fittingGroups = [
+  [
+    { time: 10, duration: 4, position: 1000, height: 80 },
+    { time: 12, duration: 4, position: 1090, height: 80 },
+  ],
+  [
+    { time: 10, duration: 6, position: 1000, height: 40 },
+    { time: 11, duration: 5, position: 1050, height: 40 },
+    { time: 12, duration: 4, position: 1100, height: 40 },
+  ],
+];
+for (const group of fittingGroups) {
+  const insets = resolveScrollInsets("12%", "16%", 260);
+  for (const anchor of group) {
+    const { scrollTop, overflowsBand } = computeActiveLinesScrollTop(group, anchor, 260, insets, 96);
+    assert.ok(
+      !overflowsBand && group.every(line => isInBand(line, scrollTop, 260, insets)),
+      "regression: Given taller or more active lines that still fit the band, When a later line is the anchor, Then the first line is not pushed into the fade"
+    );
+  }
+}
+
+const lowTargetPair = [
+  { time: 0, duration: 4, position: 0, height: 190 },
+  { time: 2, duration: 4, position: 190, height: 190 },
+];
+assert.equal(
+  computeActiveLinesScrollTop(lowTargetPair, lowTargetPair[1], 400, NO_INSETS, 40).scrollTop,
+  0,
+  "regression: Given a view with no scroll padding and a low target, When two lines fit it, Then both stay fully in view"
+);
+
+assert.deepEqual(
+  [
+    findScrollAnchor(shortPair, 11),
+    findScrollAnchor(shortPair, 12),
+    findScrollAnchor(shortPair, 9.5),
+    findScrollAnchor(shortPair, 17),
+  ],
+  [shortPair[0], shortPair[1], shortPair[0], shortPair[1]],
+  "Given active lines, When the anchor is chosen, Then it is the latest that has started, or the first while none has"
+);
+
+const heldLine = { ...shortPair[0], duration: 10 };
+const shortLine = { ...shortPair[1], duration: 1 };
+assert.equal(
+  findScrollAnchor([heldLine, shortLine], 13.5),
+  heldLine,
+  "Given a later line that has already ended, When the anchor is chosen, Then an earlier line still being sung wins"
+);
+
+const PIP_VERTICAL_HEIGHT = 180;
+const pipInsets = resolveScrollInsets("12%", "16%", PIP_VERTICAL_HEIGHT);
+const PIP_TARGET_OFFSET = PIP_VERTICAL_HEIGHT * TARGET_SCROLL_RATIO;
+const [echoLine, leadLine] = [
+  { time: 138, duration: 5.8, position: 1000, height: 92 },
+  { time: 142.5, duration: 3, position: 1102, height: 92 },
+];
+
+const leadTarget = computeActiveLinesScrollTop(
+  [echoLine, leadLine],
+  findScrollAnchor([echoLine, leadLine], 142.6),
+  PIP_VERTICAL_HEIGHT,
+  pipInsets,
+  PIP_TARGET_OFFSET
+);
+assert.ok(
+  leadTarget.overflowsBand && isInBand(leadLine, leadTarget.scrollTop, PIP_VERTICAL_HEIGHT, pipInsets),
+  "regression: Given a line's background echo still running when the next line starts, When both overflow the faded band, Then the line the singer is on stays fully readable"
+);
+
+const lookaheadTarget = computeActiveLinesScrollTop(
+  [echoLine, leadLine],
+  findScrollAnchor([echoLine, leadLine], 142.1),
+  PIP_VERTICAL_HEIGHT,
+  pipInsets,
+  PIP_TARGET_OFFSET
+);
+assert.ok(
+  isInBand(echoLine, lookaheadTarget.scrollTop, PIP_VERTICAL_HEIGHT, pipInsets),
+  "regression: Given the next line in its lookahead, When it does not fit beside the line being sung, Then the line being sung is not pushed into the fade early"
+);
+
+const oversizedLine = [{ time: 0, duration: 5, position: 500, height: 600 }];
+assert.equal(
+  computeActiveLinesScrollTop(oversizedLine, oversizedLine[0], PIP_VERTICAL_HEIGHT, pipInsets, 66).scrollTop,
+  500 - pipInsets.top,
+  "Given one line taller than the band, When the scroll target is computed, Then its top sits at the top of the band"
+);
+
+// A view pinned to a line has to move on once another line becomes the anchor, or a tail that is
+// still being sung stays scrolled off screen until some other line happens to start.
+const OVERLAP_LINE_HEIGHT_PX = 300;
+const OVERLAP_LYRICS: Lyric[] = [
+  { startTimeMs: 0, durationMs: 9000, words: "A long line whose echo runs under the next" },
+  { startTimeMs: 4000, durationMs: 2000, words: "A short line sung over the echo" },
+  { startTimeMs: 12000, durationMs: 4000, words: "A line far enough away not to matter" },
+];
+const overlapDocument = new FakeDocument();
+const overlapHost = new FakeHost(undefined, overlapDocument);
+const overlapEngine = createAnimationEngineInstance(
+  asDocument(overlapDocument),
+  asWindow(new FakeWindow({ [ANIMATE_SCROLL_PROPERTY]: "0" })),
+  overlapHost
+);
+setLyrics(overlapEngine, asElement<HTMLElement>(overlapDocument.createElement("div")), OVERLAP_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+getRenderedLines(overlapEngine).forEach((line, index) => {
+  line.position = index * (OVERLAP_LINE_HEIGHT_PX + 10);
+  line.height = OVERLAP_LINE_HEIGHT_PX;
+});
+const tickOverlapUntil = (fromTenths: number, toTenths: number) => {
+  for (let tenths = fromTenths; tenths <= toTenths; tenths++) {
+    tickView(overlapEngine, tenths / 10, resolveTickOptions(newTickOptions()));
+  }
+};
+const [echoingLine, interjectedLine] = getRenderedLines(overlapEngine);
+const overlapScrollTop = () => overlapHost.scrollElement.scrollTop;
+
+tickOverlapUntil(30, 45);
+assert.ok(
+  isInBand(interjectedLine, overlapScrollTop(), VIEWPORT_HEIGHT_PX, NO_INSETS),
+  "Given a line starting over another's echo, When both overflow the view, Then the new line is the one in view"
+);
+
+const interjectedScrollTop = overlapScrollTop();
+tickView(overlapEngine, 4.3, resolveTickOptions(newTickOptions()));
+tickView(overlapEngine, 3.95, resolveTickOptions(newTickOptions()));
+assert.equal(
+  overlapScrollTop(),
+  interjectedScrollTop,
+  "regression: Given a view pinned to a line that has just started, When the clock steps back a little before it, Then the view does not flip back to the earlier line"
+);
+tickOverlapUntil(40, 45);
+
+tickOverlapUntil(46, 65);
+assert.ok(
+  isInBand(echoingLine, overlapScrollTop(), VIEWPORT_HEIGHT_PX, NO_INSETS),
+  "regression: Given a view pinned to a line that stops being sung, When only the echo is left, Then the view moves back to it without waiting for another line to start"
+);
+overlapEngine.destroy();
 
 // -- The "no lyrics" message is not unsynced lyrics --------------------------------------------
 // Its own instance, so the pending frame the positive control leaves behind cannot reach the

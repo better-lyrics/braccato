@@ -144,6 +144,8 @@ interface AnimEngineViewState {
   selectedElementIndex: number;
   wasUserScrolling: boolean;
   lastScrollElements: LineData[];
+  /** The line a committed scroll kept in view because the active lines overflowed the band. */
+  pinnedScrollLine: LineData | null;
   lastScrollDebugContext: {
     activeElms: LineData[];
     centers: number[];
@@ -179,6 +181,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   window: EngineWindow;
   host: LyricsRendererHost;
   cachedTabRendererHeight: number | null;
+  cachedScrollInsets: ScrollInsets;
   cachedFooterItem: LineScrollItem | null;
   cachedCreditsItem: LineScrollItem | null;
   creditsFocused: boolean;
@@ -254,6 +257,7 @@ export function createAnimationEngineInstance(
     selectedElementIndex: 0,
     wasUserScrolling: false,
     lastScrollElements: [],
+    pinnedScrollLine: null,
     lastScrollDebugContext: {
       activeElms: [],
       centers: [],
@@ -262,6 +266,7 @@ export function createAnimationEngineInstance(
     passiveScrollAccumulatedTime: 0,
     passiveLastWallTime: 0,
     cachedTabRendererHeight: null,
+    cachedScrollInsets: NO_SCROLL_INSETS,
     cachedFooterItem: null,
     cachedCreditsItem: null,
     creditsFocused: false,
@@ -422,6 +427,7 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   }
   engine.skipScrollsDecayTimes = [];
   engine.lastScrollElements = [];
+  engine.pinnedScrollLine = null;
   engine.lastScrollDebugContext.activeElms = [];
   engine.lastScrollDebugContext.centers = [];
   engine.passiveScrollAccumulatedTime = 0;
@@ -2706,13 +2712,102 @@ function setupTabRendererObserver(engine: AnimationEngineInstance, element: HTML
   engine.tabRendererResizeObserver = new engine.window.ResizeObserver(() => {
     dropPendingLineScroll(engine);
     if (element && element.isConnected) {
-      engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
+      measureScrollViewport(engine, element);
     }
   });
 
   engine.tabRendererResizeObserver.observe(element);
   engine.observedTabRenderer = element;
-  engine.cachedTabRendererHeight = element.getBoundingClientRect().height;
+  measureScrollViewport(engine, element);
+}
+
+// -- Visible scroll band --------------------------
+
+export interface ScrollInsets {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+const NO_SCROLL_INSETS: ScrollInsets = { top: 0, bottom: 0 };
+
+function resolveScrollInset(value: string, viewportHeight: number): number {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return value.trim().endsWith("%") ? (viewportHeight * amount) / 100 : amount;
+}
+
+/**
+ * The scroll element's `scroll-padding` is the part of its viewport a host has declared unreadable,
+ * such as an edge faded out by a mask. Insets that leave no band at all are ignored rather than
+ * obeyed, since there would be nowhere left to put a line.
+ */
+export function resolveScrollInsets(
+  scrollPaddingTop: string,
+  scrollPaddingBottom: string,
+  viewportHeight: number
+): ScrollInsets {
+  const top = resolveScrollInset(scrollPaddingTop, viewportHeight);
+  const bottom = resolveScrollInset(scrollPaddingBottom, viewportHeight);
+  return top + bottom < viewportHeight ? { top, bottom } : NO_SCROLL_INSETS;
+}
+
+function measureScrollViewport(engine: AnimationEngineInstance, element: HTMLElement): void {
+  const height = element.getBoundingClientRect().height;
+  const { scrollPaddingTop, scrollPaddingBottom } = engine.window.getComputedStyle(element);
+  engine.cachedTabRendererHeight = height;
+  engine.cachedScrollInsets = resolveScrollInsets(scrollPaddingTop, scrollPaddingBottom, height);
+}
+
+interface ScrollTargetLine {
+  readonly time: number;
+  readonly duration: number;
+  readonly position: number;
+  readonly height: number;
+}
+
+/**
+ * The line the singer is on: the latest one still being sung. An earlier line still running is a
+ * tail, such as a background echo or a held note, and a later one is still in its lookahead. A line
+ * stays active past its own end until the next one starts, so a started line only wins while it runs.
+ */
+export function findScrollAnchor<Line extends ScrollTargetLine>(sungLines: readonly Line[], scrollTime: number): Line {
+  return (
+    sungLines.findLast(line => line.time <= scrollTime && scrollTime < line.time + line.duration) ??
+    sungLines.findLast(line => line.time <= scrollTime) ??
+    sungLines[0]
+  );
+}
+
+/**
+ * Where to scroll so the lines being sung sit around the target, inside the visible band. When they
+ * do not all fit, the anchor keeps its top in view and the rest give way. `overflowsBand` tells the
+ * caller the view is pinned to the anchor, and has to move on once that line ends.
+ *
+ * @param sungLines - In order, never empty. The last is the last active line.
+ */
+export function computeActiveLinesScrollTop(
+  sungLines: readonly ScrollTargetLine[],
+  anchor: ScrollTargetLine,
+  viewportHeight: number,
+  insets: ScrollInsets,
+  targetOffset: number
+): { scrollTop: number; overflowsBand: boolean } {
+  const first = sungLines[0];
+  const last = sungLines[sungLines.length - 1];
+  const averageCentre =
+    sungLines.reduce((total, line) => total + line.position + line.height / 2, 0) / sungLines.length;
+  const visibleBottom = viewportHeight - insets.bottom;
+
+  let scrollTop = averageCentre - targetOffset;
+  scrollTop = Math.max(scrollTop, last.position + last.height - visibleBottom);
+  scrollTop = Math.min(scrollTop, last.position - insets.top);
+  scrollTop = Math.min(scrollTop, first.position - insets.top);
+  scrollTop = Math.max(scrollTop, anchor.position + anchor.height - visibleBottom);
+  scrollTop = Math.min(scrollTop, anchor.position - insets.top);
+  return {
+    scrollTop,
+    overflowsBand: last.position + last.height - first.position > visibleBottom - insets.top,
+  };
 }
 
 /**
@@ -3046,37 +3141,40 @@ export function tickView(
 
       let lastActiveLyric = activeElems[activeElems.length - 1];
 
-      let lyricPositions: number[] = activeElems
-        .filter((lineData, index) => {
-          // Ignore lyrics close to finishing unless it last active lyric
-          return (
-            lyricScrollTime < lineData.time + lineData.duration - LYRIC_ENDING_THRESHOLD_S.getNumberValue() ||
-            index == activeElems.length - 1
-          );
-        })
-        // We subtract selectedLyricHeight / 2 to center the selected lyric line vertically within the offset region,
-        // so the lyric is not aligned at the very top of the offset but is visually centered.
-        .map(lineData => lineData.position + lineData.height / 2);
+      // Ignore lyrics close to finishing unless it is the last active lyric.
+      const sungLines = activeElems.filter(
+        (lineData, index) =>
+          lyricScrollTime < lineData.time + lineData.duration - LYRIC_ENDING_THRESHOLD_S.getNumberValue() ||
+          index == activeElems.length - 1
+      );
+      const lyricPositions = sungLines.map(lineData => lineData.position + lineData.height / 2);
+      const scrollInsets = engine.cachedScrollInsets;
 
-      let avgPos =
-        lyricPositions.reduce((accumulator, currentValue) => accumulator + currentValue, 0) / lyricPositions.length;
-
-      // Base position
-      let scrollPos = avgPos - scrollPosOffset;
-
-      // Make sure the first selected line is stays visible
-      scrollPos = Math.min(scrollPos, lyricPositions[0]);
-
-      // Make sure bottom of last active lyric is visible
-      scrollPos = Math.max(scrollPos, lastActiveLyric.position - tabRendererHeight + lastActiveLyric.height);
-
-      // Make sure top of last active lyric is visible.
-      scrollPos = Math.min(scrollPos, lastActiveLyric.position);
+      const scrollAnchor = findScrollAnchor(sungLines, lyricScrollTime);
+      const scrollTarget = computeActiveLinesScrollTop(
+        sungLines,
+        scrollAnchor,
+        tabRendererHeight,
+        scrollInsets,
+        scrollPosOffset
+      );
+      let scrollPos = scrollTarget.scrollTop;
+      const pinned = engine.pinnedScrollLine;
+      if (
+        pinned &&
+        pinned !== scrollAnchor &&
+        (!sungLines.includes(pinned) || lyricScrollTime >= pinned.time + pinned.duration)
+      ) {
+        newLyricSelected = true;
+      }
 
       const credits = engine.cachedCreditsItem;
       if (engine.creditsFocused && credits && lastSungLine) {
         // Tall credits would otherwise carry the last line out of view while it is still being sung.
-        scrollPos = Math.min(credits.position + credits.height / 2 - scrollPosOffset, lastSungLine.position);
+        scrollPos = Math.min(
+          credits.position + credits.height / 2 - scrollPosOffset,
+          lastSungLine.position - scrollInsets.top
+        );
       }
 
       // Past either end the browser clamps the write and reports nothing, leaving the view aiming
@@ -3202,6 +3300,7 @@ export function tickView(
         // Remember future lines only when their group is committed, so they cannot scroll
         // again at their start. Entering the lookahead window alone does not commit a group.
         engine.lastScrollElements = activeElems;
+        engine.pinnedScrollLine = scrollTarget.overflowsBand ? scrollAnchor : null;
         engine.lastScrollDebugContext.lyricScrollTime = lyricScrollTime;
         engine.lastScrollDebugContext.centers = lyricPositions;
         engine.lastScrollDebugContext.activeElms = activeElems;
@@ -3365,6 +3464,8 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
  */
 export function relayout(engine: AnimationEngineInstance, measureLines: boolean): void {
   applyScrollPadding(engine);
+  const scrollElement = engine.host.getScrollElement();
+  if (scrollElement) measureScrollViewport(engine, scrollElement);
   if (!measureLines) return;
 
   const lyricsElement = engine.lyricsContainer;
