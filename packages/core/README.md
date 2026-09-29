@@ -383,19 +383,24 @@ catch the layout up: the hung line floats into place while the lines around it s
 rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-entry` set to `0` drops
 both for an instant insert, and reduced-motion does the same.
 
-`createLyricsRenderer({ layout: "stage" })` builds a view that shows only what is being sung, for
-subtitles over a video. It needs no scroll element, writes no scroll padding and culls no lines, and it
-fills its nearest positioned ancestor. Unsynced lyrics show nothing on a stage. The view is one line at a
-time, like subtitles. The engine places each line with a `translate` Web Animation, fades it through
-`--blyrics-stage-opacity`, and marks it with `data-stage-role` (`current`, `previous`, `queued` or
-`gone`); the container carries `data-layout="stage"`. A stage line's `opacity` is set from that property
-with `!important`, and a line is `visibility: hidden` until it is marked `data-stage-visible`, so a theme
-that forces `opacity` on an active line can neither show a queued one nor hold a leaving one.
-In a duet (any line sung by `v2` or `v3`) the container also carries `data-stage-duet`, and each
-singer's lines sit on their own side, as in the scrolling view; lines for everyone stay centred.
-Themes style the lines as they would in a scrolling view. `host.onStageLayout(box)` reports the box
-around the lines being sung, in the container's coordinates, or null when nothing sung is on stage, so
-you can draw a backdrop outside the container the theme styles.
+`createLyricsRenderer({ layout: "stage" })` builds a view for subtitles over a video: one line at a
+time, and only while it is being sung. It fills its nearest positioned ancestor. There is no scroll
+element to hand it, no scroll padding written and no line culling. Unsynced lyrics show nothing, because
+a stage places lines by their time and unsynced lines have none.
+
+The engine owns where a line is and whether you can see it. It moves each line with a `translate` Web
+Animation and fades it through `--blyrics-stage-opacity`, blurring it slightly on the way in and out so
+one line reads as turning into the next. Each line carries `data-stage-role` (`current`, `previous`,
+`queued` or `gone`) and the container carries `data-layout="stage"`. `stage.css` sets a stage line's
+`opacity` from that property with `!important`, and keeps the line `visibility: hidden` until it is marked
+`data-stage-visible`. A theme that forces `opacity: 1 !important` on active lines, which some do, can then
+neither reveal a queued line nor hold one that is leaving. In a duet (any line sung by `v2` or `v3`) the
+container also gets `data-stage-duet` and each singer keeps to their side, as in the scrolling view;
+lines for everyone stay centred.
+
+Everything else is the theme's. Lines are styled exactly as they would be in a scrolling view.
+`host.onStageLayout(box)` reports the box around the sung lines in the container's coordinates, or null
+when nothing sung is on stage, so you can draw a backdrop outside the container the theme styles.
 
 `@braccato/core/element` registers `<braccato-lyrics>`, and `<better-lyrics>` beside it, on import.
 Registration is a side effect, which is why it is entered separately.
@@ -444,10 +449,10 @@ swapping `audio.src` between songs without playing goes on reporting the old pos
 
 Two renderers in one document write over each other, so the module supports one. It is a constraint
 rather than a setting, and it is stated rather than enforced: none of the points where two of them
-collide is a crash. A stage renderer is the exception: it writes no scroll padding, so it can share a
-document with a scrolling renderer. Give both the same theme, tick both with the same time and wall
-time in the same frame (the one that ticks first is the one that sees a seek), and destroy the stage
-renderer first if it was the first to apply the theme, since its `<style>` element goes with it.
+collide is a crash. A stage renderer is the exception. It writes no scroll padding, so it can sit in
+the same document as a scrolling one, with three rules: give both the same theme, tick both with the
+same time and wall time in the same frame (whichever ticks first is the one that sees a seek), and if
+the stage renderer applied the theme first, destroy it first, because its `<style>` element goes with it.
 
 Two things are written per document and belong to whichever renderer wrote them last: the theme's
 `<style>` element, and the scroll padding on the root. Two more are per bundle, because a settings
