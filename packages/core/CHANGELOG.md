@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.13.0
+
+### Minor Changes
+
+- 3da2b1a: Keep several active lines inside the visible band: the scroll element's `scroll-padding` now marks hidden edges, and the latest line still being sung keeps its top in view when they do not all fit.
+
 ## 1.12.6
 
 ### Patch Changes
