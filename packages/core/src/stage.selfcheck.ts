@@ -81,6 +81,16 @@ const credits = (start: number): StageItem => ({ kind: "credits", start, end: Nu
   assert.deepEqual(planStage(items, 3), ["gone", "current"], "credits are current after the last line, alone");
 }
 
+{
+  const items = [line(0, 2), instrumental(2, 12), credits(12)];
+  assert.deepEqual(planStage(items, 6.9), ["gone", "current", "queued"], "an outro note holds its first half");
+  assert.deepEqual(
+    planStage(items, 7),
+    ["gone", "gone", "current"],
+    "regression: the credits take over halfway through an outro note, not as the song ends"
+  );
+}
+
 // -- Invariants --------------------------------------------
 
 {

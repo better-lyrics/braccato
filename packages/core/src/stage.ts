@@ -22,6 +22,8 @@ export function stageEnterTimes(items: readonly StageItem[]): number[] {
   return items.map((item, index) => {
     const early = item.start - STAGE_LEAD_S;
     const previous = items[index - 1];
+    // An outro note would otherwise keep the credits off stage until the song ends.
+    if (item.kind === "credits" && previous?.kind === "instrumental") return (previous.start + previous.end) / 2;
     if (previous?.kind !== "line" || overlapsPrevious(items, index)) return early;
     return Math.max(early, Math.min(previous.end, item.start) - STAGE_HANDOFF_S);
   });
