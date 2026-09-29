@@ -178,6 +178,11 @@ const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1 };
     false,
     "a blank line is never held as the previous line"
   );
+  assert.deepEqual(
+    planStage([line(0, 3), blank(2, 4)], 2.5),
+    ["gone", "current"],
+    "regression: a blank line that starts before the line ahead ends still clears it"
+  );
 }
 
 console.log("stage scheduler self-check passed");

@@ -150,6 +150,7 @@ export function setLyrics(
       buildInstrumentalLine(doc, lyricElement, lyrics, lineIndex);
     } else {
       buildSungLine(doc, lyricElement, lyricItem, line);
+      if (!lyricItem.words?.trim()) lyricElement.dataset.blank = "true";
     }
 
     container.appendChild(lyricElement);

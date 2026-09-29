@@ -2993,9 +2993,9 @@ function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement
       kind:
         line.lyricElement.dataset.instrumental === "true"
           ? "instrumental"
-          : line.lyricElement.textContent?.trim()
-            ? "line"
-            : "blank",
+          : line.lyricElement.dataset.blank === "true"
+            ? "blank"
+            : "line",
       start: line.time,
       end,
     });
