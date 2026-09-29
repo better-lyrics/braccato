@@ -397,6 +397,6 @@ export const STYLESHEETS = [
   {
     file: "stage.css",
     summary:
-      'Placement for a renderer created with layout: "stage", which shows only the lines being sung. Lines carry data-stage-role, and the container data-layout and data-stage-preview.',
+      'Placement for a renderer created with layout: "stage", which shows only the lines being sung. Lines carry data-stage-role and data-stage-visible, and the container data-layout.',
   },
 ];

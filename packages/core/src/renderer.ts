@@ -181,7 +181,6 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     host,
     rendererOptions.layout ?? "scroll"
   );
-  engine.stagePreview = rendererOptions.stage?.preview ?? false;
 
   /**
    * Every re-measurement runs through here, which makes it the one place that knows the layout may
@@ -374,12 +373,6 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     resumeAutoscroll() {
       if (isDestroyed) return;
       resetScrollResume(engine);
-    },
-    setStageOptions(options) {
-      if (isDestroyed || engine.layout !== "stage") return;
-      engine.stagePreview = options.preview ?? false;
-      if (engine.lyricsContainer) engine.lyricsContainer.dataset.stagePreview = String(engine.stagePreview);
-      measure();
     },
     clearOnScreenLyrics() {
       if (isDestroyed) return false;

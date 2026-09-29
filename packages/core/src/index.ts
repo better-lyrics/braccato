@@ -27,6 +27,6 @@ export type { LyricPart, LyricsRendererDebugSink, LyricsRendererOptions, LyricSy
 /** @public */
 export type { SetLyricsOptions } from "./view";
 /** @public */
-export type { LyricsLayout, StageOptions } from "./types";
+export type { LyricsLayout } from "./types";
 /** @public */
 export type { StageBox } from "./stage";

@@ -211,7 +211,6 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   learnedAnimationTimingOffsetMs: number;
   animationTimingVisibilityLogUntil: number;
   layout: LyricsLayout;
-  stagePreview: boolean;
   stageKey: string;
   stageBox: StageBox | null;
   stageMetrics: Map<HTMLElement, StageMetrics>;
@@ -302,7 +301,6 @@ export function createAnimationEngineInstance(
     learnedAnimationTimingOffsetMs: 0,
     animationTimingVisibilityLogUntil: 0,
     layout,
-    stagePreview: false,
     stageKey: "",
     stageBox: null,
     stageMetrics: new Map(),
@@ -408,6 +406,7 @@ export function noteContainerResize(engine: AnimationEngineInstance, width: numb
 export function clearOnScreenLyrics(engine: AnimationEngineInstance): boolean {
   if (!engine.lyricsContainer) return false;
   engine.lyricsContainer.replaceChildren();
+  resetStage(engine);
   return true;
 }
 
@@ -459,6 +458,10 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.creditsFocused = false;
   engine.lyricsContainer = null;
   engine.waveAnimationPool.length = 0;
+  resetStage(engine);
+}
+
+function resetStage(engine: AnimationEngineInstance): void {
   for (const animation of [...engine.stageMoves.values(), ...engine.stageFades.values()]) animation.cancel();
   engine.stageMoves.clear();
   engine.stageFades.clear();
@@ -2877,10 +2880,7 @@ function resolvePlaybackRate(rate: number | undefined): number {
 
 // -- Stage layout --------------------------------------------
 
-const STAGE_MOTION = {
-  rolling: { durationMs: 750, easing: "cubic-bezier(0.86, 0, 0.2, 1)" },
-  subtitle: { durationMs: 380, easing: "cubic-bezier(0.2, 0, 0, 1)" },
-};
+const STAGE_MOTION = { durationMs: 380, easing: "cubic-bezier(0.2, 0, 0, 1)" };
 const STAGE_FADE_IN_MS = 300;
 const STAGE_FADE_IN_DELAY_MS = 70;
 const STAGE_FADE_OUT_MS = 160;
@@ -2937,39 +2937,53 @@ function currentTranslateY(engine: AnimationEngineInstance, element: HTMLElement
   return Number.isFinite(y) ? y : fallback;
 }
 
+interface StageMove {
+  element: HTMLElement;
+  placement: StagePlacement;
+  fromY: number;
+  fromOpacity: number;
+}
+
 function placeStageElement(
   engine: AnimationEngineInstance,
-  element: HTMLElement,
-  placement: StagePlacement,
-  instant: boolean
+  { element, placement, fromY, fromOpacity }: StageMove,
+  instant: boolean,
+  reduced: boolean
 ): void {
-  const reduced = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
-  const motion = engine.stagePreview ? STAGE_MOTION.rolling : STAGE_MOTION.subtitle;
-  const fromY = currentTranslateY(engine, element, engine.stageY.get(element) ?? placement.y);
-  const fromOpacity = Number(engine.window.getComputedStyle(element).opacity) || 0;
   engine.stageMoves.get(element)?.cancel();
   engine.stageFades.get(element)?.cancel();
 
-  const moveMs = instant || reduced ? 0 : motion.durationMs;
+  const moveMs = instant || reduced ? 0 : STAGE_MOTION.durationMs;
   engine.stageMoves.set(
     element,
     element.animate([{ translate: `0 ${fromY}px` }, { translate: `0 ${placement.y}px` }], {
       duration: moveMs,
-      easing: motion.easing,
+      easing: STAGE_MOTION.easing,
       fill: "forwards",
     })
   );
   const fadeMs = instant ? 0 : placement.visible ? STAGE_FADE_IN_MS : STAGE_FADE_OUT_MS;
-  engine.stageFades.set(
-    element,
-    element.animate([{ opacity: fromOpacity }, { opacity: placement.visible ? 1 : 0 }], {
-      duration: fadeMs,
-      delay: placement.visible && !instant && !engine.stagePreview ? STAGE_FADE_IN_DELAY_MS : 0,
-      easing: "ease-out",
-      fill: "forwards",
-    })
-  );
+  if (placement.visible) element.dataset.stageVisible = "";
+  else if (fadeMs === 0) delete element.dataset.stageVisible;
+  const fade = element.animate([{ opacity: fromOpacity }, { opacity: placement.visible ? 1 : 0 }], {
+    duration: fadeMs,
+    delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,
+    easing: "ease-out",
+    // Backwards too: the fade replaces one that was cancelled, and through its delay the line would
+    // otherwise drop to the stylesheet's resting opacity of zero.
+    fill: "both",
+  });
+  if (!placement.visible && fadeMs > 0) {
+    fade.onfinish = () => {
+      if (engine.stageFades.get(element) === fade) delete element.dataset.stageVisible;
+    };
+  }
+  engine.stageFades.set(element, fade);
   engine.stageY.set(element, placement.y);
+}
+
+function isStageRoleVisible(role: string): boolean {
+  return role !== "queued" && role !== "gone";
 }
 
 function sameBox(a: StageBox | null, b: StageBox | null): boolean {
@@ -2981,7 +2995,7 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
   const container = engine.lyricsContainer;
   if (!container) return;
   const { elements, items } = stageElements(engine);
-  const roles = planStage(items, timeS, { preview: engine.stagePreview });
+  const roles = planStage(items, timeS);
   const key = roles.join(",");
   if (key === engine.stageKey && !instant) return;
   engine.stageKey = key;
@@ -2997,15 +3011,32 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
     {
       stageHeight: container.clientHeight,
       gap: engine.stageFontSize * STAGE_GAP_EM,
-      activeScale: 1,
+      activeScale: getCSSNumber(engine, container, "--blyrics-active-scale", 1),
       inactiveScale: getCSSNumber(engine, container, "--blyrics-scale", 0.95),
-      preview: engine.stagePreview,
     }
   );
+  // Only the elements whose place changed move. A line that stays where it is keeps its running
+  // animations, and one already hidden stays hidden without being animated again.
+  const moves: StageMove[] = [];
   elements.forEach((element, index) => {
-    element.dataset.stageRole = roles[index];
-    placeStageElement(engine, element, placements[index], instant);
+    const placement = placements[index];
+    const previousY = engine.stageY.get(element);
+    const wasVisible = element.dataset.stageRole !== undefined && isStageRoleVisible(element.dataset.stageRole);
+    const unchanged =
+      previousY !== undefined && wasVisible === placement.visible && (!placement.visible || previousY === placement.y);
+    if (unchanged && !instant) return;
+    moves.push({
+      element,
+      placement,
+      fromY: currentTranslateY(engine, element, previousY ?? placement.y),
+      fromOpacity: Number(engine.window.getComputedStyle(element).opacity) || 0,
+    });
   });
+  const reduced = engine.window.matchMedia(REDUCED_MOTION_QUERY).matches;
+  elements.forEach((element, index) => {
+    if (element.dataset.stageRole !== roles[index]) element.dataset.stageRole = roles[index];
+  });
+  for (const move of moves) placeStageElement(engine, move, instant, reduced);
   if (!sameBox(box, engine.stageBox)) {
     engine.stageBox = box;
     engine.host.onStageLayout?.(box);
@@ -3039,6 +3070,8 @@ export function tickView(
   }
 
   if (hasUnsyncedLyrics(engine)) {
+    // The stage shows lines by their time, and unsynced lines have none.
+    if (engine.layout === "stage") return "ok";
     if (!playbackClock.lastPlayState && isPlaying) {
       engine.scrollResumeTime = 0;
     }

@@ -111,11 +111,6 @@ export interface LyricsRendererHost {
 
 export type LyricsLayout = "scroll" | "stage";
 
-export interface StageOptions {
-  /** Shows the next line under the current one. Defaults to false: one line, like subtitles. */
-  preview?: boolean;
-}
-
 export interface LyricsRendererOptions {
   document: Document;
   window: Window;
@@ -131,8 +126,6 @@ export interface LyricsRendererOptions {
   host?: Partial<LyricsRendererHost>;
   /** `"scroll"` (default) is the scrolling lyrics view. `"stage"` shows only what is being sung. */
   layout?: LyricsLayout;
-  /** Stage layout only. */
-  stage?: StageOptions;
 }
 
 /**
@@ -197,8 +190,6 @@ export interface LyricsRenderer {
    */
   noteVisibilityChange(): void;
   resumeAutoscroll(): void;
-  /** Stage layout only. Switches between subtitle and rolling without rebuilding the lines. */
-  setStageOptions(options: StageOptions): void;
   /**
    * Takes this view's lines off the screen, keeping the container they were in, and reports whether
    * there were any there to take. For a consumer that is about to build the next song into the same

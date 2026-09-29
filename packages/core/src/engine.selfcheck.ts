@@ -1539,7 +1539,133 @@ assert.ok(
   "Given a stage view with a sung line on stage, When it ticks, Then the host is told where to draw the backdrop"
 );
 
+const STAGE_MOVE_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+const stageAnimationCount = (): number => stageLines.reduce((sum, line) => sum + line.animations.length, 0);
+
+assert.deepEqual(
+  stageLines.map(line => line.dataset.stageVisible),
+  [undefined, "", undefined],
+  "Given a stage view, When a line holds the stage, Then only that line is marked visible"
+);
+
+const animationsBeforeRepeat = stageAnimationCount();
+tickView(stageEngine, SECOND_LINE_S, resolveTickOptions(newTickOptions()));
+assert.equal(
+  stageAnimationCount(),
+  animationsBeforeRepeat,
+  "Given a stage view, When it ticks again at the same time, Then no line is animated again"
+);
+
+for (const time of [
+  SECOND_LINE_S + 0.4,
+  SECOND_LINE_S + 0.9,
+  SECOND_LINE_S + 1.4,
+  SECOND_LINE_S + 1.7,
+  SECOND_LINE_S + 1.9,
+]) {
+  tickView(stageEngine, time, resolveTickOptions(newTickOptions()));
+}
+assert.deepEqual(
+  stageLines.map(line => line.dataset.stageRole),
+  ["gone", "gone", "current"],
+  "Given a stage view, When time advances into the third line, Then the second line leaves the stage"
+);
+assert.deepEqual(
+  stageLines.map(line => line.dataset.stageVisible),
+  [undefined, "", ""],
+  "Given a line leaving the stage, When its fade-out has not finished, Then it stays marked visible"
+);
+const leavingFade = stageLines[1].animations.at(-1)!;
+assert.ok(Number(leavingFade.options.duration) > 0, "Given a line leaving on a steady clock, Then it fades out");
+leavingFade.finish();
+assert.deepEqual(
+  stageLines.map(line => line.dataset.stageVisible),
+  [undefined, undefined, ""],
+  "Given a finished fade-out, Then the line is no longer marked visible"
+);
+
+const animationCountsBeforeJump = stageLines.map(line => line.animations.length);
+tickView(stageEngine, LINE_SYNCED_LYRICS[0].startTimeMs / 1000 + 1, resolveTickOptions(newTickOptions()));
+const jumpedAnimations = stageLines
+  .flatMap((line, index) => line.animations.slice(animationCountsBeforeJump[index]))
+  .filter(animation => animation.options.fill === "both" || animation.options.easing === STAGE_MOVE_EASING);
+assert.ok(
+  jumpedAnimations.length > 0 && jumpedAnimations.every(animation => animation.options.duration === 0),
+  "Given a stage view, When the clock jumps, Then every line is re-laid with zero-duration animations"
+);
+assert.deepEqual(
+  stageLines.map(line => line.dataset.stageVisible),
+  ["", undefined, undefined],
+  "Given a seek back to the first line, Then it is the only one marked visible"
+);
+
+const staleFadeLine = stageLines[0];
+tickView(stageEngine, SECOND_LINE_S, resolveTickOptions(newTickOptions()));
+const staleFade = staleFadeLine.animations.at(-1)!;
+tickView(stageEngine, LINE_SYNCED_LYRICS[0].startTimeMs / 1000 + 1, resolveTickOptions(newTickOptions()));
+staleFade.finish();
+assert.equal(
+  staleFadeLine.dataset.stageVisible,
+  "",
+  "Given a fade-out replaced by a fade-in, When the old fade finishes, Then the line stays visible"
+);
+
+stageHost.stageBoxes.length = 0;
+tickView(stageEngine, SECOND_LINE_S, resolveTickOptions(newTickOptions()));
+assert.notEqual(stageHost.stageBoxes.at(-1), null, "Given a sung line on stage, Then a box was reported");
+assert.equal(clearOnScreenLyrics(stageEngine), true);
+assert.equal(
+  stageHost.stageBoxes.at(-1),
+  null,
+  "Given a stage view, When its lines are taken off the screen, Then the host is told the box is gone"
+);
+
+setLyrics(stageEngine, asElement<HTMLElement>(stageMount), LINE_SYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+for (const line of renderedLineElements(stageMount)) {
+  line.offsetHeight = LINE_HEIGHT_PX;
+  line.offsetWidth = 200;
+}
+asFakeNode(stageEngine.lyricsContainer!).clientHeight = VIEWPORT_HEIGHT_PX;
+relayout(stageEngine, true);
+stageHost.stageBoxes.length = 0;
+tickView(stageEngine, SECOND_LINE_S, resolveTickOptions(newTickOptions()));
+assert.notEqual(stageHost.stageBoxes.at(-1), null, "Given a rebuilt stage view, Then a box was reported again");
+clearLyrics(stageEngine);
+assert.equal(
+  stageHost.stageBoxes.at(-1),
+  null,
+  "Given a stage view, When the song is cleared, Then the host is told the box is gone"
+);
+
 stageEngine.destroy();
+
+const unsyncedDocument = new FakeDocument();
+const unsyncedHost = new StageHost(undefined, unsyncedDocument);
+const unsyncedMount = unsyncedDocument.createElement("div");
+const unsyncedEngine = createAnimationEngineInstance(
+  asDocument(unsyncedDocument),
+  asWindow(new FakeWindow()),
+  unsyncedHost,
+  "stage"
+);
+setLyrics(unsyncedEngine, asElement<HTMLElement>(unsyncedMount), UNSYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+assert.equal(
+  tickView(unsyncedEngine, 5, resolveTickOptions({ ...newTickOptions(), passiveScrollEnabled: true })),
+  "ok",
+  "Given a stage view with unsynced lyrics and passive scrolling on, When it ticks, Then it renders nothing"
+);
+assert.equal(
+  unsyncedHost.scrollElementReads,
+  0,
+  "Given a stage view with unsynced lyrics, When passive scrolling is on, Then no scroll element is asked for"
+);
+unsyncedEngine.destroy();
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +

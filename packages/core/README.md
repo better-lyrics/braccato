@@ -384,11 +384,12 @@ rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-en
 both for an instant insert, and reduced-motion does the same.
 
 `createLyricsRenderer({ layout: "stage" })` builds a view that shows only what is being sung, for
-subtitles over a video. It needs no scroll element and writes nothing to the document. `stage.preview`
-(or `renderer.setStageOptions({ preview })` later, without a rebuild) shows the next line under the
-current one; without it the view is one line, like subtitles. The engine places each line with
-`translate` and `opacity` Web Animations and marks it with `data-stage-role` (`current`, `next`,
-`previous`, `queued` or `gone`); the container carries `data-layout="stage"` and `data-stage-preview`.
+subtitles over a video. It needs no scroll element, writes no scroll padding and culls no lines, and it
+fills its nearest positioned ancestor. Unsynced lyrics show nothing on a stage. The view is one line at a
+time, like subtitles. The engine places each line with `translate` and `opacity` Web Animations and
+marks it with `data-stage-role` (`current`, `previous`, `queued` or `gone`); the container carries
+`data-layout="stage"`, and a line is `visibility: hidden` until it is marked `data-stage-visible`, so a
+theme that forces `opacity` on an active line cannot show a queued one.
 Themes style the lines as they would in a scrolling view. `host.onStageLayout(box)` reports the box
 around the lines being sung, in the container's coordinates, or null when nothing sung is on stage, so
 you can draw a backdrop outside the container the theme styles.
@@ -440,8 +441,10 @@ swapping `audio.src` between songs without playing goes on reporting the old pos
 
 Two renderers in one document write over each other, so the module supports one. It is a constraint
 rather than a setting, and it is stated rather than enforced: none of the points where two of them
-collide is a crash. A stage renderer is the exception: it writes nothing to the document, so it can
-share one with a scrolling renderer.
+collide is a crash. A stage renderer is the exception: it writes no scroll padding, so it can share a
+document with a scrolling renderer. Give both the same theme, tick both with the same time and wall
+time in the same frame (the one that ticks first is the one that sees a seek), and destroy the stage
+renderer first if it was the first to apply the theme, since its `<style>` element goes with it.
 
 Two things are written per document and belong to whichever renderer wrote them last: the theme's
 `<style>` element, and the scroll padding on the root. Two more are per bundle, because a settings
