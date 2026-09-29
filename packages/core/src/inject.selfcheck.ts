@@ -285,6 +285,11 @@ assert.deepEqual(
   "Given a Syriac word, When letter wave is on, Then it stays unlettered so its letters keep their joined forms"
 );
 assert.deepEqual(
+  lettersOf("ـــ"),
+  [],
+  "Given a syllable of only tatweel, When letter wave is on, Then it stays unlettered so the elongation keeps joining"
+);
+assert.deepEqual(
   lettersOf("שלום"),
   ["ש", "ל", "ו", "ם"],
   "Given a Hebrew word, When letter wave splits it, Then it still splits because Hebrew letters do not join"
