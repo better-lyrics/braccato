@@ -683,6 +683,38 @@ for (const insets of [NO_INSETS, resolveScrollInsets("12%", "16%", 260)]) {
   }
 }
 
+const fittingGroups = [
+  [
+    { time: 10, duration: 4, position: 1000, height: 80 },
+    { time: 12, duration: 4, position: 1090, height: 80 },
+  ],
+  [
+    { time: 10, duration: 6, position: 1000, height: 40 },
+    { time: 11, duration: 5, position: 1050, height: 40 },
+    { time: 12, duration: 4, position: 1100, height: 40 },
+  ],
+];
+for (const group of fittingGroups) {
+  const insets = resolveScrollInsets("12%", "16%", 260);
+  for (const anchor of group) {
+    const { scrollTop, overflowsBand } = computeActiveLinesScrollTop(group, anchor, 260, insets, 96);
+    assert.ok(
+      !overflowsBand && group.every(line => isInBand(line, scrollTop, 260, insets)),
+      "regression: Given taller or more active lines that still fit the band, When a later line is the anchor, Then the first line is not pushed into the fade"
+    );
+  }
+}
+
+const lowTargetPair = [
+  { time: 0, duration: 4, position: 0, height: 190 },
+  { time: 2, duration: 4, position: 190, height: 190 },
+];
+assert.equal(
+  computeActiveLinesScrollTop(lowTargetPair, lowTargetPair[1], 400, NO_INSETS, 40).scrollTop,
+  0,
+  "regression: Given a view with no scroll padding and a low target, When two lines fit it, Then both stay fully in view"
+);
+
 assert.deepEqual(
   [
     findScrollAnchor(shortPair, 11),
@@ -777,6 +809,16 @@ assert.ok(
   isInBand(interjectedLine, overlapScrollTop(), VIEWPORT_HEIGHT_PX, NO_INSETS),
   "Given a line starting over another's echo, When both overflow the view, Then the new line is the one in view"
 );
+
+const interjectedScrollTop = overlapScrollTop();
+tickView(overlapEngine, 4.3, resolveTickOptions(newTickOptions()));
+tickView(overlapEngine, 3.95, resolveTickOptions(newTickOptions()));
+assert.equal(
+  overlapScrollTop(),
+  interjectedScrollTop,
+  "regression: Given a view pinned to a line that has just started, When the clock steps back a little before it, Then the view does not flip back to the earlier line"
+);
+tickOverlapUntil(40, 45);
 
 tickOverlapUntil(46, 65);
 assert.ok(

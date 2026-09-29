@@ -2781,7 +2781,7 @@ export function findScrollAnchor<Line extends ScrollTargetLine>(sungLines: reado
 /**
  * Where to scroll so the lines being sung sit around the target, inside the visible band. When they
  * do not all fit, the anchor keeps its top in view and the rest give way. `overflowsBand` tells the
- * caller the view is pinned to the anchor, and has to move on once another line becomes it.
+ * caller the view is pinned to the anchor, and has to move on once that line ends.
  *
  * @param sungLines - In order, never empty. The last is the last active line.
  */
@@ -2801,6 +2801,7 @@ export function computeActiveLinesScrollTop(
   let scrollTop = averageCentre - targetOffset;
   scrollTop = Math.max(scrollTop, last.position + last.height - visibleBottom);
   scrollTop = Math.min(scrollTop, last.position - insets.top);
+  scrollTop = Math.min(scrollTop, first.position - insets.top);
   scrollTop = Math.max(scrollTop, anchor.position + anchor.height - visibleBottom);
   scrollTop = Math.min(scrollTop, anchor.position - insets.top);
   return {
@@ -3158,7 +3159,12 @@ export function tickView(
         scrollPosOffset
       );
       let scrollPos = scrollTarget.scrollTop;
-      if (engine.pinnedScrollLine && engine.pinnedScrollLine !== scrollAnchor) {
+      const pinned = engine.pinnedScrollLine;
+      if (
+        pinned &&
+        pinned !== scrollAnchor &&
+        (!sungLines.includes(pinned) || lyricScrollTime >= pinned.time + pinned.duration)
+      ) {
         newLyricSelected = true;
       }
 
