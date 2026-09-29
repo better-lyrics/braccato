@@ -17,11 +17,18 @@
 	max-width: 100%;
 	margin: 0 auto !important;
 	padding: 0.1em 0.25em !important;
-	opacity: var(--blyrics-stage-opacity, 0) !important;
 }
 
-.blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits):not([data-stage-visible]) {
-	visibility: hidden !important;
+/* Layered, so these important declarations outrank any unlayered important one a theme writes,
+   whatever its specificity: the stage alone decides which lines are seen. */
+@layer braccato-stage {
+	.blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits) {
+		opacity: var(--blyrics-stage-opacity, 0) !important;
+	}
+
+	.blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits):not([data-stage-visible]) {
+		visibility: hidden !important;
+	}
 }
 
 .blyrics-container[data-layout="stage"] > :not(.blyrics--line, .blyrics-credits) {
@@ -33,14 +40,17 @@
 	transform-origin: center center !important;
 }
 
-/* A duet puts each singer on their own side, as the scrolling view does; everyone together stays centred. */
-.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"]) {
+/* A duet puts each singer on their own side, mirrored for right-to-left lines; everyone together
+   stays centred. */
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"]):not([data-direction="rtl"]),
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"])[data-direction="rtl"] {
 	margin: 0 auto 0 0 !important;
 	text-align: left;
 	transform-origin: left center !important;
 }
 
-.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"]) {
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"]):not([data-direction="rtl"]),
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"])[data-direction="rtl"] {
 	margin: 0 0 0 auto !important;
 	text-align: right;
 	transform-origin: right center !important;

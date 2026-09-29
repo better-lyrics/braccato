@@ -3022,13 +3022,14 @@ function currentTranslateY(engine: AnimationEngineInstance, element: HTMLElement
 interface StageMove {
   element: HTMLElement;
   placement: StagePlacement;
+  wasVisible: boolean;
   fromY: number;
   fromOpacity: number;
 }
 
 function placeStageElement(
   engine: AnimationEngineInstance,
-  { element, placement, fromY, fromOpacity }: StageMove,
+  { element, placement, wasVisible, fromY, fromOpacity }: StageMove,
   instant: boolean,
   reduced: boolean
 ): void {
@@ -3068,7 +3069,7 @@ function placeStageElement(
 
   engine.stageBlurs.get(element)?.cancel();
   engine.stageBlurs.delete(element);
-  if (fadeMs === 0 || reduced) return;
+  if (fadeMs === 0 || reduced || wasVisible === placement.visible) return;
   const blurs = ["none", STAGE_BLUR];
   engine.stageBlurs.set(
     element,
@@ -3078,7 +3079,8 @@ function placeStageElement(
         duration: fadeMs,
         delay: placement.visible ? STAGE_FADE_IN_DELAY_MS : 0,
         easing: placement.visible ? "ease-out" : "ease",
-        // Held only until the line is in focus, so a theme's own filter on the sung line stays its own.
+        // Added to the theme's own filter rather than replacing it, and held only until the line is in focus.
+        composite: "add",
         fill: placement.visible ? "backwards" : "forwards",
       }
     )
@@ -3144,6 +3146,7 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
     moves.push({
       element,
       placement,
+      wasVisible,
       fromY: currentTranslateY(engine, element, previousY ?? placement.y),
       fromOpacity: Number(engine.window.getComputedStyle(element).opacity) || 0,
     });

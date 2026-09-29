@@ -1588,6 +1588,10 @@ assert.ok(
 );
 const blursOf = (line: (typeof stageLines)[number]) =>
   line.animations.map(animation => (animation.keyframes as Keyframe[]).map(keyframe => keyframe.filter));
+const isBlur = (animation: (typeof stageLines)[number]["animations"][number]) =>
+  (animation.keyframes as Keyframe[]).some(keyframe => keyframe.filter !== undefined);
+const isFade = (animation: (typeof stageLines)[number]["animations"][number]) =>
+  (animation.keyframes as Keyframe[]).some(keyframe => "--blyrics-stage-opacity" in keyframe);
 assert.ok(
   blursOf(stageLines[1]).some(filters => filters.join() === `none,blur(${STAGE_BLUR})`),
   "Given a line leaving the stage, Then it blurs out as it fades"
@@ -1617,10 +1621,14 @@ assert.deepEqual(
   ["", undefined, undefined],
   "Given a seek back to the first line, Then it is the only one marked visible"
 );
+assert.ok(
+  stageLines.flatMap(line => line.animations.filter(isBlur)).every(animation => animation.cancelled),
+  "Given a stage view, When the clock jumps, Then no line is left blurring"
+);
 
 const staleFadeLine = stageLines[0];
 tickView(stageEngine, SECOND_LINE_S, resolveTickOptions(newTickOptions()));
-const staleFade = staleFadeLine.animations.at(-1)!;
+const staleFade = staleFadeLine.animations.findLast(isFade)!;
 tickView(stageEngine, LINE_SYNCED_LYRICS[0].startTimeMs / 1000 + 1, resolveTickOptions(newTickOptions()));
 staleFade.finish();
 assert.equal(
@@ -1637,6 +1645,49 @@ assert.equal(
   stageHost.stageBoxes.at(-1),
   null,
   "Given a stage view, When its lines are taken off the screen, Then the host is told the box is gone"
+);
+assert.ok(
+  stageLines.flatMap(line => line.animations.filter(isBlur)).every(animation => animation.cancelled),
+  "Given a stage view, When its lines are taken off the screen, Then no blur is left running"
+);
+
+const overlapStageDocument = new FakeDocument();
+const overlapStageMount = overlapStageDocument.createElement("div");
+const overlapStageEngine = createAnimationEngineInstance(
+  asDocument(overlapStageDocument),
+  asWindow(new FakeWindow()),
+  new StageHost(undefined, overlapStageDocument),
+  "stage"
+);
+setLyrics(
+  overlapStageEngine,
+  asElement<HTMLElement>(overlapStageMount),
+  [
+    { startTimeMs: 200000, durationMs: 3000, words: "One" },
+    { startTimeMs: 202500, durationMs: 3000, words: "Two" },
+  ],
+  { loaderVisible: false, noLyrics: false }
+);
+asFakeNode(overlapStageEngine.lyricsContainer!).clientHeight = VIEWPORT_HEIGHT_PX;
+const overlapStageLines = renderedLineElements(overlapStageMount);
+for (const line of overlapStageLines) {
+  line.offsetHeight = LINE_HEIGHT_PX;
+  line.offsetWidth = 200;
+}
+relayout(overlapStageEngine, true);
+for (const time of [200.2, 200.6, 201, 201.4, 201.8]) {
+  tickView(overlapStageEngine, time, resolveTickOptions(newTickOptions()));
+}
+const sungLineBlurs = overlapStageLines[0].animations.filter(isBlur).length;
+tickView(overlapStageEngine, 202.1, resolveTickOptions(newTickOptions()));
+assert.deepEqual(
+  overlapStageLines.map(line => line.dataset.stageRole),
+  ["previous", "current"]
+);
+assert.equal(
+  overlapStageLines[0].animations.filter(isBlur).length,
+  sungLineBlurs,
+  "regression: a line still being sung, When an overlapping line pushes it up, Then it stays in focus"
 );
 
 setLyrics(stageEngine, asElement<HTMLElement>(stageMount), LINE_SYNCED_LYRICS, {

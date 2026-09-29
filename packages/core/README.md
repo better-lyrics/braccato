@@ -392,11 +392,12 @@ The engine owns where a line is and whether you can see it. It moves each line w
 Animation and fades it through `--blyrics-stage-opacity`, blurring it slightly on the way in and out so
 one line reads as turning into the next. Each line carries `data-stage-role` (`current`, `previous`,
 `queued` or `gone`) and the container carries `data-layout="stage"`. `stage.css` sets a stage line's
-`opacity` from that property with `!important`, and keeps the line `visibility: hidden` until it is marked
-`data-stage-visible`. A theme that forces `opacity: 1 !important` on active lines, which some do, can then
-neither reveal a queued line nor hold one that is leaving. In a duet (any line sung by `v2` or `v3`) the
-container also gets `data-stage-duet` and each singer keeps to their side, as in the scrolling view;
-lines for everyone stay centred.
+`opacity` from that property with `!important` inside a cascade layer, and keeps the line
+`visibility: hidden` until it is marked `data-stage-visible`. Layered important declarations outrank
+unlayered ones whatever their specificity, so a theme that forces `opacity: 1 !important` on active
+lines, which some do, can neither reveal a queued line nor hold one that is leaving. In a duet (any line sung by `v2` or `v3`) the
+container also gets `data-stage-duet` and each singer keeps to their side, mirrored for right-to-left
+lines; lines for everyone stay centred.
 
 Everything else is the theme's. Lines are styled exactly as they would be in a scrolling view.
 `host.onStageLayout(box)` reports the box around the sung lines in the container's coordinates, or null
