@@ -55,7 +55,7 @@ export interface SetLyricsOptions {
 }
 
 function buildInstrumentalLine(doc: Document, lyricElement: HTMLDivElement, lyrics: Lyric[], lineIndex: number): void {
-  createInstrumentalElement(doc, lyricElement, lyrics[lineIndex].durationMs, lineIndex);
+  createInstrumentalElement(doc, lyricElement, lyrics[lineIndex].durationMs);
   lyricElement.dataset.instrumental = "true";
 
   const agent = findNearestAgent(lyrics, lineIndex);
