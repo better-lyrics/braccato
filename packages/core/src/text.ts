@@ -3,6 +3,11 @@
 export const testRtl = (text: string): boolean =>
   /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}]/u.test(text);
 
+export const testJoiningScript = (text: string): boolean =>
+  /[\p{Script=Arabic}\p{Script=Syriac}\p{Script=Nko}\p{Script=Mongolian}\p{Script=Adlam}\p{Script=Mandaic}\p{Script=Hanifi_Rohingya}]/u.test(
+    text
+  );
+
 /**
  * This regex is designed to detect any characters that are outside of the
  * standard "Basic Latin" and "Latin-1 Supplement" Unicode blocks, as well

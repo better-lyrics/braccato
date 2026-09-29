@@ -38,7 +38,7 @@ import {
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
 import { getSeekTimeFromClick } from "./seek";
-import { testRtl } from "./text";
+import { testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
 import type { Lyric, LyricPart, LyricSyncType } from "./types";
 
@@ -373,7 +373,7 @@ function createTimedWordSpan(
     if (part.isBackground) wordElement.classList.add(BACKGROUND_LYRIC_CLASS);
     if (part.explicit) wordElement.classList.add(EXPLICIT_WORD_CLASS);
 
-    if (perLetter) {
+    if (perLetter && !testJoiningScript(part.words)) {
       const collected = appendLetters(doc, wordElement, part.words);
       if (wordElement === span) {
         letters = collected;

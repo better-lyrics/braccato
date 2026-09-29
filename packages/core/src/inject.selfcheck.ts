@@ -274,6 +274,21 @@ assert.deepEqual(
   ["👨‍👩‍👧"],
   "Given a ZWJ emoji sequence, When letter wave splits it, Then it stays one grapheme span"
 );
+assert.deepEqual(
+  lettersOf("بعدك"),
+  [],
+  "Given an Arabic word, When letter wave is on, Then it stays unlettered so its letters keep their joined forms"
+);
+assert.deepEqual(
+  lettersOf("ܫܠܡܐ"),
+  [],
+  "Given a Syriac word, When letter wave is on, Then it stays unlettered so its letters keep their joined forms"
+);
+assert.deepEqual(
+  lettersOf("שלום"),
+  ["ש", "ל", "ו", "ם"],
+  "Given a Hebrew word, When letter wave splits it, Then it still splits because Hebrew letters do not join"
+);
 
 setThemeSettings(new Map());
 
