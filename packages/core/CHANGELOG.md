@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.13.1
+
+### Patch Changes
+
+- 3fd5e1f: Keep Arabic and other joining-script words whole under letter wave so their letters stay connected.
+
 ## 1.13.0
 
 ### Minor Changes
