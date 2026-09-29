@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.0
+
+### Minor Changes
+
+- 41fca47: The element takes `layout="stage"`, reports the stage box as `braccato:stage-layout`, and says when a stage cannot show its lyrics.
+
 ## 1.15.3
 
 ### Patch Changes
