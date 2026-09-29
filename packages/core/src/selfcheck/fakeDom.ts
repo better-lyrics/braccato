@@ -96,7 +96,10 @@ export class FakeAnimation {
   playbackRate = 1;
   onfinish: (() => void) | null = null;
 
-  constructor(readonly options: KeyframeAnimationOptions = {}) {}
+  constructor(
+    readonly options: KeyframeAnimationOptions = {},
+    readonly keyframes: unknown = []
+  ) {}
 
   cancel(): void {
     this.cancelled = true;
@@ -196,8 +199,8 @@ export class FakeNode {
     return this.generatesBox ? [this.getBoundingClientRect()] : [];
   }
 
-  animate(_keyframes?: unknown, options?: KeyframeAnimationOptions): FakeAnimation {
-    const animation = new FakeAnimation(options);
+  animate(keyframes?: unknown, options?: KeyframeAnimationOptions): FakeAnimation {
+    const animation = new FakeAnimation(options, keyframes);
     this.animations.push(animation);
     return animation;
   }

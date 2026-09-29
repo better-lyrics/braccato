@@ -17,7 +17,7 @@
 	max-width: 100%;
 	margin: 0 auto !important;
 	padding: 0.1em 0.25em !important;
-	opacity: 0;
+	opacity: var(--blyrics-stage-opacity, 0) !important;
 }
 
 .blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits):not([data-stage-visible]) {

@@ -386,10 +386,11 @@ both for an instant insert, and reduced-motion does the same.
 `createLyricsRenderer({ layout: "stage" })` builds a view that shows only what is being sung, for
 subtitles over a video. It needs no scroll element, writes no scroll padding and culls no lines, and it
 fills its nearest positioned ancestor. Unsynced lyrics show nothing on a stage. The view is one line at a
-time, like subtitles. The engine places each line with `translate` and `opacity` Web Animations and
-marks it with `data-stage-role` (`current`, `previous`, `queued` or `gone`); the container carries
-`data-layout="stage"`, and a line is `visibility: hidden` until it is marked `data-stage-visible`, so a
-theme that forces `opacity` on an active line cannot show a queued one.
+time, like subtitles. The engine places each line with a `translate` Web Animation, fades it through
+`--blyrics-stage-opacity`, and marks it with `data-stage-role` (`current`, `previous`, `queued` or
+`gone`); the container carries `data-layout="stage"`. A stage line's `opacity` is set from that property
+with `!important`, and a line is `visibility: hidden` until it is marked `data-stage-visible`, so a theme
+that forces `opacity` on an active line can neither show a queued one nor hold a leaving one.
 Themes style the lines as they would in a scrolling view. `host.onStageLayout(box)` reports the box
 around the lines being sung, in the container's coordinates, or null when nothing sung is on stage, so
 you can draw a backdrop outside the container the theme styles.

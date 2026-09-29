@@ -1577,6 +1577,12 @@ assert.deepEqual(
 );
 const leavingFade = stageLines[1].animations.at(-1)!;
 assert.ok(Number(leavingFade.options.duration) > 0, "Given a line leaving on a steady clock, Then it fades out");
+assert.ok(
+  (leavingFade.keyframes as Keyframe[]).every(
+    keyframe => "--blyrics-stage-opacity" in keyframe && !("opacity" in keyframe)
+  ),
+  "Given a theme that forces opacity with !important, When a line fades, Then the fade drives the stage's own opacity property"
+);
 leavingFade.finish();
 assert.deepEqual(
   stageLines.map(line => line.dataset.stageVisible),

@@ -2881,6 +2881,10 @@ function resolvePlaybackRate(rate: number | undefined): number {
 // -- Stage layout --------------------------------------------
 
 const STAGE_MOTION = { durationMs: 380, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+// Read by an important rule in stage.css, so a theme's own important opacity cannot reveal a line
+// the stage is hiding or fading.
+const STAGE_OPACITY_PROPERTY = "--blyrics-stage-opacity";
+const stageOpacityRegistrations = new WeakSet<object>();
 const STAGE_FADE_IN_MS = 300;
 const STAGE_FADE_IN_DELAY_MS = 70;
 const STAGE_FADE_OUT_MS = 160;
@@ -2965,14 +2969,17 @@ function placeStageElement(
   const fadeMs = instant ? 0 : placement.visible ? STAGE_FADE_IN_MS : STAGE_FADE_OUT_MS;
   if (placement.visible) element.dataset.stageVisible = "";
   else if (fadeMs === 0) delete element.dataset.stageVisible;
-  const fade = element.animate([{ opacity: fromOpacity }, { opacity: placement.visible ? 1 : 0 }], {
-    duration: fadeMs,
-    delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,
-    easing: "ease-out",
-    // Backwards too: the fade replaces one that was cancelled, and through its delay the line would
-    // otherwise drop to the stylesheet's resting opacity of zero.
-    fill: "both",
-  });
+  const fade = element.animate(
+    [{ [STAGE_OPACITY_PROPERTY]: fromOpacity }, { [STAGE_OPACITY_PROPERTY]: placement.visible ? 1 : 0 }],
+    {
+      duration: fadeMs,
+      delay: placement.visible && !instant ? STAGE_FADE_IN_DELAY_MS : 0,
+      easing: "ease-out",
+      // Backwards too: the fade replaces one that was cancelled, and through its delay the line would
+      // otherwise drop to the stylesheet's resting opacity of zero.
+      fill: "both",
+    }
+  );
   if (!placement.visible && fadeMs > 0) {
     fade.onfinish = () => {
       if (engine.stageFades.get(element) === fade) delete element.dataset.stageVisible;
@@ -2980,6 +2987,19 @@ function placeStageElement(
   }
   engine.stageFades.set(element, fade);
   engine.stageY.set(element, placement.y);
+}
+
+// Registered from script rather than with @property, which Firefox ignores in a stylesheet
+// cross-origin to the document. Unregistered, the fade would snap instead of interpolating.
+function registerStageOpacity(engine: AnimationEngineInstance): void {
+  const css = engine.window.CSS;
+  if (stageOpacityRegistrations.has(engine.window) || typeof css?.registerProperty !== "function") return;
+  stageOpacityRegistrations.add(engine.window);
+  try {
+    css.registerProperty({ name: STAGE_OPACITY_PROPERTY, syntax: "<number>", inherits: false, initialValue: "0" });
+  } catch (error) {
+    engine.host.log("Stage opacity property was already registered", error);
+  }
 }
 
 function isStageRoleVisible(role: string): boolean {
@@ -2994,6 +3014,7 @@ function sameBox(a: StageBox | null, b: StageBox | null): boolean {
 function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boolean): void {
   const container = engine.lyricsContainer;
   if (!container) return;
+  registerStageOpacity(engine);
   const { elements, items } = stageElements(engine);
   const roles = planStage(items, timeS);
   const key = roles.join(",");
