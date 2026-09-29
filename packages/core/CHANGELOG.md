@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.15.1
+
+### Patch Changes
+
+- cbbac50: The stage hands over to the credits halfway through an outro instrumental instead of at the song's end.
+
 ## 1.15.0
 
 ### Minor Changes
