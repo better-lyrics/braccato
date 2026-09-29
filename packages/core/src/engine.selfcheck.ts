@@ -32,6 +32,7 @@ import {
   poisonAmbientGlobals,
 } from "./selfcheck/fakeWindow";
 import { parseThemeConfig, setThemeSettings } from "./themeSettings";
+import type { StageBox } from "./stage";
 import type { Lyric, LyricsRendererHost, TickOptions } from "./types";
 import { setLyrics } from "./view";
 
@@ -1468,6 +1469,77 @@ assert.ok(
 );
 
 creditsEngine.destroy();
+
+// -- Stage layout --------------------------------------------
+
+class StageHost extends FakeHost {
+  scrollElementReads = 0;
+  readonly stageBoxes: (StageBox | null)[] = [];
+
+  override getScrollElement(): HTMLElement | null {
+    this.scrollElementReads += 1;
+    throw new Error("A stage view has no scroll element to ask for");
+  }
+
+  onStageLayout(box: StageBox | null): void {
+    this.stageBoxes.push(box);
+  }
+}
+
+const stageDocument = new FakeDocument();
+const stageHost = new StageHost(undefined, stageDocument);
+const stageMount = stageDocument.createElement("div");
+const stageEngine = createAnimationEngineInstance(
+  asDocument(stageDocument),
+  asWindow(new FakeWindow()),
+  stageHost,
+  "stage"
+);
+
+setLyrics(stageEngine, asElement<HTMLElement>(stageMount), LINE_SYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+const stageContainer = asFakeNode(stageEngine.lyricsContainer!);
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX;
+const stageLines = renderedLineElements(stageMount);
+for (const line of stageLines) {
+  line.offsetHeight = LINE_HEIGHT_PX;
+  line.offsetWidth = 200;
+}
+relayout(stageEngine, true);
+
+assert.equal(
+  stageDocument.documentElement.style.getPropertyValue("--blyrics-padding-top"),
+  "",
+  "Given a stage view, When it is laid out, Then nothing is written to the document root"
+);
+
+const SECOND_LINE_S = LINE_SYNCED_LYRICS[1].startTimeMs / 1000 + 1;
+assert.equal(
+  tickView(stageEngine, SECOND_LINE_S, resolveTickOptions(newTickOptions())),
+  "ok",
+  "Given a stage view, When it ticks inside a line, Then it renders"
+);
+
+assert.equal(
+  stageHost.scrollElementReads,
+  0,
+  "Given a stage view, When it ticks, Then it never asks for a scroll element"
+);
+
+assert.deepEqual(
+  stageLines.map(line => line.dataset.stageRole),
+  ["gone", "current", "queued"],
+  "Given a stage view, When it ticks inside the second line, Then only that line holds the stage"
+);
+
+assert.ok(
+  stageHost.stageBoxes.length > 0 && stageHost.stageBoxes.at(-1) !== null,
+  "Given a stage view with a sung line on stage, When it ticks, Then the host is told where to draw the backdrop"
+);
+
+stageEngine.destroy();
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
