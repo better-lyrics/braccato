@@ -166,6 +166,9 @@ export function setLyrics(
   container.dataset.sync = syncType;
   if (engine.layout === "stage") {
     container.dataset.layout = "stage";
+    if (lyrics.some(item => item.agent === "v2" || item.agent === "v3")) {
+      container.dataset.stageDuet = "";
+    }
   }
   container.dataset.loaderVisible = String(options.loaderVisible);
   if (options.noLyrics) {

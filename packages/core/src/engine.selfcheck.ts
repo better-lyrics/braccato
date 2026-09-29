@@ -1673,6 +1673,32 @@ assert.equal(
 );
 unsyncedEngine.destroy();
 
+const duetDocument = new FakeDocument();
+const duetMount = duetDocument.createElement("div");
+const duetEngine = createAnimationEngineInstance(
+  asDocument(duetDocument),
+  asWindow(new FakeWindow()),
+  new StageHost(undefined, duetDocument),
+  "stage"
+);
+setLyrics(duetEngine, asElement<HTMLElement>(duetMount), LINE_SYNCED_LYRICS, { loaderVisible: false, noLyrics: false });
+assert.equal(
+  duetEngine.lyricsContainer!.dataset.stageDuet,
+  undefined,
+  "Given a stage view of one singer, Then its lines stay centred"
+);
+setLyrics(
+  duetEngine,
+  asElement<HTMLElement>(duetMount),
+  LINE_SYNCED_LYRICS.map((lyric, index) => ({ ...lyric, agent: index % 2 === 0 ? "v1" : "v2" })),
+  { loaderVisible: false, noLyrics: false }
+);
+assert.equal(
+  duetEngine.lyricsContainer!.dataset.stageDuet,
+  "",
+  "Given a stage view of a duet, Then the container is marked so each singer takes a side"
+);
+
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
     `${panelDocument.calls.length + floatingDocument.calls.length} built node(s)`

@@ -32,3 +32,16 @@
 	text-align: center;
 	transform-origin: center center !important;
 }
+
+/* A duet puts each singer on their own side, as the scrolling view does; everyone together stays centred. */
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"]) {
+	margin: 0 auto 0 0 !important;
+	text-align: left;
+	transform-origin: left center !important;
+}
+
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"]) {
+	margin: 0 0 0 auto !important;
+	text-align: right;
+	transform-origin: right center !important;
+}
