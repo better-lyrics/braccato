@@ -391,6 +391,8 @@ time, like subtitles. The engine places each line with a `translate` Web Animati
 `gone`); the container carries `data-layout="stage"`. A stage line's `opacity` is set from that property
 with `!important`, and a line is `visibility: hidden` until it is marked `data-stage-visible`, so a theme
 that forces `opacity` on an active line can neither show a queued one nor hold a leaving one.
+In a duet (any line sung by `v2` or `v3`) the container also carries `data-stage-duet`, and each
+singer's lines sit on their own side, as in the scrolling view; lines for everyone stay centred.
 Themes style the lines as they would in a scrolling view. `host.onStageLayout(box)` reports the box
 around the lines being sung, in the container's coordinates, or null when nothing sung is on stage, so
 you can draw a backdrop outside the container the theme styles.
