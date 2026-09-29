@@ -1549,7 +1549,11 @@ function startLineAnimations(
   }
 }
 
-function startWordExitAnimation(part: PartData, config: AnimationConfig, imagePaint: { target: HTMLElement; frame: Keyframe }[] = []): void {
+function startWordExitAnimation(
+  part: PartData,
+  config: AnimationConfig,
+  imagePaint: { target: HTMLElement; frame: Keyframe }[] = []
+): void {
   resetPartAnimations(part);
 
   const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
@@ -1585,7 +1589,12 @@ function startLineExitAnimations(
   for (const part of lineData.parts) {
     if (!part.imageLayers || currentTime < part.time) continue;
     const style = engine.window.getComputedStyle(part.imageLayers.glow);
-    const paint = [{ target: part.imageLayers.glow, frame: { opacity: style.opacity, filter: style.filter } as Keyframe }];
+    const paint = [
+      { target: part.imageLayers.glow, frame: { opacity: style.opacity, filter: style.filter } as Keyframe },
+    ];
+    for (const target of part.letterElements ?? []) {
+      paint.push({ target, frame: { transform: engine.window.getComputedStyle(target).transform } });
+    }
     for (const target of [...(part.highlightLetterElements ?? []), ...part.imageLayers.glowLetters]) {
       const letterStyle = engine.window.getComputedStyle(target);
       paint.push({ target, frame: { maskPosition: letterStyle.maskPosition, transform: letterStyle.transform } });

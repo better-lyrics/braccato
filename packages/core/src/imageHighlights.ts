@@ -33,8 +33,11 @@ export function wrapImageHighlight(highlight: HTMLElement): ImageHighlightLayers
  * absolutely positioned copy inside an inline word cannot reproduce those fragments. */
 export function alignImageGlowRun(run: HTMLElement, parts: PartData[]): void {
   if (!imageHighlights.getBooleanValue()) return;
-  if (!run.parentElement?.classList.contains("blyrics-bidi-sensitive") &&
-      !run.querySelector(".blyrics-word-group-long")) return;
+  if (
+    !run.parentElement?.classList.contains("blyrics-bidi-sensitive") &&
+    !run.querySelector(".blyrics-word-group-long")
+  )
+    return;
   const originals = Array.from(run.querySelectorAll<HTMLElement>(".blyrics-word-highlight"));
   const byHighlight = new Map(parts.map(part => [part.highlightElement, part]));
   const glowRun = run.cloneNode(true) as HTMLElement;

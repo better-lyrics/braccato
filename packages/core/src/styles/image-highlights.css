@@ -40,9 +40,6 @@
 }
 /* A parallel run reproduces the full inline formatting context, including bidi
    reordering and every wrapped fragment. No generated text or per-frame measuring. */
-.blyrics-image-glow-run {
-  z-index: 0;
-}
 .blyrics-image-glow-run .blyrics-image-glow {
   position: static;
   inset: auto;

@@ -494,9 +494,9 @@ Image highlights are optional. Enable them in a theme comment:
 ```
 
 Changing this setting requests a lyric rebuild through the existing `setTheme` return value.
-Without it, the renderer keeps its original DOM and shadow animation. With it, the sharp fill
-and a separate blurred copy share the word reveal, letter motion, opacity, pause, seek and
-playback-rate handling. Existing glow radius, duration and easing properties still apply;
+Without it, the renderer adds no image or glow layers and keeps its shadow animation. With it,
+the sharp fill and a separate blurred copy share the word reveal, letter motion, opacity, pause,
+seek and playback-rate handling. Existing glow radius, duration and easing properties still apply;
 the two image-glow opacity properties replace the solid shadow color's alpha.
 
 The image may be an SDR texture or an HDR gain-map asset. The theme owns HDR media queries
@@ -517,4 +517,4 @@ For real-browser regression checks, build the package, serve the repository root
 call `runImageHighlightChecks(testView)`. The default fixture uses an SDR image; a `theme` query
 parameter can point at a consumer's HDR stylesheet for physical-display testing.
 
-Words that mix RTL characters with LTR letters or numbers retain native text shaping instead of per-letter motion. Image glow and letter masks retain their current paint during the line exit fade.
+Words that mix RTL characters with LTR letters or numbers retain native text shaping instead of per-letter motion. Image glow, letter masks and letter motion retain their current paint during the line exit fade.

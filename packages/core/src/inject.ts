@@ -55,7 +55,6 @@ const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const SPACE_REGEX = /^\s+$/u;
-// Inline-block graphemes break contextual joining, including across timed syllables.
 
 export function findNearestAgent(lyrics: Lyric[], fromIndex: number): string | undefined {
   // Look in the downwards direction first
@@ -407,11 +406,10 @@ function createWordGroup(
 ): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
   // Atomic grapheme spans disrupt the browser's bidi ordering inside a mixed word.
-  const mixedDirection = testRtl(group.text) && [...group.text].some(char =>
-    /[\p{Letter}\p{Number}]/u.test(char) && !testRtl(char)
-  );
-  const preserveJoining = testJoiningScript(group.text) || mixedDirection;
-  const perLetter = letterWave.getBooleanValue() && !preserveJoining;
+  const mixedDirection =
+    testRtl(group.text) && [...group.text].some(char => /[\p{Letter}\p{Number}]/u.test(char) && !testRtl(char));
+  const preserveJoining = testJoiningScript(group.text);
+  const perLetter = letterWave.getBooleanValue() && !preserveJoining && !mixedDirection;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
 

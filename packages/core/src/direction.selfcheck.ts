@@ -142,16 +142,27 @@ setThemeSettings(new Map([["blyrics-letter-wave", "true"]]));
   const doc = new FakeDocument();
   const target = asElement<HTMLElement>(doc.createElement("div"));
   const line = newLineData(target, 0, 2000);
-  createLyricsLine(asDocument(doc), [
-    { words: "مر", startTimeMs: 0, durationMs: 300 },
-    { words: "حبا ", startTimeMs: 300, durationMs: 300 },
-    { words: "hello ", startTimeMs: 600, durationMs: 400 },
-    { words: "ܫܠܡܐ", startTimeMs: 1000, durationMs: 1000 },
-  ], line, target);
-  assert.deepEqual(line.parts.map(part => !!part.letterElements), [false, false, true, false],
-    "Joining-script groups preserve shaping while Latin words retain letter animation");
+  createLyricsLine(
+    asDocument(doc),
+    [
+      { words: "مر", startTimeMs: 0, durationMs: 300 },
+      { words: "حبا ", startTimeMs: 300, durationMs: 300 },
+      { words: "hello ", startTimeMs: 600, durationMs: 400 },
+      { words: "ܫܠܡܐ", startTimeMs: 1000, durationMs: 1000 },
+    ],
+    line,
+    target
+  );
+  assert.deepEqual(
+    line.parts.map(part => !!part.letterElements),
+    [false, false, true, false],
+    "Joining-script groups preserve shaping while Latin words retain letter animation"
+  );
   for (const part of [line.parts[0], line.parts[1], line.parts[3]]) {
-    assert.equal(collectTree(asFakeNode(part.lyricElement)).some(node => node.name === "wbr"), false);
+    assert.equal(
+      collectTree(asFakeNode(part.lyricElement)).some(node => node.name === "wbr"),
+      false
+    );
   }
 }
 
