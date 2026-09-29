@@ -1823,6 +1823,51 @@ assert.equal(
   "",
   "Given a stage view of a duet, Then the container is marked so each singer takes a side"
 );
+setLyrics(
+  duetEngine,
+  asElement<HTMLElement>(duetMount),
+  LINE_SYNCED_LYRICS.map((lyric, index) => ({ ...lyric, agent: index === 1 ? "v1000" : "v2" })),
+  { loaderVisible: false, noLyrics: false }
+);
+assert.equal(
+  duetEngine.lyricsContainer!.dataset.stageDuet,
+  undefined,
+  "regression: Given a stage view whose only singer is v2, Then its lines stay centred rather than on one side"
+);
+
+const blankDocument = new FakeDocument();
+const blankHost = new StageHost(undefined, blankDocument);
+const blankMount = blankDocument.createElement("div");
+const blankEngine = createAnimationEngineInstance(
+  asDocument(blankDocument),
+  asWindow(new FakeWindow()),
+  blankHost,
+  "stage"
+);
+setLyrics(
+  blankEngine,
+  asElement<HTMLElement>(blankMount),
+  LINE_SYNCED_LYRICS.map((lyric, index) => (index === 1 ? { ...lyric, words: "" } : lyric)),
+  { loaderVisible: false, noLyrics: false }
+);
+asFakeNode(blankEngine.lyricsContainer!).clientHeight = VIEWPORT_HEIGHT_PX;
+for (const line of renderedLineElements(blankMount)) {
+  line.offsetHeight = LINE_HEIGHT_PX;
+  line.offsetWidth = 200;
+}
+relayout(blankEngine, true);
+for (const time of [201, 202, 203.5, 204.5]) tickView(blankEngine, time, resolveTickOptions(newTickOptions()));
+assert.deepEqual(
+  renderedLineElements(blankMount).map(line => line.dataset.stageRole),
+  ["gone", "current", "queued"],
+  "Given a blank line, Then it takes the stage from the line before it"
+);
+assert.equal(
+  blankHost.stageBoxes.at(-1),
+  null,
+  "regression: Given a blank line on the stage, Then the host is told there is nothing to draw a backdrop behind"
+);
+blankEngine.destroy();
 
 console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
