@@ -85,6 +85,11 @@ function unionBox(box: StageBox | null, next: StageBox): StageBox {
   };
 }
 
+/** Where a line waits below the floor, and where it rises from as it enters. */
+export function queuedStageY(stageHeight: number, height: number, gap: number): number {
+  return stageHeight - height + gap;
+}
+
 export function layoutStage(
   roles: readonly StageRole[],
   items: readonly StageItem[],
@@ -104,7 +109,7 @@ export function layoutStage(
       case "previous":
         return { y: currentY - gap - height, visible: true };
       case "queued":
-        return { y: stageHeight - height + gap, visible: false };
+        return { y: queuedStageY(stageHeight, height, gap), visible: false };
       case "gone":
         return { y: previousY[index] ?? currentY, visible: false };
     }

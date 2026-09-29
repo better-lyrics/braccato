@@ -1557,6 +1557,9 @@ assert.equal(
   "Given a stage view, When it ticks again at the same time, Then no line is animated again"
 );
 
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX + 200;
+relayout(stageEngine, true);
+
 for (const time of [
   SECOND_LINE_S + 0.4,
   SECOND_LINE_S + 0.9,
@@ -1571,6 +1574,15 @@ assert.deepEqual(
   ["gone", "gone", "current"],
   "Given a stage view, When time advances into the third line, Then the second line leaves the stage"
 );
+const enteringMove = stageLines[2].animations.findLast(animation => animation.options.easing === STAGE_MOVE_EASING);
+const enteringFrom = (enteringMove?.keyframes as Keyframe[] | undefined)?.[0]?.translate;
+assert.ok(
+  enteringFrom !== undefined && Number.parseFloat(String(enteringFrom).split(" ")[1]) > VIEWPORT_HEIGHT_PX,
+  "regression: Given a stage that grew while a line waited, When the line enters, Then it rises from below the new floor, not from where the old size put it"
+);
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX;
+relayout(stageEngine, true);
+tickView(stageEngine, SECOND_LINE_S + 1.9, resolveTickOptions(newTickOptions()));
 assert.deepEqual(
   stageLines.map(line => line.dataset.stageVisible),
   [undefined, "", ""],
@@ -1600,6 +1612,25 @@ assert.ok(
   blursOf(stageLines[2]).some(filters => filters.join() === `blur(${STAGE_BLUR}),none`),
   "Given a line entering the stage, Then it blurs in as it fades, so the handoff reads as one morph"
 );
+const animationCountsBeforeResize = stageLines.map(line => line.animations.length);
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX + 200;
+relayout(stageEngine, true);
+tickView(stageEngine, SECOND_LINE_S + 1.95, resolveTickOptions(newTickOptions()));
+const resizeAnimations = stageLines.flatMap((line, index) => line.animations.slice(animationCountsBeforeResize[index]));
+assert.ok(
+  resizeAnimations.length > 0 &&
+    resizeAnimations.every(animation => animation.options.duration === 0 && !isFade(animation) && !isBlur(animation)),
+  "regression: Given lines mid-transition, When the stage resizes, Then they snap to their new places without sliding"
+);
+assert.ok(
+  [leavingFade, ...stageLines.slice(1).flatMap(line => line.animations.filter(isBlur))].every(
+    animation => !animation.cancelled
+  ),
+  "regression: Given lines mid-transition, When the stage resizes, Then their fades and blurs keep running"
+);
+stageContainer.clientHeight = VIEWPORT_HEIGHT_PX;
+relayout(stageEngine, true);
+tickView(stageEngine, SECOND_LINE_S + 1.95, resolveTickOptions(newTickOptions()));
 leavingFade.finish();
 assert.deepEqual(
   stageLines.map(line => line.dataset.stageVisible),
