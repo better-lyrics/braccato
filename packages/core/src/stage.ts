@@ -1,4 +1,4 @@
-export type StageItemKind = "line" | "instrumental" | "credits";
+export type StageItemKind = "line" | "blank" | "instrumental" | "credits";
 export type StageRole = "current" | "previous" | "queued" | "gone";
 
 export interface StageItem {
@@ -15,7 +15,12 @@ export const STAGE_OVERLAP_S = 0.15;
 
 export function overlapsPrevious(items: readonly StageItem[], index: number): boolean {
   const previous = items[index - 1];
-  return previous !== undefined && previous.kind === "line" && items[index].start < previous.end - STAGE_OVERLAP_S;
+  return (
+    previous !== undefined &&
+    previous.kind === "line" &&
+    items[index].kind !== "blank" &&
+    items[index].start < previous.end - STAGE_OVERLAP_S
+  );
 }
 
 export function stageEnterTimes(items: readonly StageItem[]): number[] {
@@ -117,7 +122,8 @@ export function layoutStage(
 
   let box: StageBox | null = null;
   roles.forEach((role, index) => {
-    if ((role !== "current" && role !== "previous") || items[index].kind === "instrumental") return;
+    const { kind } = items[index];
+    if ((role !== "current" && role !== "previous") || kind === "instrumental" || kind === "blank") return;
     const { height, left, width, originX } = metrics[index];
     const scale = geometry.activeScale;
     box = unionBox(box, {

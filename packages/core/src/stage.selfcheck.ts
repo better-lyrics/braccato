@@ -4,6 +4,7 @@ import { layoutStage, overlapsPrevious, planStage, type StageItem, type StageMet
 const line = (start: number, end: number): StageItem => ({ kind: "line", start, end });
 const instrumental = (start: number, end: number): StageItem => ({ kind: "instrumental", start, end });
 const credits = (start: number): StageItem => ({ kind: "credits", start, end: Number.POSITIVE_INFINITY });
+const blank = (start: number, end: number): StageItem => ({ kind: "blank", start, end });
 
 // -- Enter times --------------------------------------------
 
@@ -165,6 +166,23 @@ const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1 };
   const items = [line(0, 2), line(2, 4)];
   const { placements } = layoutStage(["gone", "current"], items, [metric(40), metric(40)], [460, null], GEOMETRY);
   assert.equal(placements[0].y, 460, "a leaving line fades where it was, inside the backdrop behind it");
+}
+
+{
+  const items = [line(0, 2), blank(2, 4)];
+  assert.deepEqual(planStage(items, 3), ["gone", "current"], "a blank line clears the line before it");
+  const { box } = layoutStage(["gone", "current"], items, [metric(40), metric(40)], [460, null], GEOMETRY);
+  assert.equal(box, null, "regression: a blank line gets no box, so no empty backdrop shows");
+  assert.equal(
+    overlapsPrevious([blank(0, 3), line(2, 4)], 1),
+    false,
+    "a blank line is never held as the previous line"
+  );
+  assert.deepEqual(
+    planStage([line(0, 3), blank(2, 4)], 2.5),
+    ["gone", "current"],
+    "regression: a blank line that starts before the line ahead ends still clears it"
+  );
 }
 
 console.log("stage scheduler self-check passed");

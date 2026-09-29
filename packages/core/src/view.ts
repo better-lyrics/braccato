@@ -150,6 +150,7 @@ export function setLyrics(
       buildInstrumentalLine(doc, lyricElement, lyrics, lineIndex);
     } else {
       buildSungLine(doc, lyricElement, lyricItem, line);
+      if (!lyricItem.words?.trim()) lyricElement.dataset.blank = "true";
     }
 
     container.appendChild(lyricElement);
@@ -167,7 +168,10 @@ export function setLyrics(
   container.dataset.sync = syncType;
   if (engine.layout === "stage") {
     container.dataset.layout = "stage";
-    if (lyrics.some(item => item.agent === "v2" || item.agent === "v3")) {
+    // Sides only when both are sung, so a song with one singer stays centred whichever voice it is.
+    const sung = lyrics.filter(item => !item.isInstrumental && item.words?.trim() && item.agent !== "v1000");
+    const onRight = (item: Lyric): boolean => item.agent === "v2" || item.agent === "v3";
+    if (sung.some(onRight) && sung.some(item => !onRight(item))) {
       container.dataset.stageDuet = "";
     }
   }

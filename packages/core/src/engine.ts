@@ -2990,7 +2990,12 @@ function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement
     lastEnd = Math.max(lastEnd, end);
     elements.push(line.lyricElement);
     items.push({
-      kind: line.lyricElement.dataset.instrumental === "true" ? "instrumental" : "line",
+      kind:
+        line.lyricElement.dataset.instrumental === "true"
+          ? "instrumental"
+          : line.lyricElement.dataset.blank === "true"
+            ? "blank"
+            : "line",
       start: line.time,
       end,
     });
