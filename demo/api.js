@@ -247,7 +247,7 @@ export const EVENTS = [
     event: "braccato:stage-layout",
     detail: "{ box }",
     summary:
-      "Stage layout only. The box around the sung lines, in the view's coordinates, or null when nothing sung is on stage. Draw a backdrop from it. host.onStageLayout hears the same thing.",
+      "Stage layout only. The box around the sung lines, in the container's coordinates, or null when nothing sung is on stage. Draw a backdrop from it. host.onStageLayout hears the same thing.",
   },
   {
     event: "braccato:error",

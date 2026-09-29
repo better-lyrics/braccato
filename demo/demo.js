@@ -581,7 +581,10 @@ function readStateFromUrl() {
   if (params.has("passive")) state.passiveScroll = params.get("passive") === "1";
   if (params.has("scroll")) state.viewScroll = params.get("scroll") === "1";
   if (params.has("page")) state.pageRules = params.get("page") === "1";
-  if (params.get("layout") === "stage") state.layout = "stage";
+  if (params.get("layout") === "stage") {
+    state.layout = "stage";
+    state.touring = false;
+  }
 }
 
 /**
@@ -599,7 +602,7 @@ function writeStateToUrl() {
   if (state.passiveScroll !== DEFAULTS.passiveScroll) params.set("passive", state.passiveScroll ? "1" : "0");
   if (state.viewScroll !== DEFAULTS.viewScroll) params.set("scroll", state.viewScroll ? "1" : "0");
   if (state.pageRules !== DEFAULTS.pageRules) params.set("page", state.pageRules ? "1" : "0");
-  if (state.layout !== DEFAULTS.layout) params.set("layout", state.layout);
+  if (!state.touring && state.layout !== DEFAULTS.layout) params.set("layout", state.layout);
 
   const query = params.toString();
   history.replaceState(null, "", query === "" ? location.pathname : `${location.pathname}?${query}`);
@@ -1413,6 +1416,7 @@ function resumeAutoscroll() {
 // -- Stage --------------------------------------------
 
 let plateFrame = 0;
+let timingBeforeUnsynced = "syllables";
 
 /** A hidden plate jumps to its first box and fades in there, rather than sliding over from the last one. */
 function paintPlate(box) {
@@ -1481,8 +1485,8 @@ function enterChapter(name) {
   paintRail();
 
   const layout = name === "stage" ? "stage" : "scroll";
-  const relayout = state.layout !== layout;
-  state.layout = layout;
+  const relayout = state.touring && state.layout !== layout;
+  if (relayout) state.layout = layout;
 
   const scene = SCENES[name];
   const rescene =
@@ -1631,11 +1635,14 @@ function wireControls(lineClass, lyricsClass) {
 
   layoutFieldset.addEventListener("change", event => {
     state.layout = event.target.value;
+    state.touring = false;
     commit({ fade: true });
   });
 
   stageUnsyncedButton.addEventListener("click", () => {
-    state.timing = state.importedLyrics === null && state.timing === "plain" ? "syllables" : "plain";
+    const unsynced = state.importedLyrics === null && state.timing === "plain";
+    if (!unsynced) timingBeforeUnsynced = state.timing;
+    state.timing = unsynced ? timingBeforeUnsynced : "plain";
     dropImportedLyrics();
     state.touring = false;
     commit({ fade: true });

@@ -1766,6 +1766,30 @@ assert.deepEqual(
   "Given unsynced lyrics on a stage, When they are built, Then the element says why nothing shows"
 );
 
+const loadsBeforeRebuild = emittedDetails<LyricsLoadedDetail>(stagedElement, LYRICS_LOADED_EVENT).length;
+stagedElement.theme = REBUILD_THEME;
+await nextMicrotask();
+
+assert.ok(
+  emittedDetails<LyricsLoadedDetail>(stagedElement, LYRICS_LOADED_EVENT).length > loadsBeforeRebuild,
+  "Given unsynced lyrics on a stage, When a theme that rebuilds the lines is applied, Then the lines were rebuilt"
+);
+
+assert.deepEqual(
+  errorPhases(stagedElement),
+  ["layout"],
+  "Given unsynced lyrics on a stage, When a theme rebuilds the lines, Then the same song is not reported twice"
+);
+
+stagedElement.lyrics = [...UNSYNCED_LYRICS];
+await nextMicrotask();
+
+assert.deepEqual(
+  errorPhases(stagedElement),
+  ["layout", "layout"],
+  "Given unsynced lyrics on a stage, When another song arrives, Then that one is reported too"
+);
+
 stagedElement.removeAttribute(LAYOUT_ATTRIBUTE);
 
 assert.equal(
@@ -1805,10 +1829,121 @@ await nextMicrotask();
 
 assert.deepEqual(
   errorPhases(unstyledElement),
+  [],
+  "Given a stage in a document that has not loaded stage.css yet, When it builds, Then nothing is judged before a frame has passed"
+);
+
+runFrames(unstyled.fakeWindow, FIRST_FRAME_MS);
+await nextMicrotask();
+
+assert.deepEqual(
+  errorPhases(unstyledElement),
   ["layout"],
   "Given a stage in a document that never loaded stage.css, When it builds, Then the element says so rather than stacking every line in the flow"
 );
 
 disconnectElement(unstyledElement);
+
+// -- A stage whose stylesheet arrives after it builds --------------------------------------------
+
+const { fixture: lateStyled, host: lateStyledHost } = newElementFixture(newConnectedDocument());
+lateStyled.fakeWindow.stageStylesheetLoaded = false;
+const lateStyledElement = createCustomElement(lateStyled.fakeDocument, BraccatoLyricsElement);
+
+lateStyledElement.host = lateStyledHost;
+lateStyledElement.layout = "stage";
+lateStyledElement.lyrics = SYNCED_LYRICS;
+connectElement(lateStyled.root, lateStyledElement);
+lateStyled.fakeWindow.stageStylesheetLoaded = true;
+runFrames(lateStyled.fakeWindow, FIRST_FRAME_MS);
+await nextMicrotask();
+
+assert.deepEqual(
+  errorPhases(lateStyledElement),
+  [],
+  "Given stage.css that loads after the stage was built, When the next frame runs, Then nothing is reported"
+);
+
+disconnectElement(lateStyledElement);
+
+// -- A blank stage beside a view with another theme --------------------------------------------
+
+const sharedStageDocument = newConnectedDocument();
+const { fixture: blankStage, host: blankStageHost } = newElementFixture(sharedStageDocument);
+const { fixture: themedPeer, host: themedPeerHost } = newElementFixture(sharedStageDocument);
+const blankStageElement = createCustomElement(sharedStageDocument, BraccatoLyricsElement);
+const themedPeerElement = createCustomElement(sharedStageDocument, BraccatoLyricsElement);
+
+blankStageElement.host = blankStageHost;
+blankStageElement.layout = "stage";
+blankStageElement.lyrics = UNSYNCED_LYRICS;
+themedPeerElement.host = themedPeerHost;
+themedPeerElement.theme = ALTERNATE_THEME;
+themedPeerElement.lyrics = SYNCED_LYRICS;
+connectElement(blankStage.root, blankStageElement);
+connectElement(themedPeer.root, themedPeerElement);
+
+assert.equal(
+  blankStageElement.status,
+  "unsynced-on-stage",
+  "Given a stage with nothing it can place and a peer with another theme, When asked, Then it says why it is blank rather than that its theme disagrees"
+);
+
+assert.equal(
+  themedPeerElement.status,
+  "theme-conflict",
+  "Given a scrolling peer beside it, When asked, Then the peer still reports the disagreement"
+);
+
+disconnectElement(blankStageElement);
+disconnectElement(themedPeerElement);
+
+// -- A stage taken on while a media element drives the clock ------------------------------------
+
+const { fixture: boundStage, host: boundStageHost } = newElementFixture(newConnectedDocument());
+const boundStageMedia = new FakeMediaElement();
+
+boundStage.fakeDocument.elementsBySelector.set(PLAYER_SELECTOR, boundStageMedia);
+boundStageMedia.currentTime = PLAYBACK_TIME_S;
+boundStageMedia.paused = false;
+
+const boundStageElement = createCustomElement(boundStage.fakeDocument, BraccatoLyricsElement);
+
+boundStageElement.host = boundStageHost;
+boundStageElement.lyrics = SYNCED_LYRICS;
+boundStageElement.source = PLAYER_SELECTOR;
+connectElement(boundStage.root, boundStageElement);
+runFrames(boundStage.fakeWindow, FIRST_FRAME_MS);
+
+boundStageElement.layout = "stage";
+
+assert.equal(
+  boundStageElement.mediaElement,
+  boundStageMedia,
+  "Given an element following a media element, When its layout changes, Then it is still following the same one"
+);
+
+assert.deepEqual(
+  [boundStageElement.currentTime, boundStageElement.playing],
+  [PLAYBACK_TIME_S, true],
+  "Given an element following a media element, When its layout changes, Then the clock it reports survived the rebuild"
+);
+
+boundStageMedia.currentTime = LATE_PLAYBACK_TIME_S;
+runFrames(boundStage.fakeWindow, ANCHOR_FRAME_MS);
+
+assert.equal(
+  boundStageElement.currentTime,
+  LATE_PLAYBACK_TIME_S,
+  "Given a stage taken on while playing, When the next frame runs, Then the frame loop is still reading the media element"
+);
+
+assert.equal(
+  containerDataset(boundStageElement).layout,
+  "stage",
+  "Given a stage taken on while playing, When its container is read, Then the view that frame loop drives is the stage"
+);
+
+disconnectElement(boundStageElement);
 
 console.log("Lyrics element self-check passed");

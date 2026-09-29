@@ -214,6 +214,8 @@ export class BraccatoLyricsElement extends HTMLElement {
   #theme = "";
   #hostOverrides: Partial<LyricsRendererHost> = {};
   #layout: LyricsLayout = "scroll";
+  // The song the stage last reported on, so a theme that rebuilds the same lines stays quiet.
+  #stageReportedLyrics: Lyric[] | null = null;
   #source: HTMLMediaElement | string | null = null;
   // Non-null exactly while the element is listening to a media element, so there is no state where
   // one is remembered and its listeners are not.
@@ -402,8 +404,8 @@ export class BraccatoLyricsElement extends HTMLElement {
    */
   get status(): ElementStatus {
     if (this.#renderer === null) return this.#missingBrowsingContext ? "no-browsing-context" : "idle";
-    if (this.#disagreeingPeers().length > 0) return "theme-conflict";
-    return this.#isUnsyncedOnStage(this.#renderer) ? "unsynced-on-stage" : "rendering";
+    if (this.#isUnsyncedOnStage(this.#renderer)) return "unsynced-on-stage";
+    return this.#disagreeingPeers().length > 0 ? "theme-conflict" : "rendering";
   }
 
   // -- Lifecycle --------------------------------------------
@@ -498,6 +500,7 @@ export class BraccatoLyricsElement extends HTMLElement {
   #destroyRenderer(): void {
     this.#renderer?.destroy();
     this.#renderer = null;
+    this.#stageReportedLyrics = null;
     this.#leaveDocument();
   }
 
@@ -561,10 +564,18 @@ export class BraccatoLyricsElement extends HTMLElement {
   /** Both leave an empty or broken stage behind with nothing thrown, so nobody would hear of them. */
   #reportStageProblems(renderer: LyricsRenderer): void {
     const container = renderer.container;
-    if (this.#layout !== "stage" || container === null) return;
+    const view = this.ownerDocument.defaultView;
+    if (this.#layout !== "stage" || container === null || view === null) return;
+    if (this.#lyrics === this.#stageReportedLyrics) return;
+    this.#stageReportedLyrics = this.#lyrics;
+
     if (this.#isUnsyncedOnStage(renderer)) this.#emitError("layout", new Error(UNSYNCED_STAGE_MESSAGE));
-    const position = this.ownerDocument.defaultView?.getComputedStyle(container).position;
-    if (position !== "absolute") this.#emitError("layout", new Error(MISSING_STAGE_STYLESHEET_MESSAGE));
+    // A frame later, so a stylesheet that lands just after the build is not reported as missing.
+    view.requestAnimationFrame(() => {
+      if (this.#renderer !== renderer || renderer.container !== container) return;
+      if (view.getComputedStyle(container).position === "absolute") return;
+      this.#emitError("layout", new Error(MISSING_STAGE_STYLESHEET_MESSAGE));
+    });
   }
 
   #applyTheme(): void {

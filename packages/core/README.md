@@ -410,7 +410,8 @@ The element takes the same layout as `layout="stage"`, and reports the same box 
 `braccato:stage-layout`. Give the element or its parent a size and a position, and load `stage.css`.
 A stage that cannot show what it was given says so rather than staying blank: unsynced lyrics set
 `status` to `unsynced-on-stage`, and both they and a missing `stage.css` dispatch `braccato:error`
-with `phase: "layout"`.
+with `phase: "layout"`. Each song is reported once, so a theme that rebuilds the lines stays quiet.
+The stylesheet is checked a frame after the song is built, and only the event reports it.
 
 ```html
 <div style="position: relative; aspect-ratio: 16 / 9">
