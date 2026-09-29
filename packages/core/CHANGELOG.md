@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.13.2
+
+### Patch Changes
+
+- 74145ab: Detect N'Ko, Adlam, Mandaic, Hanifi Rohingya, Samaritan, Yezidi, Mende Kikakui and Old Hungarian as right-to-left, so their lines align right and their words sweep right to left.
+
 ## 1.13.1
 
 ### Patch Changes
