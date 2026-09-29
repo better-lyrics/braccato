@@ -221,6 +221,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   layout: LyricsLayout;
   stageKey: string;
   stageRemeasured: boolean;
+  stageHeight: number;
   stageBox: StageBox | null;
   stageMetrics: Map<HTMLElement, StageMetrics>;
   stageY: Map<HTMLElement, number>;
@@ -313,6 +314,7 @@ export function createAnimationEngineInstance(
     layout,
     stageKey: "",
     stageRemeasured: false,
+    stageHeight: 0,
     stageBox: null,
     stageMetrics: new Map(),
     stageY: new Map(),
@@ -487,6 +489,7 @@ function resetStage(engine: AnimationEngineInstance): void {
   engine.stageMetrics.clear();
   engine.stageY.clear();
   engine.stageKey = "";
+  engine.stageHeight = 0;
   if (engine.stageBox !== null) {
     engine.stageBox = null;
     engine.host.onStageLayout?.(null);
@@ -3146,11 +3149,17 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
     gap: engine.stageFontSize * STAGE_GAP_EM,
     activeScale: getCSSNumber(engine, container, "--blyrics-active-scale", 1),
   };
+  // Lines sit on the floor, so a resize moves every place by how far the floor moved.
+  const floorShift = remeasured && engine.stageHeight > 0 ? geometry.stageHeight - engine.stageHeight : 0;
+  engine.stageHeight = geometry.stageHeight;
   const { placements, box } = layoutStage(
     roles,
     items,
     metrics,
-    elements.map(element => engine.stageY.get(element) ?? null),
+    elements.map(element => {
+      const y = engine.stageY.get(element);
+      return y === undefined ? null : y + floorShift;
+    }),
     geometry
   );
   // Only the elements whose place changed move. A line that stays where it is keeps its running
@@ -3162,9 +3171,10 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
     const wasVisible = element.dataset.stageRole !== undefined && isStageRoleVisible(element.dataset.stageRole);
     const unchanged =
       previousY !== undefined && wasVisible === placement.visible && (!placement.visible || previousY === placement.y);
-    // After a resize a line on the stage jumps to its new place and keeps the fade and blur it was
-    // in the middle of.
-    if (remeasured && !instant && wasVisible && placement.visible) {
+    // After a resize a line still on screen, fading out included, jumps to its new place and keeps
+    // the fade and blur it was in the middle of.
+    const onScreen = placement.visible || element.dataset.stageVisible !== undefined;
+    if (remeasured && !instant && onScreen && element.dataset.stageRole === roles[index]) {
       if (previousY !== placement.y) snapStageElement(engine, element, placement.y);
       return;
     }
@@ -3173,9 +3183,9 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
       element,
       placement,
       wasVisible,
-      // An entering line rises from below the floor as it is now, never from where it last stood.
+      // A queued line rises from below the floor as it is now, never from where an older size put it.
       fromY:
-        !wasVisible && placement.visible
+        element.dataset.stageRole === "queued" && placement.visible
           ? queuedStageY(geometry.stageHeight, metrics[index].height, geometry.gap)
           : currentTranslateY(engine, element, previousY ?? placement.y),
       fromOpacity: Number(engine.window.getComputedStyle(element).opacity) || 0,
