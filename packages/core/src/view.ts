@@ -32,6 +32,7 @@ import {
   type LineData,
   newLineData,
 } from "./inject";
+import { refreshInstrumentalImages } from "./imageHighlights";
 import { createInstrumentalElement } from "./instrumental";
 import type { Lyric } from "./types";
 import { applyLyricLanguage, resolveLyricLanguages } from "./language";
@@ -172,6 +173,7 @@ export function setLyrics(
   engine.lines = lines;
   engine.lyricsContainer = container;
   engine.syncType = syncType;
+  refreshInstrumentalImages(container, engine.window);
   // Measured last: the container is in the document, filled, and carrying the attributes CSS
   // sizes it by.
   engine.lyricWidth = container.clientWidth;

@@ -474,6 +474,7 @@ function togglePartClass(part: LineData | PartData, className: string, force: bo
   part.lyricElement.classList.toggle(className, force);
   if ("highlightElement" in part) {
     part.highlightElement.classList.toggle(className, force);
+    part.imageLayers?.highlight?.classList.toggle(className, force);
   }
 }
 
@@ -514,6 +515,7 @@ export function updateWordStates(lineData: LineData, currentTime: number): void 
     part.wordState = state;
     part.lyricElement.setAttribute(WORD_STATE_ATTR, state);
     part.highlightElement.setAttribute(WORD_STATE_ATTR, state);
+    part.imageLayers?.highlight?.setAttribute(WORD_STATE_ATTR, state);
   }
 }
 
@@ -583,6 +585,10 @@ interface AnimationConfig {
     swipeEndFrom: string;
     swipeStartTo: string;
     swipeEndTo: string;
+    imageGlowFrom: string;
+    imageGlowTo: string;
+    imageGlowOpacityFrom: string;
+    imageGlowOpacityTo: string;
     glowFrom: string;
     glowTo: string;
     glowDurationRatio: number;
@@ -659,6 +665,23 @@ interface NativeAnimationTimingSample {
 }
 
 const animationTimingTracks = new WeakMap<Animation, AnimationTimingTrack>();
+
+function mirrorImageHighlightAnimations(part: PartData, animations: Animation[]): Animation[] {
+  const target = part.imageLayers?.highlight;
+  if (!target) return [];
+  const mirrors: Animation[] = [];
+  for (const animation of animations) {
+    const effect = animation.effect as KeyframeEffect | null;
+    if (!effect || effect.target !== part.highlightElement) continue;
+    const mirror = target.animate(effect.getKeyframes(), effect.getTiming());
+    mirror.playbackRate = animation.playbackRate;
+    mirror.currentTime = animation.currentTime;
+    const timing = animationTimingTracks.get(animation);
+    if (timing) animationTimingTracks.set(mirror, timing);
+    mirrors.push(mirror);
+  }
+  return mirrors;
+}
 
 function trackLyricAnimationTiming(
   engine: AnimationEngineInstance,
@@ -1021,7 +1044,12 @@ function activeTextGradientKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
-function activeTextGlowKeyframes(config: AnimationConfig): Keyframe[] {
+function activeTextGlowKeyframes(config: AnimationConfig, part: PartData): Keyframe[] {
+  if (part.imageLayers)
+    return [
+      { filter: `blur(${config.highlight.imageGlowFrom})`, opacity: config.highlight.imageGlowOpacityFrom },
+      { filter: `blur(${config.highlight.imageGlowTo})`, opacity: config.highlight.imageGlowOpacityTo },
+    ];
   return [{ filter: config.highlight.glowFrom }, { filter: config.highlight.glowTo }];
 }
 
@@ -1059,17 +1087,17 @@ function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
-function fadeOutTextKeyframes(config: AnimationConfig): Keyframe[] {
+function fadeOutTextKeyframes(config: AnimationConfig, part: PartData): Keyframe[] {
   return [
     {
       opacity: 1,
-      filter: config.highlight.glowTo,
+      filter: part.imageLayers ? "none" : config.highlight.glowTo,
       "--lyric-transition-amount-start": config.highlight.swipeStartTo,
       "--lyric-transition-amount-end": config.highlight.swipeEndTo,
     },
     {
       opacity: 0,
-      filter: config.highlight.glowTo,
+      filter: part.imageLayers ? "none" : config.highlight.glowTo,
       "--lyric-transition-amount-start": config.highlight.swipeStartTo,
       "--lyric-transition-amount-end": config.highlight.swipeEndTo,
     },
@@ -1217,21 +1245,26 @@ function startRichSyncedHighlightAnimations(
         part.highlightElement.classList.contains(RTL_CLASS)
       );
       sweeps.forEach((sweep, index) => {
-        const animation = trackLyricAnimationTiming(
-          engine,
-          highlightLetters[index].animate(
-            sweep.keyframes.map(frame => ({
-              offset: frame.offset,
-              maskPosition: frame.maskPosition,
-              WebkitMaskPosition: frame.maskPosition,
-            })) as Keyframe[],
-            { duration: sweep.durationMs, delay: sweep.delayMs, easing: sweep.easing, fill: "both" }
-          ),
-          swipeTiming
+        const targets = [highlightLetters[index], part.imageLayers?.glowLetters[index]].filter(
+          (target): target is HTMLElement => target !== undefined
         );
-        animation.currentTime = swipeCurrentTimeMs;
-        if (index === 0) swipeAnimation = animation;
-        animations.push(animation);
+        for (const target of targets) {
+          const animation = trackLyricAnimationTiming(
+            engine,
+            target.animate(
+              sweep.keyframes.map(frame => ({
+                offset: frame.offset,
+                maskPosition: frame.maskPosition,
+                WebkitMaskPosition: frame.maskPosition,
+              })) as Keyframe[],
+              { duration: sweep.durationMs, delay: sweep.delayMs, easing: sweep.easing, fill: "both" }
+            ),
+            swipeTiming
+          );
+          animation.currentTime = swipeCurrentTimeMs;
+          if (index === 0) swipeAnimation = animation;
+          animations.push(animation);
+        }
       });
     } else {
       swipeAnimation = trackLyricAnimationTiming(
@@ -1267,10 +1300,10 @@ function startRichSyncedHighlightAnimations(
   if (config.enabled.highlightGlow && !part.glowSuppressed) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
-      highlight.animate(activeTextGlowKeyframes(config), {
+      (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
-        fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
+        fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1309,10 +1342,10 @@ function startLineSyncedHighlightAnimations(
   if (config.enabled.highlightGlow && !part.glowSuppressed) {
     glowAnimation = trackLyricAnimationTiming(
       engine,
-      highlight.animate(activeTextGlowKeyframes(config), {
+      (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
         duration: glowDurationMs,
         easing: config.highlight.glowEasing,
-        fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
+        fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
       }),
       { appliedTimingOffsetMs, offsetMs: 0 }
     );
@@ -1472,7 +1505,7 @@ function startWordAnimations(
       const cascadeDurationMs = config.letterWave.durationMs + (letterCount - 1) * staggerMs;
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
-      for (const set of [part.letterElements, part.highlightLetterElements]) {
+      for (const set of [part.letterElements, part.highlightLetterElements, part.imageLayers?.glowLetters]) {
         set?.forEach((letterElement, index) => {
           const animation = trackLyricAnimationTiming(
             engine,
@@ -1489,7 +1522,11 @@ function startWordAnimations(
       }
     }
   }
-  part.animations = [...highlightAnimations.animations, ...wobbleAnimations];
+  part.animations = [
+    ...highlightAnimations.animations,
+    ...mirrorImageHighlightAnimations(part, highlightAnimations.animations),
+    ...wobbleAnimations,
+  ];
 }
 
 function startLineAnimations(
@@ -1512,17 +1549,25 @@ function startLineAnimations(
   }
 }
 
-function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
+function startWordExitAnimation(
+  part: PartData,
+  config: AnimationConfig,
+  imagePaint: { target: HTMLElement; frame: Keyframe }[] = []
+): void {
   resetPartAnimations(part);
 
   const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
-  const animation = part.highlightElement.animate(fadeOutTextKeyframes(config), {
+  const animation = part.highlightElement.animate(fadeOutTextKeyframes(config, part), {
     duration: fadeDuration,
     easing: config.enabled.highlightFade ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
   });
 
-  part.animations = [animation];
+  part.animations = [animation, ...mirrorImageHighlightAnimations(part, [animation])];
+  // Keep the current blur, letter masks and motion visible until the parent fade ends.
+  for (const { target, frame } of imagePaint) {
+    part.animations.push(target.animate([frame, frame], { duration: fadeDuration, fill: "none" }));
+  }
   animation.addEventListener(
     "finish",
     () => {
@@ -1538,6 +1583,24 @@ function startLineExitAnimations(
   config: AnimationConfig,
   currentTime: number
 ): void {
+  // Read the entire line before cancelling any effects, so this does not alternate
+  // per-word style reads with writes. There are no extra reads during normal ticks.
+  const imagePaint = new Map<PartData, { target: HTMLElement; frame: Keyframe }[]>();
+  for (const part of lineData.parts) {
+    if (!part.imageLayers || currentTime < part.time) continue;
+    const style = engine.window.getComputedStyle(part.imageLayers.glow);
+    const paint = [
+      { target: part.imageLayers.glow, frame: { opacity: style.opacity, filter: style.filter } as Keyframe },
+    ];
+    for (const target of part.letterElements ?? []) {
+      paint.push({ target, frame: { transform: engine.window.getComputedStyle(target).transform } });
+    }
+    for (const target of [...(part.highlightLetterElements ?? []), ...part.imageLayers.glowLetters]) {
+      const letterStyle = engine.window.getComputedStyle(target);
+      paint.push({ target, frame: { maskPosition: letterStyle.maskPosition, transform: letterStyle.transform } });
+    }
+    imagePaint.set(part, paint);
+  }
   startLineExitAnimation(lineData, config);
 
   if (lineData.lyricElement.dataset.instrumental === "true") {
@@ -1547,7 +1610,7 @@ function startLineExitAnimations(
 
   for (const part of lineData.parts) {
     if (currentTime >= part.time) {
-      startWordExitAnimation(part, config);
+      startWordExitAnimation(part, config, imagePaint.get(part));
     } else {
       resetPartAnimations(part);
     }
@@ -1820,7 +1883,7 @@ function resolveLineGlowSuppression(
   lineData: LineData,
   config: AnimationConfig
 ): void {
-  if (config.highlight.glowContainerAlpha >= GLOW_INVISIBLE_ALPHA) {
+  if (lineData.parts.some(part => part.imageLayers) || config.highlight.glowContainerAlpha >= GLOW_INVISIBLE_ALPHA) {
     for (const part of lineData.parts) part.glowSuppressed = false;
     return;
   }
@@ -1914,6 +1977,10 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       swipeEndFrom: getCSSValue(engine, lyricsElement, "--blyrics-highlight-swipe-end-from", "-0.1"),
       swipeStartTo: getCSSValue(engine, lyricsElement, "--blyrics-highlight-swipe-start-to", "1.4"),
       swipeEndTo: getCSSValue(engine, lyricsElement, "--blyrics-highlight-swipe-end-to", "1.5"),
+      imageGlowFrom: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-radius-from", "0.8rem"),
+      imageGlowTo: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-radius-to", "0px"),
+      imageGlowOpacityFrom: getCSSValue(engine, lyricsElement, "--blyrics-image-glow-opacity-from", "0.5"),
+      imageGlowOpacityTo: getCSSValue(engine, lyricsElement, "--blyrics-image-glow-opacity-to", "0"),
       glowFrom: resolveGlowFilter(engine, lyricsElement, "from", "0.8rem"),
       glowTo: resolveGlowFilter(engine, lyricsElement, "to", "0"),
       glowDurationRatio: getCSSNumber(engine, lyricsElement, "--blyrics-highlight-glow-duration-ratio", 1.2),

@@ -1,3 +1,5 @@
+@import url("image-highlights.css");
+
 /* Resolve the default stack at each language boundary. A root-level var() would freeze
    the host's language-specific fallback before the lyric/translation language is known.
    Theme overrides remain inherited through --blyrics-font-family. */
@@ -122,7 +124,6 @@
 .blyrics-bidi-sensitive .blyrics--word,
 .blyrics-bidi-sensitive .blyrics-word-group:not(.blyrics-word-group-long) .blyrics--word {
 	display: inline;
-	unicode-bidi: normal;
 	white-space: inherit;
 }
 
@@ -168,6 +169,12 @@
 
 .blyrics--letter {
 	display: inline-block;
+}
+
+/* Atomic letter boxes otherwise take their visual ordering from the surrounding
+   paragraph. Isolate each word's own dir=auto while keeping it inline/wrappable. */
+.blyrics--word.blyrics-word--lettered {
+	unicode-bidi: isolate;
 }
 
 .blyrics-word-highlight.blyrics-word-highlight--lettered {
