@@ -2,7 +2,13 @@ import { strict as assert } from "node:assert";
 import { CUSTOM_THEME_STYLE_ID } from "./constants";
 // Types only, so this import is erased and the registration below still happens when the dynamic
 // import runs rather than when this file is parsed.
-import type { ElementErrorDetail, LineClickDetail, LyricsLoadedDetail, ScrollStateDetail } from "./element";
+import type {
+  ElementErrorDetail,
+  LineClickDetail,
+  LyricsLoadedDetail,
+  ScrollStateDetail,
+  StageLayoutDetail,
+} from "./element";
 import {
   connectElement,
   createCustomElement,
@@ -13,6 +19,7 @@ import {
 import { asFakeNode, FakeDocument, FakeNode } from "./selfcheck/fakeDom";
 import { FakeCustomEvent, FakeWindow, installFakeDOMRect, poisonAmbientGlobals } from "./selfcheck/fakeWindow";
 import { registerThemeSetting } from "./themeSettings";
+import type { StageBox } from "./stage";
 import type { Lyric, LyricsRendererHost } from "./types";
 
 // The element is a class extending HTMLElement and two calls into customElements, so the platform
@@ -41,10 +48,12 @@ const ALIAS_TAG_NAME = "better-lyrics";
 const LINE_CLICK_EVENT = "braccato:line-click";
 const LYRICS_LOADED_EVENT = "braccato:lyrics-loaded";
 const SCROLL_STATE_EVENT = "braccato:scroll-state";
+const STAGE_LAYOUT_EVENT = "braccato:stage-layout";
 const ERROR_EVENT = "braccato:error";
 
 const CURRENT_TIME_ATTRIBUTE = "current-time";
 const SOURCE_ATTRIBUTE = "source";
+const LAYOUT_ATTRIBUTE = "layout";
 
 const PLAYER_SELECTOR = "#player";
 const LATE_PLAYER_SELECTOR = "#late-player";
@@ -1648,5 +1657,158 @@ assert.equal(
 );
 
 disconnectElement(creditedElement);
+
+// -- A stage --------------------------------------------
+
+const STAGE_LINE_HEIGHT_PX = 48;
+const STAGE_LINE_WIDTH_PX = 200;
+const UNSYNCED_LYRICS: Lyric[] = [
+  { startTimeMs: 0, durationMs: 0, words: "First line" },
+  { startTimeMs: 0, durationMs: 0, words: "Second line" },
+];
+
+// Nothing lays anything out here, so a stage is given the sizes a browser would have measured.
+function measureStage(element: BraccatoLyricsElement): void {
+  const renderer = element.renderer;
+  if (renderer?.container == null) return;
+  asFakeNode(renderer.container).clientHeight = SCROLL_CONTAINER_HEIGHT_PX;
+  for (const line of asFakeNode(renderer.container).childNodes) {
+    line.offsetHeight = STAGE_LINE_HEIGHT_PX;
+    line.offsetWidth = STAGE_LINE_WIDTH_PX;
+  }
+  renderer.relayout(true);
+}
+
+const { fixture: staged, host: stagedHost } = newElementFixture(newConnectedDocument());
+const stagedElement = createCustomElement(staged.fakeDocument, BraccatoLyricsElement);
+const consumerStageBoxes: (StageBox | null)[] = [];
+
+assert.equal(stagedElement.layout, "scroll", "Given a new element, When its layout is read, Then it scrolls");
+
+stagedElement.host = { ...stagedHost, onStageLayout: box => consumerStageBoxes.push(box) };
+stagedElement.lyrics = SYNCED_LYRICS;
+connectElement(staged.root, stagedElement);
+
+assert.equal(
+  containerDataset(stagedElement).layout,
+  undefined,
+  "Given an element that was given no layout, When it builds, Then the view it builds scrolls"
+);
+
+const scrollingRenderer = stagedElement.renderer;
+stagedElement.layout = "scroll";
+
+assert.ok(
+  stagedElement.renderer === scrollingRenderer,
+  "Given a scrolling element, When it is told to scroll, Then nothing is rebuilt"
+);
+
+stagedElement.setAttribute(LAYOUT_ATTRIBUTE, "stage");
+
+assert.equal(stagedElement.layout, "stage", "Given a layout attribute, When it is set, Then the property carries it");
+
+assert.ok(
+  stagedElement.renderer !== null && stagedElement.renderer !== scrollingRenderer,
+  "Given a connected element, When its layout changes, Then it builds a renderer for that layout"
+);
+
+assert.equal(
+  containerDataset(stagedElement).layout,
+  "stage",
+  "Given an element moved onto a stage, When its container is read, Then the lines are built as a stage"
+);
+
+assert.equal(
+  stagedElement.renderer?.lines.length,
+  SYNCED_LYRICS.length,
+  "Given an element moved onto a stage, When its lines are read, Then the lyrics it was holding survived the rebuild"
+);
+
+assert.equal(stagedElement.status, "rendering", "Given synced lyrics on a stage, When asked, Then it is rendering");
+
+measureStage(stagedElement);
+stagedElement.playing = true;
+stagedElement.currentTime = PLAYBACK_TIME_S;
+
+const stageLayoutBoxes = emittedDetails<StageLayoutDetail>(stagedElement, STAGE_LAYOUT_EVENT).map(detail => detail.box);
+
+assert.ok(
+  stageLayoutBoxes.length > 0 && stageLayoutBoxes.at(-1) !== null,
+  "Given a sung line on a stage, When the element ticks, Then it says where the sung lines are"
+);
+
+assert.deepEqual(
+  consumerStageBoxes,
+  stageLayoutBoxes,
+  "Given a host that asked where the stage is, When the element reports it, Then the host is still told, and told the same thing"
+);
+
+await nextMicrotask();
+
+assert.deepEqual(
+  errorPhases(stagedElement),
+  [],
+  "Given a stage whose stylesheet is loaded, When it builds synced lyrics, Then nothing is reported"
+);
+
+stagedElement.lyrics = UNSYNCED_LYRICS;
+await nextMicrotask();
+
+assert.equal(
+  stagedElement.status,
+  "unsynced-on-stage",
+  "Given unsynced lyrics on a stage, When asked what it is doing, Then it says the stage has nothing it can place"
+);
+
+assert.deepEqual(
+  errorPhases(stagedElement),
+  ["layout"],
+  "Given unsynced lyrics on a stage, When they are built, Then the element says why nothing shows"
+);
+
+stagedElement.removeAttribute(LAYOUT_ATTRIBUTE);
+
+assert.equal(
+  stagedElement.layout,
+  "scroll",
+  "Given a layout attribute, When it is taken away, Then the element scrolls again"
+);
+
+assert.equal(
+  stagedElement.status,
+  "rendering",
+  "Given unsynced lyrics in a scrolling view, When asked, Then it is rendering, because a scrolling view shows them"
+);
+
+stagedElement.setAttribute(LAYOUT_ATTRIBUTE, "grid");
+
+assert.equal(
+  stagedElement.layout,
+  "scroll",
+  "Given a layout attribute naming no layout, When it is set, Then the element scrolls rather than guessing"
+);
+
+disconnectElement(stagedElement);
+
+// -- A stage whose stylesheet was never loaded --------------------------------------------
+
+const unstyledDocument = newConnectedDocument();
+const { fixture: unstyled, host: unstyledHost } = newElementFixture(unstyledDocument);
+unstyled.fakeWindow.stageStylesheetLoaded = false;
+const unstyledElement = createCustomElement(unstyled.fakeDocument, BraccatoLyricsElement);
+
+unstyledElement.host = unstyledHost;
+unstyledElement.layout = "stage";
+unstyledElement.lyrics = SYNCED_LYRICS;
+connectElement(unstyled.root, unstyledElement);
+await nextMicrotask();
+
+assert.deepEqual(
+  errorPhases(unstyledElement),
+  ["layout"],
+  "Given a stage in a document that never loaded stage.css, When it builds, Then the element says so rather than stacking every line in the flow"
+);
+
+disconnectElement(unstyledElement);
 
 console.log("Lyrics element self-check passed");
