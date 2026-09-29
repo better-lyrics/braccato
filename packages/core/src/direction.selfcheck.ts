@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LETTER_CLASS, ROMANIZED_LYRICS_CLASS, RTL_CLASS, WORD_HIGHLIGHT_CLASS } from "./constants";
 import { applyDirection, createLyricsLine, injectRomanization, newLineData } from "./inject";
-import { asDocument, asElement, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
+import { asDocument, asElement, asFakeNode, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
 import { setThemeSettings } from "./themeSettings";
 
 // The engine reads RTL from the highlight's own class, so the stylesheet must never read it from an ancestor.
@@ -134,6 +134,25 @@ for (const [script, word] of RTL_SAMPLES) {
     highlights.length > 0 && highlights.every(node => node.classList.contains(RTL_CLASS)),
     `Given a ${script} word, When built, Then its highlight is marked RTL so the swipe runs right to left`
   );
+}
+
+// Joining must survive even when a provider splits one word into timed syllables.
+setThemeSettings(new Map([["blyrics-letter-wave", "true"]]));
+{
+  const doc = new FakeDocument();
+  const target = asElement<HTMLElement>(doc.createElement("div"));
+  const line = newLineData(target, 0, 2000);
+  createLyricsLine(asDocument(doc), [
+    { words: "مر", startTimeMs: 0, durationMs: 300 },
+    { words: "حبا ", startTimeMs: 300, durationMs: 300 },
+    { words: "hello ", startTimeMs: 600, durationMs: 400 },
+    { words: "ܫܠܡܐ", startTimeMs: 1000, durationMs: 1000 },
+  ], line, target);
+  assert.deepEqual(line.parts.map(part => !!part.letterElements), [false, false, true, false],
+    "Joining-script groups preserve shaping while Latin words retain letter animation");
+  for (const part of [line.parts[0], line.parts[1], line.parts[3]]) {
+    assert.equal(collectTree(asFakeNode(part.lyricElement)).some(node => node.name === "wbr"), false);
+  }
 }
 
 console.log("direction self-check passed");

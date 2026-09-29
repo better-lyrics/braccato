@@ -12,6 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
+import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
   BACKGROUND_LINE_CLASS,
@@ -54,6 +55,7 @@ const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const SPACE_REGEX = /^\s+$/u;
+// Inline-block graphemes break contextual joining, including across timed syllables.
 
 export function findNearestAgent(lyrics: Lyric[], fromIndex: number): string | undefined {
   // Look in the downwards direction first
@@ -114,6 +116,7 @@ export interface AnimationData {
 
 export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
+  imageLayers?: ImageHighlightLayers;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
   // Only a word's first syllable holds its groups, so a word split into syllables wobbles once, whole.
@@ -177,6 +180,7 @@ function newPartData(
     duration: part.durationMs / 1000,
     lyricElement: span,
     highlightElement: highlight,
+    imageLayers: wrapImageHighlight(highlight),
     letterElements,
     highlightLetterElements,
     wobbleElements,
@@ -346,7 +350,8 @@ function createTimedWordSpan(
   doc: Document,
   part: LyricPart,
   wrapThreshold: number,
-  perLetter: boolean
+  perLetter: boolean,
+  preserveJoining: boolean
 ): {
   span: HTMLSpanElement;
   highlight: HTMLSpanElement;
@@ -372,7 +377,8 @@ function createTimedWordSpan(
     if (part.isBackground) wordElement.classList.add(BACKGROUND_LYRIC_CLASS);
     if (part.explicit) wordElement.classList.add(EXPLICIT_WORD_CLASS);
 
-    if (perLetter && !testJoiningScript(part.words)) {
+    if (perLetter) {
+      wordElement.classList.add("blyrics-word--lettered");
       const collected = appendLetters(doc, wordElement, part.words);
       if (wordElement === span) {
         letters = collected;
@@ -380,6 +386,8 @@ function createTimedWordSpan(
         highlightLetters = collected;
         wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
       }
+    } else if (preserveJoining) {
+      wordElement.textContent = part.words;
     } else {
       appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
     }
@@ -398,7 +406,12 @@ function createWordGroup(
   lineData: LineData
 ): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
-  const perLetter = letterWave.getBooleanValue();
+  // Atomic grapheme spans disrupt the browser's bidi ordering inside a mixed word.
+  const mixedDirection = testRtl(group.text) && [...group.text].some(char =>
+    /[\p{Letter}\p{Number}]/u.test(char) && !testRtl(char)
+  );
+  const preserveJoining = testJoiningScript(group.text) || mixedDirection;
+  const perLetter = letterWave.getBooleanValue() && !preserveJoining;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
 
@@ -423,7 +436,8 @@ function createWordGroup(
       doc,
       token.part,
       wrapThreshold,
-      perLetter
+      perLetter,
+      preserveJoining
     );
     const wobbleElements = lyricGroup.childNodes.length === 0 ? [lyricGroup, highlightGroup] : [];
     lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters));
@@ -525,6 +539,8 @@ export function createLyricsLine(
     }
   }
 
+  alignImageGlowRun(mainHighlightRun, line.parts);
+  if (hasBackground) alignImageGlowRun(backgroundHighlightRun, line.parts);
   lyricElement.appendChild(main);
   if (hasBackground) {
     lyricElement.appendChild(backgroundLine);

@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><title>Braccato image highlight regression</title>
+<link rel="stylesheet" href="../../packages/core/dist/styles/variables.css">
+<link rel="stylesheet" href="../../packages/core/dist/styles/lyrics.css">
+<link rel="stylesheet" href="../../packages/core/dist/styles/instrumental.css">
+<style>body{margin:40px;background:#111;color:#ddd;font:16px system-ui}#mount{height:700px;overflow:auto;width:740px}.blyrics-container{--blyrics-font-size:44px;--blyrics-scale:1;--blyrics-padding:16px;--blyrics-line-height:1.5}</style>
+<h1>Image highlights: animation and clipping</h1><p id="status">Loading renderer…</p><div id="mount"></div>
+<script type="module">
+import {createLyricsRenderer} from '../../packages/core/dist/index.js';
+const themeURL=new URLSearchParams(location.search).get('theme');
+const theme=themeURL ? await fetch(themeURL).then(r=>r.text()) : `/* blyrics-image-highlights = true; */
+.blyrics-container { --blyrics-highlight-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Cpath fill='white' d='M0 0h16v16H0z'/%3E%3C/svg%3E"); }`;
+const lyrics=[
+ {words:'GLOW across the edges',startTimeMs:0,durationMs:6000,parts:[{words:'GLOW ',startTimeMs:0,durationMs:1800},{words:'across ',startTimeMs:1800,durationMs:1400},{words:'the ',startTimeMs:3200,durationMs:800},{words:'edges',startTimeMs:4000,durationMs:2000}]},
+ {words:'',isInstrumental:true,startTimeMs:6000,durationMs:6000},
+ {words:'مرحبا بالعالم',startTimeMs:12000,durationMs:5000,parts:[{words:'مرحبا ',startTimeMs:12000,durationMs:2000},{words:'بالعالم',startTimeMs:14000,durationMs:3000}]},
+ {words:'SUPERCALIFRAGILISTICEXPIALIDOCIOUS',startTimeMs:17000,durationMs:3000},
+];
+const renderer=createLyricsRenderer({document,window,mount:document.querySelector('#mount'),host:{isViewVisible:()=>true,getScrollElement:()=>document.querySelector('#mount')}});
+window.testView={renderer,lyrics,theme,setTheme(css){const rebuild=renderer.setTheme(css);if(rebuild)renderer.setLyrics(lyrics);return rebuild},tick(time,playing=false){return renderer.tick(time,{isPlaying:playing})}};
+renderer.setTheme(theme);renderer.setLyrics(lyrics);renderer.tick(0.45,{isPlaying:false});
+document.querySelector('#status').textContent='Ready — window.testView controls the real renderer.';
+</script>

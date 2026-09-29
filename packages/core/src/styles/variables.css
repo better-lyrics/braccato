@@ -1,4 +1,9 @@
 :root {
+  /* Optional image paint; themes own the asset and any HDR brightness policy. */
+  --blyrics-highlight-image: none;
+  --blyrics-image-glow-opacity-from: 0.5;
+  --blyrics-image-glow-opacity-to: 0;
+
 	/* Colors */
 	--blyrics-ui-text-color: var(
 		--blyrics-text-color,

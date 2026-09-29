@@ -479,3 +479,42 @@ loading regional CJK web fonts should set `--noto-sans-universal` on these eleme
 `--blyrics-font-family` and `--blyrics-translated-font-family` remain explicit theme overrides.
 They are unset by default; custom CSS that reads them directly should use
 `var(--blyrics-font-family, var(--blyrics-default-font-family))` for the default stack.
+
+### Theme-provided image fills
+
+Image highlights are optional. Enable them in a theme comment:
+
+```css
+/* blyrics-image-highlights = true; */
+.blyrics-container {
+  --blyrics-highlight-image: url("my-image.jpg");
+  --blyrics-image-glow-opacity-from: 0.5;
+  --blyrics-image-glow-opacity-to: 0;
+}
+```
+
+Changing this setting requests a lyric rebuild through the existing `setTheme` return value.
+Without it, the renderer keeps its original DOM and shadow animation. With it, the sharp fill
+and a separate blurred copy share the word reveal, letter motion, opacity, pause, seek and
+playback-rate handling. Existing glow radius, duration and easing properties still apply;
+the two image-glow opacity properties replace the solid shadow color's alpha.
+
+The image may be an SDR texture or an HDR gain-map asset. The theme owns HDR media queries
+and `dynamic-range-limit`; the core never opts into extra display brightness. Ordinary active
+text color backs up the image fill, while the note keeps its original color path until its
+SVG image loads. The note image reuses the original animated wave clip and fade group.
+
+The glow layer is outside the paint's mask, avoiding clipped halos at word edges. Bidi-sensitive
+runs and fragmented long words use a parallel inline text run for the glow, so the browser
+reproduces the same ordering and wrapped fragments. Its reveal and visibility use the same
+animation clock as the sharp text. No generated text or per-frame geometry reads are needed.
+Joining-script word groups retain contextual joining by using whole-word sweeps instead of
+inline-block letter waves, including when image highlights are disabled.
+Forced colors suppress the image and halo in favor of system text colors.
+
+For real-browser regression checks, build the package, serve the repository root and open
+`tooling/browser/image-highlights.html`. Import `image-highlights-checks.js` from that page and
+call `runImageHighlightChecks(testView)`. The default fixture uses an SDR image; a `theme` query
+parameter can point at a consumer's HDR stylesheet for physical-display testing.
+
+Words that mix RTL characters with LTR letters or numbers retain native text shaping instead of per-letter motion. Image glow and letter masks retain their current paint during the line exit fade.

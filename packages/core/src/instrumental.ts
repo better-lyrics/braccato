@@ -1,3 +1,5 @@
+import { imageHighlights } from "./imageHighlights";
+
 export const INSTRUMENTAL_WAVE_PATH_HIGH = "M -4 3 Q 1 2 5 3 Q 10 4 14 3 Q 18 2 22 3 Q 26 4 30 3 L 30 4 L -4 4 Z";
 export const INSTRUMENTAL_WAVE_PATH_LOW = "M -4 3 Q 1 4 5 3 Q 10 2 14 3 Q 18 4 22 3 Q 26 2 30 3 L 30 4 L -4 4 Z";
 
@@ -99,7 +101,44 @@ export function createInstrumentalElement(
     "d",
     "M10 21q-1.65 0-2.825-1.175T6 17t1.175-2.825T10 13q.575 0 1.063.138t.937.412V4q0-.425.288-.712T13 3h4q.425 0 .713.288T18 4v2q0 .425-.288.713T17 7h-3v10q0 1.65-1.175 2.825T10 21"
   );
-  g.appendChild(fillPath);
+  if (imageHighlights.getBooleanValue()) {
+    // Fade the common group so both the image and the SDR fallback follow the original
+    // instrumental animation. The wave and silhouette clips are inside the glow filter.
+    fillPath.classList.remove("blyrics--instrumental-fill");
+    fillPath.classList.add("blyrics-instrumental-color");
+    const fill = doc.createElementNS(svgNS, "g");
+    fill.classList.add("blyrics--instrumental-fill");
+    fill.appendChild(fillPath);
+    const shapeId = `${clipId}-image-shape`;
+    const shape = doc.createElementNS(svgNS, "clipPath");
+    shape.setAttribute("id", shapeId);
+    const shapePath = doc.createElementNS(svgNS, "path");
+    shapePath.setAttribute("d", fillPath.getAttribute("d")!);
+    shape.appendChild(shapePath);
+    defs.appendChild(shape);
+    const silhouette = doc.createElementNS(svgNS, "g");
+    silhouette.setAttribute("clip-path", `url(#${shapeId})`);
+    const wave = doc.createElementNS(svgNS, "g");
+    wave.setAttribute("clip-path", `url(#${clipId})`);
+    const image = doc.createElementNS(svgNS, "image");
+    image.classList.add("blyrics-instrumental-image");
+    image.setAttribute("x", "0");
+    image.setAttribute("y", "0");
+    image.setAttribute("width", "24");
+    image.setAttribute("height", "24");
+    image.setAttribute("preserveAspectRatio", "none");
+    wave.appendChild(image);
+    silhouette.appendChild(wave);
+    fill.appendChild(silhouette);
+    g.appendChild(fill);
+    // Blur RGB directly instead of recoloring the halo with an SDR flood/shadow.
+    filter.setAttribute("color-interpolation-filters", "sRGB");
+    feGaussianBlur.setAttribute("stdDeviation", "1");
+    filter.removeChild(feColorMatrix);
+    feMergeNode1.setAttribute("in", "blur");
+  } else {
+    g.appendChild(fillPath);
+  }
 
   svg.appendChild(g);
   container.appendChild(svg);
