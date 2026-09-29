@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.15.3
+
+### Patch Changes
+
+- 98c3fb8: A blank line on the stage clears the line before it and gets no backdrop box. Singers only take sides when both sides are sung, so a song with one singer stays centred.
+
 ## 1.15.2
 
 ### Patch Changes
