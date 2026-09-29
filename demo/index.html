@@ -221,6 +221,43 @@
             </div>
           </section>
 
+          <section class="chapter" id="stage-layout" data-chapter="stage" aria-labelledby="stage-heading">
+            <h2 id="stage-heading">One line at a time, over the picture.</h2>
+            <p>
+              Set <code>layout="stage"</code> and load <code>stage.css</code>, and the element shows only the lines being sung, like subtitles over a video. It fills the nearest positioned parent. The theme stays the same.
+            </p>
+            <fieldset class="seg" id="layout-choice">
+              <legend class="visually-hidden">Layout</legend>
+              <span class="seg__thumb" aria-hidden="true"></span>
+              <label><input type="radio" name="layout" value="scroll" /><span>Scroll</span></label>
+              <label><input type="radio" name="layout" value="stage" checked /><span>Stage</span></label>
+            </fieldset>
+            <div class="code" data-snippet="stage"></div>
+
+            <div class="block">
+              <h3>A backdrop that follows the words</h3>
+              <p class="hint">
+                <code>braccato:stage-layout</code> gives the box around the sung lines, or <code>null</code> when nobody is singing. This page draws the plate behind them from it, outside the element, so no theme can restyle it.
+              </p>
+            </div>
+
+            <div class="block">
+              <h3>Duets keep their sides</h3>
+              <p class="hint">Each singer stays on their own side of the stage. Everyone together stays in the middle.</p>
+              <div class="row">
+                <button class="chip" type="button" data-seek="9000">
+                  <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg>Hear the second voice
+                </button>
+                <button class="chip" id="stage-unsynced" type="button" aria-pressed="false">
+                  <span data-label>Try unsynced lyrics</span>
+                </button>
+              </div>
+              <p class="hint">
+                A stage places lines by their time, so unsynced lyrics show nothing. The element says so: <code>status</code> becomes <code>"unsynced-on-stage"</code> and it dispatches <code>braccato:error</code> with <code>phase: "layout"</code>.
+              </p>
+            </div>
+          </section>
+
           <section class="chapter" id="themes" data-chapter="themes" aria-labelledby="theme-heading">
             <h2 id="theme-heading">A theme is a stylesheet.</h2>
             <p>
@@ -338,7 +375,7 @@
           <section class="chapter chapter--wide" id="reference" data-chapter="reference" aria-labelledby="reference-heading">
             <h2 id="reference-heading">The full API.</h2>
             <p>
-              Eleven properties, four attributes, four events, and the class names themes can use. The renderer guide covers each one in more depth.
+              Twelve properties, five attributes, five events, and the class names themes can use. The renderer guide covers each one in more depth.
             </p>
 
             <fieldset class="seg seg--scroll" id="reference-tabs">
@@ -370,7 +407,7 @@
               <section class="panel" data-panel="events" aria-labelledby="events-heading" hidden>
                 <h3 class="visually-hidden" id="events-heading">Events</h3>
                 <p class="hint">
-                  All four bubble and cross shadow roots, so a listener outside your own components still hears them.
+                  All five bubble and cross shadow roots, so a listener outside your own components still hears them.
                 </p>
                 <dl class="terms" id="events-list"></dl>
               </section>
@@ -467,6 +504,7 @@
           <a href="#syllables" data-go="syllables">Syllables</a>
           <a href="#lines" data-go="lines">Lines</a>
           <a href="#duets" data-go="duets">Duets</a>
+          <a href="#stage-layout" data-go="stage">Stage</a>
           <a href="#themes" data-go="themes">Themes</a>
           <a href="#formats" data-go="formats">Formats</a>
           <a href="#playback" data-go="playback">Playback</a>
@@ -481,7 +519,9 @@
           <span class="caption__theme" id="caption-theme"></span>
         </p>
 
+        <div class="scene" id="stage-scene" aria-hidden="true"></div>
         <div class="view" id="stage-frame">
+          <div class="plate" id="stage-plate" aria-hidden="true"></div>
           <braccato-lyrics
             id="view"
             source="#player"

@@ -72,6 +72,21 @@ const parser = detectParser(text);
 view.lyricsOptions = { songwriters: parser.metadata(text).songwriters };
 view.lyrics = parser.parse(text, player.duration * 1000);`,
 
+  stage: `<div style="position: relative; aspect-ratio: 16 / 9">
+  <video id="clip" src="clip.mp4"></video>
+  <braccato-lyrics source="#clip" layout="stage"></braccato-lyrics>
+</div>
+
+<script type="module">
+  import "@braccato/core/element";
+  import "@braccato/core/styles/variables.css";
+  import "@braccato/core/styles/lyrics.css";
+  import "@braccato/core/styles/stage.css";
+
+  const view = document.querySelector("braccato-lyrics");
+  view.addEventListener("braccato:stage-layout", event => drawBackdrop(event.detail.box));
+</script>`,
+
   theme: `view.theme = \`
   /* blyrics-target-scroll-pos-ratio = 0.5; */
   /* blyrics-long-word-threshold = 900; */
@@ -152,6 +167,13 @@ export const PROPERTIES = [
       "Answers to what the renderer asks the page: is the view on screen, which element scrolls, how to seek, and when to show a resume button. Each has a default. Setting it while connected rebuilds the view.",
   },
   {
+    member: "layout",
+    type: '"scroll" | "stage"',
+    writable: true,
+    summary:
+      "stage shows only the lines being sung, for subtitles over a video, and fills the nearest positioned ancestor. Load stage.css with it. Changing it while connected rebuilds the view.",
+  },
+  {
     member: "renderer",
     type: "LyricsRenderer | null",
     writable: false,
@@ -163,7 +185,7 @@ export const PROPERTIES = [
     type: "ElementStatus",
     writable: false,
     summary:
-      "idle, rendering, theme-conflict or no-browsing-context. Errors are dispatched a microtask late, so check this if you started listening afterwards.",
+      "idle, rendering, theme-conflict, unsynced-on-stage or no-browsing-context. Errors are dispatched a microtask late, so check this if you started listening afterwards.",
   },
 ];
 
@@ -182,6 +204,11 @@ export const ATTRIBUTES = [
     writes: "theme",
     summary:
       "A whole stylesheet in an attribute. It works, and it shows that markup written before the module loads still applies, but set the property in real code.",
+  },
+  {
+    attribute: "layout",
+    writes: "layout",
+    summary: "stage puts the view on a stage. Any other value, or no attribute, scrolls.",
   },
   {
     attribute: "current-time",
@@ -217,10 +244,16 @@ export const EVENTS = [
       "Autoscroll stopped following the song, or started again. host.setResumeAffordanceVisible hears the same thing. Neither fires until you call renderer.noteUserScroll, which the element doesn't do for you.",
   },
   {
+    event: "braccato:stage-layout",
+    detail: "{ box }",
+    summary:
+      "Stage layout only. The box around the sung lines, in the container's coordinates, or null when nothing sung is on stage. Draw a backdrop from it. host.onStageLayout hears the same thing.",
+  },
+  {
     event: "braccato:error",
     detail: "{ phase, error }",
     summary:
-      "Connecting, finding the source, or applying lyrics or a theme failed. Errors inside animation frames aren't sent here, since that could mean sixty a second.",
+      "Connecting, finding the source, or applying lyrics or a theme failed, or a stage can't show what it was given. Errors inside animation frames aren't sent here, since that could mean sixty a second.",
   },
 ];
 
@@ -397,6 +430,6 @@ export const STYLESHEETS = [
   {
     file: "stage.css",
     summary:
-      'Placement for a renderer created with layout: "stage", which shows only the lines being sung. Lines carry data-stage-role and data-stage-visible, and the container data-layout.',
+      'Placement for an element or renderer with layout "stage", which shows only the lines being sung. Lines carry data-stage-role and data-stage-visible, and the container data-layout.',
   },
 ];

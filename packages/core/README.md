@@ -96,8 +96,9 @@ connects, and everything it was handed by then is applied at once.
 | `tickOptions`   |                | `ElementTickOptions`                | `{}`     | The rest of a tick: four offsets taken off the clock before it is matched, whether passive scrolling is on, when the clock was sampled, and the rate the song is playing at. |
 | `theme`         | `theme`        | `string`                            | `""`     | A compiled stylesheet. See Theming.                                                                                                        |
 | `host`          |                | `Partial<LyricsRendererHost>`       | `{}`     | Overrides for what the renderer asks of its surroundings. Every member has a default. Writing it while connected rebuilds the view.        |
+| `layout`        | `layout`       | `"scroll" \| "stage"`               | `"scroll"` | `stage` shows only the lines being sung. See Entry points. Writing it while connected rebuilds the view.                                    |
 | `renderer`      |                | `LyricsRenderer \| null` (get)      | `null`   | The renderer underneath, for the day the tag runs out. A different one after every reconnection.                                            |
-| `status`        |                | `ElementStatus` (get)               | `"idle"` | `idle`, `rendering`, `theme-conflict` or `no-browsing-context`.                                                                            |
+| `status`        |                | `ElementStatus` (get)               | `"idle"` | `idle`, `rendering`, `theme-conflict`, `unsynced-on-stage` or `no-browsing-context`.                                                                            |
 
 `tickOptions` and `lyricsOptions` are stored on write and read by the next tick or the next build, so
 writing options and the clock on the same frame renders once.
@@ -112,12 +113,13 @@ do not is worse than none of them doing it.
 | -------------- | ------------- | -------------------------------------------------------------------------------------------------- |
 | `source`       | `source`      | The selector form only. Another selector moves the binding, and removing it unbinds.                |
 | `theme`        | `theme`       | A whole stylesheet in an attribute value. It works, but nobody would ship a theme this way.          |
+| `layout`       | `layout`      | `stage` puts the view on a stage. Any other value, or no attribute, scrolls.                       |
 | `current-time` | `currentTime` | Seconds. A value that does not parse as a number is ignored rather than read as zero.               |
 | `playing`      | `playing`     | An ordinary boolean attribute: its presence is what counts, so `playing="false"` is playing.         |
 
 ## Events
 
-All four bubble and are composed, so an element you put inside your own shadow root still reaches
+All five bubble and are composed, so an element you put inside your own shadow root still reaches
 your listener.
 
 | Event                    | Detail                    | When                                                                            |
@@ -125,7 +127,8 @@ your listener.
 | `braccato:lyrics-loaded` | `{ lineCount, syncType }` | Lyrics were applied, including an empty array. A theme change that rebuilds the lines reports itself the same way. |
 | `braccato:line-click`    | `{ timeS }`               | A line was clicked. The seek has already reached the bound media element by the time you hear about it.            |
 | `braccato:scroll-state`  | `{ userScrolling }`       | Autoscroll stopped following the song, or started again.                                                           |
-| `braccato:error`         | `{ phase, error }`        | Connecting, resolving a source, or applying lyrics or a theme went wrong. `phase` is `connect`, `conflict`, `source`, `lyrics` or `theme`. |
+| `braccato:stage-layout`  | `{ box }`                 | Stage layout only. The box around the sung lines in the container's coordinates, or null when nothing sung is on stage. |
+| `braccato:error`         | `{ phase, error }`        | Connecting, resolving a source, or applying lyrics or a theme went wrong, or a stage cannot show what it was given. `phase` is `connect`, `conflict`, `layout`, `source`, `lyrics` or `theme`. |
 
 Errors are dispatched a microtask after they happen rather than where they happen, which is what
 makes them receivable at all: `connectedCallback` runs before any listener a page could have added.
@@ -402,6 +405,20 @@ lines; lines for everyone stay centred.
 Everything else is the theme's. Lines are styled exactly as they would be in a scrolling view.
 `host.onStageLayout(box)` reports the box around the sung lines in the container's coordinates, or null
 when nothing sung is on stage, so you can draw a backdrop outside the container the theme styles.
+
+The element takes the same layout as `layout="stage"`, and reports the same box as
+`braccato:stage-layout`. Give the element or its parent a size and a position, and load `stage.css`.
+A stage that cannot show what it was given says so rather than staying blank: unsynced lyrics set
+`status` to `unsynced-on-stage`, and both they and a missing `stage.css` dispatch `braccato:error`
+with `phase: "layout"`. Each song is reported once, so a theme that rebuilds the lines stays quiet.
+The stylesheet is checked a frame after the song is built, and only the event reports it.
+
+```html
+<div style="position: relative; aspect-ratio: 16 / 9">
+  <video id="clip" src="clip.mp4"></video>
+  <braccato-lyrics source="#clip" layout="stage"></braccato-lyrics>
+</div>
+```
 
 `@braccato/core/element` registers `<braccato-lyrics>`, and `<better-lyrics>` beside it, on import.
 Registration is a side effect, which is why it is entered separately.

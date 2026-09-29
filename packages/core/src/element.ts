@@ -10,7 +10,8 @@
 // `setTheme`; the module's stylesheets are the consumer's to load, the way any package's CSS is.
 
 import { createLyricsRenderer } from "./renderer";
-import type { Lyric, LyricsRenderer, LyricsRendererHost, LyricSyncType, TickOptions } from "./types";
+import type { StageBox } from "./stage";
+import type { Lyric, LyricsLayout, LyricsRenderer, LyricsRendererHost, LyricSyncType, TickOptions } from "./types";
 import type { SetLyricsOptions } from "./view";
 
 // -- Names --------------------------------------------
@@ -24,6 +25,7 @@ const ALIAS_TAG_NAME = "better-lyrics";
 // the DOM sixty times a second, and one attribute reflecting while the others do not is worse than
 // none of them doing it.
 const CURRENT_TIME_ATTRIBUTE = "current-time";
+const LAYOUT_ATTRIBUTE = "layout";
 const PLAYING_ATTRIBUTE = "playing";
 const SOURCE_ATTRIBUTE = "source";
 const THEME_ATTRIBUTE = "theme";
@@ -62,12 +64,17 @@ const MAX_CLOCK_CARRY_MS = 100;
 const LINE_CLICK_EVENT = "braccato:line-click";
 const LYRICS_LOADED_EVENT = "braccato:lyrics-loaded";
 const SCROLL_STATE_EVENT = "braccato:scroll-state";
+const STAGE_LAYOUT_EVENT = "braccato:stage-layout";
 const ERROR_EVENT = "braccato:error";
 
 const NO_BROWSING_CONTEXT_MESSAGE =
   "This element is in a document with no window, so there is nothing to build lyrics against";
 const THEME_DISAGREEMENT_MESSAGE =
   "Another lyrics element in this document was given a different theme, and the module's theme settings are shared, so both views render against whichever theme was applied last";
+const UNSYNCED_STAGE_MESSAGE =
+  "A stage places lines by their time and these lyrics have none, so the stage shows nothing";
+const MISSING_STAGE_STYLESHEET_MESSAGE =
+  "The stage container is still in the document flow, so @braccato/core/styles/stage.css is not loaded and every line stacks where it was built";
 const NON_MEDIA_SOURCE_MESSAGE =
   "The source given is not a media element in this element's document, so the lyrics have no clock to follow";
 
@@ -92,7 +99,7 @@ export type ElementLyricsOptions = Partial<SetLyricsOptions>;
 // -- Event details --------------------------------------------
 
 /** @public */
-export type ElementErrorPhase = "connect" | "conflict" | "lyrics" | "source" | "theme";
+export type ElementErrorPhase = "connect" | "conflict" | "layout" | "lyrics" | "source" | "theme";
 
 /** @public */
 export interface ElementErrorDetail {
@@ -109,7 +116,7 @@ export interface ElementErrorDetail {
  *
  * @public
  */
-export type ElementStatus = "idle" | "rendering" | "theme-conflict" | "no-browsing-context";
+export type ElementStatus = "idle" | "rendering" | "theme-conflict" | "unsynced-on-stage" | "no-browsing-context";
 
 /** @public */
 export interface LyricsLoadedDetail {
@@ -121,6 +128,12 @@ export interface LyricsLoadedDetail {
 export interface LineClickDetail {
   /** Where the click asked the player to go, in seconds. */
   timeS: number;
+}
+
+/** @public */
+export interface StageLayoutDetail {
+  /** Around the lines being sung, in the container's coordinates, or null when nothing sung is on stage. */
+  box: StageBox | null;
 }
 
 /** @public */
@@ -177,7 +190,13 @@ function defineOnce(tagName: string, elementConstructor: CustomElementConstructo
  * property here would be a second opinion about a question the platform has already answered.
  */
 export class BraccatoLyricsElement extends HTMLElement {
-  static readonly observedAttributes = [CURRENT_TIME_ATTRIBUTE, PLAYING_ATTRIBUTE, SOURCE_ATTRIBUTE, THEME_ATTRIBUTE];
+  static readonly observedAttributes = [
+    CURRENT_TIME_ATTRIBUTE,
+    LAYOUT_ATTRIBUTE,
+    PLAYING_ATTRIBUTE,
+    SOURCE_ATTRIBUTE,
+    THEME_ATTRIBUTE,
+  ];
 
   #renderer: LyricsRenderer | null = null;
   // The document this element registered itself in, rather than whatever it is in now: adopting an
@@ -194,6 +213,9 @@ export class BraccatoLyricsElement extends HTMLElement {
   #tickOptions: ElementTickOptions = {};
   #theme = "";
   #hostOverrides: Partial<LyricsRendererHost> = {};
+  #layout: LyricsLayout = "scroll";
+  // The song the stage last reported on, so a theme that rebuilds the same lines stays quiet.
+  #stageReportedLyrics: Lyric[] | null = null;
   #source: HTMLMediaElement | string | null = null;
   // Non-null exactly while the element is listening to a media element, so there is no state where
   // one is remembered and its listeners are not.
@@ -344,6 +366,24 @@ export class BraccatoLyricsElement extends HTMLElement {
   }
 
   /**
+   * `"stage"` shows only the lines being sung, for subtitles over a video, and fills the nearest
+   * positioned ancestor. Anything else scrolls. Writing it while connected rebuilds the view: the
+   * renderer is handed its layout once, when it is created.
+   */
+  get layout(): LyricsLayout {
+    return this.#layout;
+  }
+
+  set layout(layout: LyricsLayout) {
+    const next: LyricsLayout = layout === "stage" ? "stage" : "scroll";
+    if (next === this.#layout) return;
+    this.#layout = next;
+    if (this.#renderer === null) return;
+    this.#destroyRenderer();
+    this.#build();
+  }
+
+  /**
    * The renderer underneath, for a consumer who outgrows the element. Null while disconnected, and a
    * different one after every reconnection.
    */
@@ -364,6 +404,7 @@ export class BraccatoLyricsElement extends HTMLElement {
    */
   get status(): ElementStatus {
     if (this.#renderer === null) return this.#missingBrowsingContext ? "no-browsing-context" : "idle";
+    if (this.#isUnsyncedOnStage(this.#renderer)) return "unsynced-on-stage";
     return this.#disagreeingPeers().length > 0 ? "theme-conflict" : "rendering";
   }
 
@@ -379,6 +420,7 @@ export class BraccatoLyricsElement extends HTMLElement {
     this.#upgradeProperty("playing");
     this.#upgradeProperty("theme");
     this.#upgradeProperty("host");
+    this.#upgradeProperty("layout");
     this.#upgradeProperty("source");
     this.#build();
     // After the view exists, so a build that threw on the way up leaves no listener on a media
@@ -403,6 +445,10 @@ export class BraccatoLyricsElement extends HTMLElement {
       const currentTimeS = Number.parseFloat(newValue ?? "");
       // A half written attribute must not send the lyrics back to the top of the song.
       if (!Number.isNaN(currentTimeS)) this.currentTime = currentTimeS;
+      return;
+    }
+    if (name === LAYOUT_ATTRIBUTE) {
+      this.layout = newValue === "stage" ? "stage" : "scroll";
       return;
     }
     if (name === PLAYING_ATTRIBUTE) {
@@ -441,6 +487,7 @@ export class BraccatoLyricsElement extends HTMLElement {
       window: view,
       mount: this,
       host: this.#hostForRenderer(),
+      layout: this.#layout,
     });
     // After the renderer exists and never before, so that a build which threw on the way up leaves
     // nothing behind claiming to be one of the document's views.
@@ -453,6 +500,7 @@ export class BraccatoLyricsElement extends HTMLElement {
   #destroyRenderer(): void {
     this.#renderer?.destroy();
     this.#renderer = null;
+    this.#stageReportedLyrics = null;
     this.#leaveDocument();
   }
 
@@ -477,6 +525,10 @@ export class BraccatoLyricsElement extends HTMLElement {
         overrides.setResumeAffordanceVisible?.(visible);
         this.#emit<ScrollStateDetail>(SCROLL_STATE_EVENT, { userScrolling: visible });
       },
+      onStageLayout: box => {
+        overrides.onStageLayout?.(box);
+        this.#emit<StageLayoutDetail>(STAGE_LAYOUT_EVENT, { box });
+      },
     };
   }
 
@@ -500,8 +552,30 @@ export class BraccatoLyricsElement extends HTMLElement {
       lineCount: renderer.lines.length,
       syncType: renderer.syncType,
     });
+    this.#reportStageProblems(renderer);
     // So the new lines are where the song is rather than at the top until the clock next moves.
     this.#tick();
+  }
+
+  #isUnsyncedOnStage(renderer: LyricsRenderer): boolean {
+    return this.#layout === "stage" && renderer.lines.length > 0 && renderer.syncType === "none";
+  }
+
+  /** Both leave an empty or broken stage behind with nothing thrown, so nobody would hear of them. */
+  #reportStageProblems(renderer: LyricsRenderer): void {
+    const container = renderer.container;
+    const view = this.ownerDocument.defaultView;
+    if (this.#layout !== "stage" || container === null || view === null) return;
+    if (this.#lyrics === this.#stageReportedLyrics) return;
+    this.#stageReportedLyrics = this.#lyrics;
+
+    if (this.#isUnsyncedOnStage(renderer)) this.#emitError("layout", new Error(UNSYNCED_STAGE_MESSAGE));
+    // A frame later, so a stylesheet that lands just after the build is not reported as missing.
+    view.requestAnimationFrame(() => {
+      if (this.#renderer !== renderer || renderer.container !== container) return;
+      if (view.getComputedStyle(container).position === "absolute") return;
+      this.#emitError("layout", new Error(MISSING_STAGE_STYLESHEET_MESSAGE));
+    });
   }
 
   #applyTheme(): void {
@@ -540,7 +614,16 @@ export class BraccatoLyricsElement extends HTMLElement {
   }
 
   #upgradeProperty<
-    Key extends "lyrics" | "lyricsOptions" | "currentTime" | "playing" | "tickOptions" | "theme" | "host" | "source",
+    Key extends
+      | "lyrics"
+      | "lyricsOptions"
+      | "currentTime"
+      | "playing"
+      | "tickOptions"
+      | "theme"
+      | "host"
+      | "layout"
+      | "source",
   >(name: Key): void {
     // Written through the class rather than `this`: TypeScript refuses an indexed write to a
     // polymorphic `this`, since a subclass may have narrowed the accessor it would land on.

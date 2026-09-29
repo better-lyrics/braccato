@@ -180,6 +180,9 @@ export class FakeWindow {
   readonly CustomEvent = FakeCustomEvent;
   readonly listeners = new Map<string, Set<() => void>>();
   readonly overflowByElement = new WeakMap<FakeNode, string>();
+  // Whether this window's document loaded `stage.css`, which is the rule that takes a stage
+  // container out of the flow.
+  stageStylesheetLoaded = true;
   // Which elements a style was resolved for, which is how a view reading another view's document
   // shows up, and how many times, which is what an ancestor walk costs a real browser.
   readonly computedStyleTargets: FakeNode[] = [];
@@ -216,6 +219,7 @@ export class FakeWindow {
   getComputedStyle(element: FakeNode): {
     overflowY: string;
     paddingBottom: string;
+    position: string;
     scrollPaddingBottom: string;
     scrollPaddingTop: string;
     transform: string;
@@ -228,6 +232,7 @@ export class FakeWindow {
     return {
       overflowY: this.overflowByElement.get(element) ?? "visible",
       paddingBottom: "0px",
+      position: this.stageStylesheetLoaded && element.dataset?.layout === "stage" ? "absolute" : "static",
       scrollPaddingBottom: "auto",
       scrollPaddingTop: "auto",
       transform: "none",
