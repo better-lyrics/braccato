@@ -94,7 +94,7 @@ for (const letterWave of ["true", "false"]) {
   );
 }
 
-// -- Every right-to-left script is detected as RTL ------------------------------------------------------------
+// -- Right-to-left scripts are detected as RTL ----------------------------------------------------------------
 
 const RTL_SAMPLES: [script: string, word: string][] = [
   ["Arabic", "حبيبي"],
@@ -106,6 +106,9 @@ const RTL_SAMPLES: [script: string, word: string][] = [
   ["Mandaic", "ࡌࡀࡍࡃࡀ"],
   ["Hanifi Rohingya", "\u{10D0C}\u{10D1F}\u{10D11}"],
   ["Samaritan", "ࠔࠌࠓ"],
+  ["Yezidi", "\u{10E80}\u{10E81}\u{10E82}"],
+  ["Mende Kikakui", "\u{1E800}\u{1E801}\u{1E802}"],
+  ["Old Hungarian", "\u{10CC0}\u{10CC1}\u{10CC2}"],
 ];
 
 setThemeSettings(new Map());
@@ -126,10 +129,9 @@ for (const [script, word] of RTL_SAMPLES) {
     "rtl",
     `Given a ${script} line, When its direction is applied, Then the line is marked RTL`
   );
+  const highlights = collectTree(lyricElement).filter(hasClass(WORD_HIGHLIGHT_CLASS));
   assert.ok(
-    collectTree(lyricElement)
-      .filter(hasClass(WORD_HIGHLIGHT_CLASS))
-      .every(node => node.classList.contains(RTL_CLASS)),
+    highlights.length > 0 && highlights.every(node => node.classList.contains(RTL_CLASS)),
     `Given a ${script} word, When built, Then its highlight is marked RTL so the swipe runs right to left`
   );
 }
