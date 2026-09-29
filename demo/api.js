@@ -72,6 +72,21 @@ const parser = detectParser(text);
 view.lyricsOptions = { songwriters: parser.metadata(text).songwriters };
 view.lyrics = parser.parse(text, player.duration * 1000);`,
 
+  stage: `<div style="position: relative; aspect-ratio: 16 / 9">
+  <video id="clip" src="clip.mp4"></video>
+  <braccato-lyrics source="#clip" layout="stage"></braccato-lyrics>
+</div>
+
+<script type="module">
+  import "@braccato/core/element";
+  import "@braccato/core/styles/variables.css";
+  import "@braccato/core/styles/lyrics.css";
+  import "@braccato/core/styles/stage.css";
+
+  const view = document.querySelector("braccato-lyrics");
+  view.addEventListener("braccato:stage-layout", event => drawBackdrop(event.detail.box));
+</script>`,
+
   theme: `view.theme = \`
   /* blyrics-target-scroll-pos-ratio = 0.5; */
   /* blyrics-long-word-threshold = 900; */
@@ -156,7 +171,7 @@ export const PROPERTIES = [
     type: '"scroll" | "stage"',
     writable: true,
     summary:
-      'stage shows only the lines being sung, for subtitles over a video, and fills the nearest positioned ancestor. Load stage.css with it. Changing it while connected rebuilds the view.',
+      "stage shows only the lines being sung, for subtitles over a video, and fills the nearest positioned ancestor. Load stage.css with it. Changing it while connected rebuilds the view.",
   },
   {
     member: "renderer",
@@ -193,7 +208,7 @@ export const ATTRIBUTES = [
   {
     attribute: "layout",
     writes: "layout",
-    summary: 'stage puts the view on a stage. Any other value, or no attribute, scrolls.',
+    summary: "stage puts the view on a stage. Any other value, or no attribute, scrolls.",
   },
   {
     attribute: "current-time",

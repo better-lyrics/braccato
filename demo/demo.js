@@ -19,6 +19,7 @@
 import "@braccato/core/styles/variables.css";
 import "@braccato/core/styles/lyrics.css";
 import "@braccato/core/styles/instrumental.css";
+import "@braccato/core/styles/stage.css";
 import "./demo.css";
 
 import { TextMorph } from "torph";
@@ -57,6 +58,7 @@ const player = document.getElementById("player");
 const frame = document.getElementById("stage-frame");
 const stage = document.getElementById("stage");
 const stageStatus = document.getElementById("stage-status");
+const plate = document.getElementById("stage-plate");
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 const installTabs = document.getElementById("install-tabs");
@@ -108,6 +110,8 @@ const injectBothButton = document.getElementById("inject-both");
 const animateDecorationsInput = document.getElementById("animate-decorations");
 const seekEndingButton = document.getElementById("seek-ending");
 const toggleCreditsButton = document.getElementById("toggle-credits");
+const layoutFieldset = document.getElementById("layout-choice");
+const stageUnsyncedButton = document.getElementById("stage-unsynced");
 
 const referenceTabs = document.getElementById("reference-tabs");
 const eventLog = document.getElementById("event-log");
@@ -260,7 +264,7 @@ const TOKEN_PATTERN = new RegExp(
     // An arrow, a comparison and a dash are not a closing tag, whatever they end with.
     String.raw`(<\/?[A-Za-z][\w-]*|\/>|(?<![=!<>-])>)`,
     String.raw`\b(import|from|const|let|await|async|function|return|export|new|document|querySelector|fetch|then)\b`,
-    String.raw`\b(braccato-lyrics|startTimeMs|durationMs|lyricsOptions|tickOptions|mediaElement|currentTime|detectParser|songwriters|renderer|metadata|playing|lyrics|source|status|theme|parts|words|host|parse)\b`,
+    String.raw`\b(braccato-lyrics|startTimeMs|durationMs|lyricsOptions|tickOptions|mediaElement|currentTime|detectParser|songwriters|renderer|metadata|playing|lyrics|layout|source|status|theme|parts|words|host|parse)\b`,
     String.raw`\b(\d+(?:\.\d+)?)\b`,
     // A template literal in these samples is a stylesheet, because a theme is written as one. Its
     // contents go through the CSS pass instead of this one.
@@ -525,6 +529,7 @@ const DEFAULTS = {
   passiveScroll: false,
   viewScroll: true,
   pageRules: true,
+  layout: "scroll",
 };
 
 const state = {
@@ -576,6 +581,7 @@ function readStateFromUrl() {
   if (params.has("passive")) state.passiveScroll = params.get("passive") === "1";
   if (params.has("scroll")) state.viewScroll = params.get("scroll") === "1";
   if (params.has("page")) state.pageRules = params.get("page") === "1";
+  if (params.get("layout") === "stage") state.layout = "stage";
 }
 
 /**
@@ -593,6 +599,7 @@ function writeStateToUrl() {
   if (state.passiveScroll !== DEFAULTS.passiveScroll) params.set("passive", state.passiveScroll ? "1" : "0");
   if (state.viewScroll !== DEFAULTS.viewScroll) params.set("scroll", state.viewScroll ? "1" : "0");
   if (state.pageRules !== DEFAULTS.pageRules) params.set("page", state.pageRules ? "1" : "0");
+  if (state.layout !== DEFAULTS.layout) params.set("layout", state.layout);
 
   const query = params.toString();
   history.replaceState(null, "", query === "" ? location.pathname : `${location.pathname}?${query}`);
@@ -681,7 +688,16 @@ function applyTheme() {
   view.renderer?.relayout();
 }
 
+function applyLayout() {
+  if (view.layout === state.layout) return;
+  // The frame is positioned before the rebuild, because the new renderer measures its stage as it is built.
+  stage.dataset.layout = state.layout;
+  if (state.layout === "scroll") plate.removeAttribute("data-shown");
+  view.layout = state.layout;
+}
+
 function applyState() {
+  applyLayout();
   applyAudio();
   applyLyrics();
   applyTheme();
@@ -714,6 +730,7 @@ function paintControls() {
 
   passiveScrollInput.checked = state.passiveScroll;
   viewScrollInput.checked = state.viewScroll;
+  viewScrollInput.disabled = state.layout === "stage";
   pageRulesInput.checked = state.pageRules;
 
   for (const button of songList.querySelectorAll("button")) {
@@ -730,6 +747,18 @@ function paintControls() {
     radio.checked = state.importedLyrics === null && radio.value === state.timing;
   }
   slideSegment(timingFieldset);
+
+  for (const radio of layoutFieldset.querySelectorAll("input[type=radio]")) {
+    radio.checked = radio.value === state.layout;
+  }
+  slideSegment(layoutFieldset);
+
+  const unsynced = state.importedLyrics === null && state.timing === "plain";
+  stageUnsyncedButton.setAttribute("aria-pressed", String(unsynced));
+  morphText(
+    stageUnsyncedButton.querySelector("[data-label]"),
+    unsynced ? "Back to synced lyrics" : "Try unsynced lyrics"
+  );
 
   timingHint.textContent =
     state.importedLyrics === null
@@ -1211,6 +1240,12 @@ function describeDetail(type, detail) {
   if (type === "braccato:lyrics-loaded") return `lineCount ${detail.lineCount}, syncType "${detail.syncType}"`;
   if (type === "braccato:line-click") return `timeS ${detail.timeS.toFixed(2)}`;
   if (type === "braccato:scroll-state") return `userScrolling ${detail.userScrolling}`;
+  if (type === "braccato:stage-layout") {
+    const { box } = detail;
+    return box === null
+      ? "box null"
+      : `box ${Math.round(box.width)}x${Math.round(box.height)} at ${Math.round(box.x)}, ${Math.round(box.y)}`;
+  }
   return `phase "${detail.phase}": ${detail.error.message}`;
 }
 
@@ -1230,6 +1265,10 @@ function logEvent(event) {
   detail.textContent = describeDetail(event.type, event.detail);
 
   entry.append(stamp, name, detail);
+  // The box moves with every line, so a run of them keeps only the latest.
+  const newest = eventLog.firstElementChild;
+  if (event.type === "braccato:stage-layout" && newest?.dataset.type === event.type) newest.remove();
+  entry.dataset.type = event.type;
   eventLog.prepend(entry);
   while (eventLog.childElementCount > LOG_LIMIT) eventLog.lastElementChild.remove();
 
@@ -1371,6 +1410,32 @@ function resumeAutoscroll() {
   retick();
 }
 
+// -- Stage --------------------------------------------
+
+let plateFrame = 0;
+
+/** A hidden plate jumps to its first box and fades in there, rather than sliding over from the last one. */
+function paintPlate(box) {
+  cancelAnimationFrame(plateFrame);
+  if (box === null) {
+    plate.removeAttribute("data-shown");
+    return;
+  }
+  plate.style.setProperty("--plate-x", `${box.x}px`);
+  plate.style.setProperty("--plate-y", `${box.y}px`);
+  plate.style.setProperty("--plate-w", `${box.width}px`);
+  plate.style.setProperty("--plate-h", `${box.height}px`);
+  if (!plate.hasAttribute("data-shown"))
+    plateFrame = requestAnimationFrame(() => plate.toggleAttribute("data-shown", true));
+}
+
+function paintStageNote() {
+  if (stageStatus.hasAttribute("data-failed")) return;
+  const unsynced = view.status === "unsynced-on-stage";
+  stageStatus.hidden = !unsynced;
+  stageStatus.textContent = unsynced ? "A stage places lines by their time, and these lyrics have none." : "";
+}
+
 // -- Chapters --------------------------------------------
 
 // What each chapter shows while the tour is running. A chapter with no entry leaves the view alone.
@@ -1379,6 +1444,7 @@ const SCENES = {
   syllables: { songId: "kettle", timing: "syllables" },
   lines: { songId: "ring-road", timing: "lines" },
   duets: { songId: "kettle", timing: "syllables", startMs: 9000 },
+  stage: { songId: "kettle", timing: "syllables" },
   themes: { songId: "the-steps", timing: "syllables" },
   formats: { songId: "the-choir", timing: "syllables" },
 };
@@ -1414,14 +1480,19 @@ function enterChapter(name) {
   stage.dataset.chapter = name;
   paintRail();
 
-  const scene = SCENES[name];
-  if (!state.touring || scene === undefined) return;
-  if (state.songId === scene.songId && state.timing === scene.timing) return;
+  const layout = name === "stage" ? "stage" : "scroll";
+  const relayout = state.layout !== layout;
+  state.layout = layout;
 
-  if (state.songId !== scene.songId) pendingStartS = (scene.startMs ?? 0) / 1000;
-  state.songId = scene.songId;
-  state.timing = scene.timing;
-  commit({ fade: true });
+  const scene = SCENES[name];
+  const rescene =
+    state.touring && scene !== undefined && (state.songId !== scene.songId || state.timing !== scene.timing);
+  if (rescene) {
+    if (state.songId !== scene.songId) pendingStartS = (scene.startMs ?? 0) / 1000;
+    state.songId = scene.songId;
+    state.timing = scene.timing;
+  }
+  if (relayout || rescene) commit({ fade: true });
 }
 
 function wireChapters() {
@@ -1553,6 +1624,18 @@ function wireControls(lineClass, lyricsClass) {
 
   timingFieldset.addEventListener("change", event => {
     state.timing = event.target.value;
+    dropImportedLyrics();
+    state.touring = false;
+    commit({ fade: true });
+  });
+
+  layoutFieldset.addEventListener("change", event => {
+    state.layout = event.target.value;
+    commit({ fade: true });
+  });
+
+  stageUnsyncedButton.addEventListener("click", () => {
+    state.timing = state.importedLyrics === null && state.timing === "plain" ? "syllables" : "plain";
     dropImportedLyrics();
     state.touring = false;
     commit({ fade: true });
@@ -1717,7 +1800,13 @@ async function boot() {
   injectTranslation = core.injectTranslation;
   injectRomanization = core.injectRomanization;
 
-  for (const type of ["braccato:lyrics-loaded", "braccato:line-click", "braccato:scroll-state", "braccato:error"]) {
+  for (const type of [
+    "braccato:lyrics-loaded",
+    "braccato:line-click",
+    "braccato:scroll-state",
+    "braccato:stage-layout",
+    "braccato:error",
+  ]) {
     view.addEventListener(type, logEvent);
   }
 
@@ -1727,6 +1816,12 @@ async function boot() {
   view.addEventListener("braccato:line-click", () => {
     keepReaderSeek();
     startPlayback();
+  });
+
+  view.addEventListener("braccato:stage-layout", event => paintPlate(event.detail.box));
+  view.addEventListener("braccato:lyrics-loaded", paintStageNote);
+  view.addEventListener("braccato:error", event => {
+    if (event.detail.phase === "layout") paintStageNote();
   });
 
   view.addEventListener("braccato:lyrics-loaded", () => {
