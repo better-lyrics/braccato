@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { overlapsPrevious, planStage, type StageItem, stageEnterTimes } from "./stage";
+import { layoutStage, overlapsPrevious, planStage, type StageItem, type StageMetrics, stageEnterTimes } from "./stage";
 
 const line = (start: number, end: number): StageItem => ({ kind: "line", start, end });
 const instrumental = (start: number, end: number): StageItem => ({ kind: "instrumental", start, end });
@@ -95,6 +95,76 @@ const ROLLING = { preview: true };
 
 {
   assert.deepEqual(planStage([], 3, SUBTITLE), [], "an empty song has an empty stage");
+}
+
+// -- Geometry --------------------------------------------
+
+const metric = (height: number, left = 100, width = 300, originX = 0.5): StageMetrics => ({
+  height,
+  left,
+  width,
+  originX,
+});
+const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1, inactiveScale: 0.95, preview: false };
+
+{
+  const items = [line(0, 2), line(2, 4)];
+  const { placements, box } = layoutStage(
+    ["current", "queued"],
+    items,
+    [metric(40), metric(60)],
+    [null, null],
+    GEOMETRY
+  );
+  assert.equal(placements[0].y, 460, "a lone current line sits on the stage floor");
+  assert.equal(placements[0].visible, true);
+  assert.equal(placements[1].y, 450, "a queued subtitle line waits just below its own spot");
+  assert.equal(placements[1].visible, false);
+  assert.deepEqual(box, { x: 100, y: 460, width: 300, height: 40 }, "the box hugs the one sung line");
+}
+
+{
+  const items = [line(0, 2), line(2, 4)];
+  const { placements, box } = layoutStage(["current", "next"], items, [metric(40), metric(50)], [null, null], {
+    ...GEOMETRY,
+    preview: true,
+  });
+  assert.equal(placements[1].y, 450, "the next line sits on the floor");
+  assert.equal(placements[0].y, 400, "the current line sits a gap above it");
+  assert.deepEqual(box, { x: 100, y: 400, width: 300, height: 40 }, "the next line is not plated");
+}
+
+{
+  const items = [line(0, 2.6), line(2.1, 4.5)];
+  const { placements, box } = layoutStage(
+    ["previous", "current"],
+    items,
+    [metric(40, 50, 400), metric(40)],
+    [null, null],
+    GEOMETRY
+  );
+  assert.equal(placements[1].y, 460);
+  assert.equal(placements[0].y, 410, "the overlapping line sits a gap above the current one");
+  assert.ok(box !== null && box.y < 460 && box.y + box.height === 500, "an overlap grows the box upward");
+  assert.ok(box !== null && box.x < 100, "and widens it to the wider line");
+}
+
+{
+  const items = [instrumental(0, 3), line(3, 5)];
+  const { box } = layoutStage(["current", "queued"], items, [metric(40), metric(40)], [null, null], GEOMETRY);
+  assert.equal(box, null, "a note on its own gets no box");
+}
+
+{
+  const items = [line(0, 2), credits(2)];
+  const { box } = layoutStage(["gone", "current"], items, [metric(40), metric(60)], [300, null], GEOMETRY);
+  assert.deepEqual(box, { x: 100, y: 440, width: 300, height: 60 }, "focused credits are plated");
+}
+
+{
+  const items = [line(0, 2), line(2, 4)];
+  const { placements } = layoutStage(["gone", "current"], items, [metric(40), metric(40)], [460, null], GEOMETRY);
+  assert.equal(placements[0].y, 450, "a leaving line drifts up from where it was");
 }
 
 console.log("stage scheduler self-check passed");

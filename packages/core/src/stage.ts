@@ -54,3 +54,87 @@ export function planStage(items: readonly StageItem[], timeS: number, timing: St
   if (timing.preview && current + 1 < items.length) roles[current + 1] = "next";
   return roles;
 }
+
+export interface StageMetrics {
+  height: number;
+  left: number;
+  width: number;
+  /** Where the item scales from horizontally: 0 left, 0.5 centre, 1 right. */
+  originX: number;
+}
+
+export interface StageGeometry {
+  stageHeight: number;
+  gap: number;
+  activeScale: number;
+  inactiveScale: number;
+  preview: boolean;
+}
+
+export interface StagePlacement {
+  y: number;
+  visible: boolean;
+}
+
+export interface StageBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function unionBox(box: StageBox | null, next: StageBox): StageBox {
+  if (box === null) return next;
+  const x = Math.min(box.x, next.x);
+  const y = Math.min(box.y, next.y);
+  return {
+    x,
+    y,
+    width: Math.max(box.x + box.width, next.x + next.width) - x,
+    height: Math.max(box.y + box.height, next.y + next.height) - y,
+  };
+}
+
+export function layoutStage(
+  roles: readonly StageRole[],
+  items: readonly StageItem[],
+  metrics: readonly StageMetrics[],
+  previousY: readonly (number | null)[],
+  geometry: StageGeometry
+): { placements: StagePlacement[]; box: StageBox | null } {
+  const { stageHeight, gap } = geometry;
+  const current = roles.indexOf("current");
+  const next = roles.indexOf("next");
+  const nextTop = next >= 0 ? stageHeight - metrics[next].height - gap : stageHeight;
+  const currentY = current >= 0 ? nextTop - metrics[current].height : stageHeight;
+
+  const placements = roles.map((role, index): StagePlacement => {
+    const { height } = metrics[index];
+    switch (role) {
+      case "current":
+        return { y: currentY, visible: true };
+      case "next":
+        return { y: stageHeight - height, visible: true };
+      case "previous":
+        return { y: currentY - gap - height, visible: true };
+      case "queued":
+        return { y: geometry.preview ? stageHeight + gap : stageHeight - height + gap, visible: false };
+      case "gone":
+        return { y: (previousY[index] ?? currentY) - gap, visible: false };
+    }
+  });
+
+  let box: StageBox | null = null;
+  roles.forEach((role, index) => {
+    if ((role !== "current" && role !== "previous") || items[index].kind === "instrumental") return;
+    const { height, left, width, originX } = metrics[index];
+    const scale = role === "current" ? geometry.activeScale : geometry.inactiveScale;
+    box = unionBox(box, {
+      x: left + width * originX * (1 - scale),
+      y: placements[index].y + (height * (1 - scale)) / 2,
+      width: width * scale,
+      height: height * scale,
+    });
+  });
+  return { placements, box };
+}
