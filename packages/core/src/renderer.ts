@@ -144,6 +144,7 @@ export function withHostDefaults(
           currentMount()?.dispatchEvent(new rendererWindow.CustomEvent(SEEK_EVENT, { detail: timeS, bubbles: true }));
         }),
       log: given.log ?? noop,
+      onStageLayout: given.onStageLayout,
       debug: given.debug,
     },
     forgetScrollElement() {
@@ -174,7 +175,13 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
   let currentLanguage = "";
 
   const { host, forgetScrollElement } = withHostDefaults(rendererOptions.host, rendererWindow, () => mount);
-  const engine = createAnimationEngineInstance(rendererDocument, rendererWindow, host);
+  const engine = createAnimationEngineInstance(
+    rendererDocument,
+    rendererWindow,
+    host,
+    rendererOptions.layout ?? "scroll"
+  );
+  engine.stagePreview = rendererOptions.stage?.preview ?? false;
 
   /**
    * Every re-measurement runs through here, which makes it the one place that knows the layout may
@@ -367,6 +374,12 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     resumeAutoscroll() {
       if (isDestroyed) return;
       resetScrollResume(engine);
+    },
+    setStageOptions(options) {
+      if (isDestroyed || engine.layout !== "stage") return;
+      engine.stagePreview = options.preview ?? false;
+      if (engine.lyricsContainer) engine.lyricsContainer.dataset.stagePreview = String(engine.stagePreview);
+      measure();
     },
     clearOnScreenLyrics() {
       if (isDestroyed) return false;

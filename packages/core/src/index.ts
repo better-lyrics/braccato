@@ -26,3 +26,7 @@ export type { PartData } from "./inject";
 export type { LyricPart, LyricsRendererDebugSink, LyricsRendererOptions, LyricSyncType } from "./types";
 /** @public */
 export type { SetLyricsOptions } from "./view";
+/** @public */
+export type { LyricsLayout, StageOptions } from "./types";
+/** @public */
+export type { StageBox } from "./stage";

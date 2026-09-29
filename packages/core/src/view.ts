@@ -164,6 +164,10 @@ export function setLyrics(
   engine.scrollResumeTime = 0;
 
   container.dataset.sync = syncType;
+  if (engine.layout === "stage") {
+    container.dataset.layout = "stage";
+    container.dataset.stagePreview = String(engine.stagePreview);
+  }
   container.dataset.loaderVisible = String(options.loaderVisible);
   if (options.noLyrics) {
     container.dataset.noLyrics = "true";
