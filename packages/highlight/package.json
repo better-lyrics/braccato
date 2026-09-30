@@ -1,7 +1,7 @@
 {
 	"name": "@braccato/highlight",
 	"version": "0.0.0",
-	"description": "Zero-dependency syntax highlighting for TTML, LRC, QRC and SRT lyrics",
+	"description": "Lightweight syntax highlighting for TTML, LRC, QRC and SRT lyrics",
 	"type": "module",
 	"license": "MIT",
 	"repository": {
