@@ -76,6 +76,7 @@
 .bh-edit > .bh-input {
 	position: relative;
 	display: block;
+	box-sizing: border-box;
 	width: 100%;
 	resize: none;
 	background: transparent;

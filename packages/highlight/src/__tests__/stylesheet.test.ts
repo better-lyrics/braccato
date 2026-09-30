@@ -23,4 +23,10 @@ describe("highlight.css", () => {
 	it("indents only the first editor line, as the textarea does", () => {
 		expect(css).toMatch(/\.bh-edit > \.bh-layer > \.bh-line \+ \.bh-line \{\s*text-indent: 0;/);
 	});
+
+	it("regression: forces border-box on the textarea so padding and borders stay inside the wrapper", () => {
+		const rule = [...css.matchAll(/^\.bh-edit > \.bh-input \{([^}]*)\}/gm)].map((m) => m[1]).join("");
+		expect(rule).toMatch(/box-sizing: border-box;/);
+		expect(rule).toMatch(/width: 100%;/);
+	});
 });

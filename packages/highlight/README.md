@@ -41,7 +41,7 @@ It returns `{ wrap, layer, refresh, destroy }`:
 - Attaching a textarea that already has a live editor returns that editor's handle.
 - Pass `{ format }` to pin a format. Without it the format is detected on every render, so pasting a different format re-colours.
 
-The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `width: 100%` and `resize: none` on the textarea. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
+The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `box-sizing: border-box`, `width: 100%` and `resize: none` on the textarea. The layer copies that box sizing, so a textarea's padding and borders stay inside the wrapper and both wrap lines at the same width. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
 
 Use a monospace font on highlighted editors. Background vocals render in italics, and italics change glyph widths in proportional fonts, which moves the layer off the caret.
 
