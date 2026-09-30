@@ -57,6 +57,8 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	const doc = textarea.ownerDocument;
 	const view = doc.defaultView;
 	if (!view) throw new Error("attachEditor needs a textarea in a document with a window");
+	if (!textarea.parentNode)
+		throw new Error("attachEditor needs a textarea that is already in the DOM (it has no parent)");
 	const wrap = doc.createElement("div");
 	wrap.className = "bh-edit";
 	const layer = doc.createElement("pre");

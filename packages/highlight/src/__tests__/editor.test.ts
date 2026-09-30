@@ -163,3 +163,12 @@ describe("attachEditor box sync", () => {
 		expect(layer.getAttribute("dir")).toBeNull();
 	});
 });
+
+describe("attachEditor preconditions", () => {
+	it("throws a clear error for a textarea that is not in the DOM", () => {
+		const textarea = createFakeDocument().createElement("textarea");
+		expect(() => attachEditor(textarea as unknown as HTMLTextAreaElement)).toThrow(/parent/);
+		expect(textarea.parent).toBeNull();
+		expect(textarea.className).toBe("");
+	});
+});

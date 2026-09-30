@@ -6,6 +6,7 @@ export interface FakeNode {
 	textContent: string;
 	children: FakeNode[];
 	parent: FakeNode | null;
+	readonly parentNode: FakeNode | null;
 	ownerDocument: FakeDocument;
 	value: string;
 	scrollTop: number;
@@ -86,6 +87,9 @@ export function createFakeDocument(): FakeDocument {
 			textContent: text,
 			children: [],
 			parent: null,
+			get parentNode() {
+				return n.parent;
+			},
 			ownerDocument: doc,
 			value: "",
 			scrollTop: 0,
