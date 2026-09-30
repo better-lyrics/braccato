@@ -33,6 +33,19 @@ function metaLine(line: string, out: Token[]): boolean {
 	return true;
 }
 
+// A single capture group puts every stamp at an odd index of split(), whatever the text around it looks like.
+function wordStamps(rest: string, stamp: RegExp, open: string, close: string, out: Token[]): void {
+	rest.split(stamp).forEach((piece, index) => {
+		if (index % 2 === 0) {
+			push(out, "text", piece);
+			return;
+		}
+		push(out, "punct", open);
+		push(out, "wordTime", piece.slice(open.length, -close.length));
+		push(out, "punct", close);
+	});
+}
+
 const LRC_LINE_STAMP = /^\[(\d+:\d+(?:[.:]\d+)?)\]/;
 const LRC_WORD_STAMP = /(<\d+:\d+(?:[.:]\d+)?>)/;
 const VOICE = /^(\s*)(v\d+|bg)(:)/;
@@ -53,13 +66,7 @@ function lrcLine(line: string, out: Token[]): void {
 		push(out, "punct", ":");
 		rest = rest.slice(voice[0].length);
 	}
-	for (const piece of rest.split(LRC_WORD_STAMP)) {
-		if (/^<\d/.test(piece)) {
-			push(out, "punct", "<");
-			push(out, "wordTime", piece.slice(1, -1));
-			push(out, "punct", ">");
-		} else push(out, "text", piece);
-	}
+	wordStamps(rest, LRC_WORD_STAMP, "<", ">", out);
 }
 
 const QRC_LINE_STAMP = /^\[(\d+,\d+)\]/;
@@ -75,13 +82,7 @@ function qrcLine(line: string, out: Token[]): void {
 		push(out, "punct", "]");
 		rest = rest.slice(lead[0].length);
 	}
-	for (const piece of rest.split(QRC_WORD_STAMP)) {
-		if (/^\(\d/.test(piece)) {
-			push(out, "punct", "(");
-			push(out, "wordTime", piece.slice(1, -1));
-			push(out, "punct", ")");
-		} else push(out, "text", piece);
-	}
+	wordStamps(rest, QRC_WORD_STAMP, "(", ")", out);
 }
 
 const SRT_CUE = /^(\s*)(\d{2}:\d{2}:\d{2}[,.]\d{3})(\s*-->\s*)(\d{2}:\d{2}:\d{2}[,.]\d{3})(.*)$/;

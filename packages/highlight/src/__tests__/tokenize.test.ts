@@ -241,3 +241,105 @@ describe("invariants", () => {
 		expect(tokenize(FIXTURES.ttml)).toEqual(tokenize(FIXTURES.ttml));
 	});
 });
+
+describe("regressions: text that looks like the start of a stamp", () => {
+	it("regression: an lrc heart is text, not a word stamp", () => {
+		const src = "[00:01.00]<3 you";
+		expect(joined(tokenize(src, "lrc"))).toBe(src);
+		expect(pairs(tokenize(src, "lrc"))).toContain("text:<3 you");
+	});
+
+	it("regression: an lrc heart between word stamps stays text", () => {
+		const src = "<00:01.00><3 you <00:02.00>too";
+		expect(joined(tokenize(src, "lrc"))).toBe(src);
+		expect(pairs(tokenize(src, "lrc"))).toEqual([
+			"punct:<",
+			"wordTime:00:01.00",
+			"punct:>",
+			"text:<3 you ",
+			"punct:<",
+			"wordTime:00:02.00",
+			"punct:>",
+			"text:too",
+		]);
+	});
+
+	it("regression: a qrc parenthesis with a digit is text, not a word stamp", () => {
+		const src = "[1000,3000](1 more time(1000,500)";
+		expect(joined(tokenize(src, "qrc"))).toBe(src);
+		expect(pairs(tokenize(src, "qrc"))).toContain("text:(1 more time");
+	});
+
+	it("regression: a trailing qrc parenthesis with a digit stays text", () => {
+		const src = "Hi(1000,500)(2 times";
+		expect(joined(tokenize(src, "qrc"))).toBe(src);
+		expect(pairs(tokenize(src, "qrc")).at(-1)).toBe("text:(2 times");
+	});
+});
+
+describe("invariants: seeded random input", () => {
+	const FRAGMENTS = [
+		"[00:01.00]",
+		"<00:01.00>",
+		"<3",
+		"(1000,500)",
+		"(1",
+		"[1000,3000]",
+		'<p begin="1">',
+		"</p>",
+		'<span ttm:role="x-bg">',
+		"</span>",
+		"x-bg",
+		"<tt>",
+		"</tt>",
+		"<head>",
+		"</head>",
+		"<!-- c",
+		"<?xml",
+		"00:00:01,000 --> 00:00:02,000",
+		"[ti:x]",
+		"v1:",
+		"1",
+		" ",
+		"\n",
+		"\r\n",
+		"\r",
+		"word",
+		"日本",
+		"é",
+		"🎶",
+		"<",
+		">",
+		"[",
+		"]",
+		"(",
+		")",
+		'"',
+		"=",
+	];
+
+	function mulberry32(seed: number): () => number {
+		let a = seed;
+		return () => {
+			a = (a + 0x6d2b79f5) | 0;
+			let t = Math.imul(a ^ (a >>> 15), 1 | a);
+			t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+			return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+		};
+	}
+
+	it("concatenated tokens equal the input for every format", () => {
+		const random = mulberry32(0x5eed);
+		const formats = ["ttml", "lrc", "qrc", "srt", "plain", undefined] as const;
+		for (let n = 0; n < 400; n++) {
+			const length = 1 + Math.floor(random() * 16);
+			let src = "";
+			for (let k = 0; k < length; k++) src += FRAGMENTS[Math.floor(random() * FRAGMENTS.length)];
+			for (const format of formats) {
+				const tokens = tokenize(src, format);
+				expect(joined(tokens), `${format ?? "auto"}: ${JSON.stringify(src)}`).toBe(src);
+				expect(tokens.every((t) => t.text.length > 0)).toBe(true);
+			}
+		}
+	});
+});
