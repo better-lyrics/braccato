@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { detectParser } from "../detect.js";
 import { detectFormat } from "../format.js";
+import { isSrt } from "../formatPredicates.js";
 import { LRCParser } from "../lrc.js";
 import { PlainParser } from "../plain.js";
 import { QRCParser } from "../qrc.js";
 import { SRTParser } from "../srt.js";
 import { TTMLParser } from "../ttml.js";
+
+const DIGIT_RUN = 1_000_000;
+const PREVIOUS_SRT = /\d+\r?\n\d{2}:\d{2}:\d{2}[,.]\d+ --> \d{2}:\d{2}:\d{2}[,.]\d+/;
 
 const SAMPLES = {
 	ttml: `<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="1.0" end="2.0">Hi</p></div></body></tt>`,
@@ -65,6 +69,28 @@ describe("detectFormat", () => {
 	describe("public surface", () => {
 		it("exposes only detectFormat at runtime", async () => {
 			expect(Object.keys(await import("../format.js"))).toEqual(["detectFormat"]);
+		});
+	});
+
+	describe("regressions", () => {
+		it("regression: srt detection stays linear on a long run of digits", () => {
+			const started = performance.now();
+			expect(detectFormat("1".repeat(DIGIT_RUN))).toBe("plain");
+			expect(performance.now() - started).toBeLessThan(1000);
+		});
+
+		it("srt detection agrees with the previous pattern", () => {
+			const inputs = [
+				...Object.values(SAMPLES),
+				"1\r\n00:00:01,000 --> 00:00:04,000\r\nHello",
+				"12345\n00:00:01.5 --> 00:00:04.25\nx",
+				"a1\n00:00:01,000 --> 00:00:02,000",
+				"1\n0:00:01,000 --> 00:00:02,000",
+				"1\n\n00:00:01,000 --> 00:00:02,000",
+				"99 00:00:01,000 --> 00:00:02,000",
+				"",
+			];
+			for (const input of inputs) expect(isSrt(input), JSON.stringify(input)).toBe(PREVIOUS_SRT.test(input));
 		});
 	});
 });

@@ -7,7 +7,8 @@ export function isLrc(input: string): boolean {
 }
 
 export function isSrt(input: string): boolean {
-	return /\d+\r?\n\d{2}:\d{2}:\d{2}[,.]\d+ --> \d{2}:\d{2}:\d{2}[,.]\d+/.test(input);
+	// Anchoring the cue number at the start of its digit run keeps a long run of digits linear.
+	return /(?<!\d)\d+\r?\n\d{2}:\d{2}:\d{2}[,.]\d+ --> \d{2}:\d{2}:\d{2}[,.]\d+/.test(input);
 }
 
 export function isQrc(input: string): boolean {
