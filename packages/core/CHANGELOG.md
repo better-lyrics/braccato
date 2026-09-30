@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.3
+
+### Patch Changes
+
+- 0c1e6c2: The no lyrics message gets no scroll room, so the view does not scroll and whatever the host places after it stays in view.
+
 ## 1.16.2
 
 ### Patch Changes
