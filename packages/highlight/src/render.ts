@@ -12,6 +12,7 @@ export interface HighlightOptions {
 export function highlightInto(el: HTMLElement, src: string, options: HighlightOptions = {}): LyricFormat {
 	const format = options.format ?? detectFormat(src);
 	const text = options.pretty && format === "ttml" ? prettyTtml(src) : src;
+	el.classList.add("bh");
 	const doc = el.ownerDocument;
 	const fragment = doc.createDocumentFragment();
 	for (const { type, text: part } of tokenize(text, format)) {

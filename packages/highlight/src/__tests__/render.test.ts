@@ -51,4 +51,13 @@ describe("highlightInto", () => {
 		expect(el.children).toHaveLength(200_000);
 		expect(el.textContent).toBe(src);
 	});
+
+	it("adds the bh class to the host so token colours apply", () => {
+		const el = host();
+		el.className = "pane";
+		highlightInto(el as unknown as HTMLElement, "[00:01.00]a");
+		expect(el.className).toBe("pane bh");
+		highlightInto(el as unknown as HTMLElement, "[00:02.00]b");
+		expect(el.className).toBe("pane bh");
+	});
 });

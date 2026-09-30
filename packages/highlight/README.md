@@ -16,11 +16,10 @@ npm i @braccato/highlight
 import { highlightInto } from "@braccato/highlight";
 import "@braccato/highlight/highlight.css";
 
-pre.classList.add("bh");
 highlightInto(pre, source, { pretty: true });
 ```
 
-`highlightInto` returns the format it used. `pretty: true` breaks minified TTML into lines at `head`, `body`, `div` and `p`. It only inserts whitespace, but the rendered text no longer matches the source, so use it for display only and never in an editor. Line formats ignore it.
+`highlightInto` adds the `bh` class to the element, which the token colours are scoped under, and returns the format it used. `pretty: true` breaks minified TTML into lines at `head`, `body`, `div` and `p`. It only inserts whitespace, but the rendered text no longer matches the source, so use it for display only and never in an editor. Line formats ignore it.
 
 ### Editors
 
