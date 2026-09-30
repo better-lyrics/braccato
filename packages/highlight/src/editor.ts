@@ -7,10 +7,20 @@ export const SYNCED_BOX_PROPERTIES = [
 	"font-size",
 	"font-weight",
 	"font-style",
+	"font-stretch",
+	"font-variant",
+	"font-feature-settings",
+	"font-kerning",
 	"line-height",
 	"letter-spacing",
 	"word-spacing",
 	"tab-size",
+	"direction",
+	"text-align",
+	"text-indent",
+	"text-transform",
+	"word-break",
+	"overflow-wrap",
 	"box-sizing",
 	"padding-top",
 	"padding-right",
@@ -60,6 +70,9 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	const syncBox = () => {
 		const computed = view.getComputedStyle(textarea);
 		for (const prop of SYNCED_BOX_PROPERTIES) layer.style.setProperty(prop, computed.getPropertyValue(prop));
+		const dir = textarea.getAttribute("dir");
+		if (dir === null) layer.removeAttribute("dir");
+		else layer.setAttribute("dir", dir);
 	};
 	const syncScroll = () => {
 		layer.scrollTop = textarea.scrollTop;

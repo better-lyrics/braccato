@@ -26,6 +26,16 @@ describe("SYNCED_BOX_PROPERTIES", () => {
 			"border-left-width",
 			"box-sizing",
 			"tab-size",
+			"direction",
+			"text-align",
+			"text-indent",
+			"text-transform",
+			"word-break",
+			"overflow-wrap",
+			"font-stretch",
+			"font-variant",
+			"font-feature-settings",
+			"font-kerning",
 		]) {
 			expect(SYNCED_BOX_PROPERTIES).toContain(prop);
 		}
@@ -129,5 +139,27 @@ describe("attachEditor stale handles", () => {
 		expect(textarea.className).toContain("bh-input");
 		expect(attach()).toBe(second);
 		expect(parent.children).toContain(second.wrap as unknown as FakeNode);
+	});
+});
+
+describe("attachEditor box sync", () => {
+	it("copies the textarea's computed text box onto the layer", () => {
+		const { textarea, attach } = mount();
+		textarea.computed = { direction: "rtl", "text-align": "right", "font-feature-settings": '"liga" 0' };
+		const layer = attach().layer as unknown as FakeNode;
+		expect(layer.style.getPropertyValue("direction")).toBe("rtl");
+		expect(layer.style.getPropertyValue("text-align")).toBe("right");
+		expect(layer.style.getPropertyValue("font-feature-settings")).toBe('"liga" 0');
+	});
+
+	it("mirrors the dir attribute, including removing it", () => {
+		const { textarea, attach } = mount();
+		textarea.setAttribute("dir", "auto");
+		const editor = attach();
+		const layer = editor.layer as unknown as FakeNode;
+		expect(layer.getAttribute("dir")).toBe("auto");
+		textarea.removeAttribute("dir");
+		editor.refresh();
+		expect(layer.getAttribute("dir")).toBeNull();
 	});
 });
