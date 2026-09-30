@@ -1,4 +1,5 @@
 import { isCreditRole, songwritersInCreditLine, uniqueNames } from "./credits.js";
+import { isQrc } from "./formatPredicates.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import { stringSimilarity } from "./stringSimilarity.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
@@ -293,8 +294,7 @@ function readSongwriters(qrcXml: string): string[] {
 
 export const QRCParser: LyricParser = {
 	detect(input: string): boolean {
-		if (input.includes("<QrcInfos>") || input.includes("LyricContent=")) return true;
-		return /\[\d+,\d+\]/.test(input) && /\(\d+,\d+\)/.test(input);
+		return isQrc(input);
 	},
 	parse(input: string, duration = 0): Lyric[] {
 		return parseQRC(input, duration);

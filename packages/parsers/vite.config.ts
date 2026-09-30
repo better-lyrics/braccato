@@ -15,9 +15,12 @@ export default defineConfig({
 	build: {
 		emptyOutDir: !isWatch,
 		lib: {
-			entry: resolve(__dirname, "src/index.ts"),
+			entry: {
+				index: resolve(__dirname, "src/index.ts"),
+				format: resolve(__dirname, "src/format.ts"),
+			},
 			formats: ["es"],
-			fileName: "index",
+			fileName: (_format, entryName) => `${entryName}.js`,
 		},
 		rollupOptions: {
 			// Left to itself vite inlines every import that is not marked external, which would bake a

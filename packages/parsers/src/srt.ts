@@ -1,3 +1,4 @@
+import { isSrt } from "./formatPredicates.js";
 import type { Lyric, LyricMetadata, LyricParser } from "./types.js";
 
 function parseSRTTime(timeStr: string): number {
@@ -12,7 +13,7 @@ function parseSRTTime(timeStr: string): number {
 
 export const SRTParser: LyricParser = {
 	detect(input: string): boolean {
-		return /\d+\r?\n\d{2}:\d{2}:\d{2}[,.]\d+ --> \d{2}:\d{2}:\d{2}[,.]\d+/.test(input);
+		return isSrt(input);
 	},
 	parse(input: string, _duration = 0): Lyric[] {
 		const blocks = input.trim().split(/\r?\n\r?\n/);

@@ -1,3 +1,4 @@
+import { type LyricFormat, detectFormat } from "./format.js";
 import { LRCParser } from "./lrc.js";
 import { PlainParser } from "./plain.js";
 import { QRCParser } from "./qrc.js";
@@ -5,11 +6,14 @@ import { SRTParser } from "./srt.js";
 import { TTMLParser } from "./ttml.js";
 import type { LyricParser } from "./types.js";
 
-const PARSERS_IN_PRIORITY: LyricParser[] = [TTMLParser, LRCParser, SRTParser, QRCParser, PlainParser];
+const PARSER_FOR_FORMAT: Record<LyricFormat, LyricParser> = {
+	ttml: TTMLParser,
+	lrc: LRCParser,
+	srt: SRTParser,
+	qrc: QRCParser,
+	plain: PlainParser,
+};
 
 export function detectParser(input: string): LyricParser {
-	for (const parser of PARSERS_IN_PRIORITY) {
-		if (parser.detect(input)) return parser;
-	}
-	return PlainParser;
+	return PARSER_FOR_FORMAT[detectFormat(input)];
 }

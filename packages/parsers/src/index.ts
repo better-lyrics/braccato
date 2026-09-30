@@ -6,3 +6,5 @@ export { PlainParser } from "./plain.js";
 export type { QrcMetadata } from "./qrc.js";
 export { QRCParser, parseQRC } from "./qrc.js";
 export { detectParser } from "./detect.js";
+export type { LyricFormat } from "./format.js";
+export { detectFormat } from "./format.js";

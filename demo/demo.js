@@ -20,8 +20,10 @@ import "@braccato/core/styles/variables.css";
 import "@braccato/core/styles/lyrics.css";
 import "@braccato/core/styles/instrumental.css";
 import "@braccato/core/styles/stage.css";
+import "@braccato/highlight/highlight.css";
 import "./demo.css";
 
+import { attachEditor } from "@braccato/highlight";
 import { TextMorph } from "torph";
 
 import {
@@ -1616,6 +1618,8 @@ function wireControls(lineClass, lyricsClass) {
   songUrlInput.addEventListener("keydown", event => {
     if (event.key === "Enter") songUrlButton.click();
   });
+
+  attachEditor(lyricsTextArea);
 
   lyricsImportButton.addEventListener("click", () => {
     const text = lyricsTextArea.value;

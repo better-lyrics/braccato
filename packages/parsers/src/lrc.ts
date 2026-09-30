@@ -1,4 +1,5 @@
 import { isCreditLine, songwritersInCreditLine, splitCreditNames, uniqueNames } from "./credits.js";
+import { isLrc } from "./formatPredicates.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];
@@ -242,7 +243,7 @@ export function lrcFixers(lyrics: Lyric[]): void {
 
 export const LRCParser: LyricParser = {
 	detect(input: string): boolean {
-		return /\[\d+:\d+\.\d+\]/.test(input);
+		return isLrc(input);
 	},
 	parse(input: string, duration = 0): Lyric[] {
 		const lyrics = parseLRC(input, duration);

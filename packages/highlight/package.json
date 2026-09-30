@@ -1,17 +1,17 @@
 {
-	"name": "@braccato/parsers",
-	"version": "0.3.1",
-	"description": "Lyrics format parsers: TTML, LRC, SRT, QRC, Plain",
+	"name": "@braccato/highlight",
+	"version": "0.0.0",
+	"description": "Lightweight syntax highlighting for TTML, LRC, QRC and SRT lyrics",
 	"type": "module",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/better-lyrics/braccato",
-		"directory": "packages/parsers"
+		"directory": "packages/highlight"
 	},
 	"homepage": "https://braccato.boidu.dev",
-	"keywords": ["lyrics", "parser", "ttml", "lrc", "srt", "qrc"],
-	"sideEffects": false,
+	"keywords": ["lyrics", "syntax-highlighting", "ttml", "lrc", "qrc", "srt"],
+	"sideEffects": ["./dist/highlight.css"],
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"exports": {
@@ -19,25 +19,21 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./format": {
-			"types": "./dist/format.d.ts",
-			"import": "./dist/format.js"
-		}
+		"./highlight.css": "./dist/highlight.css"
 	},
 	"files": ["dist"],
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
-		"build": "vite build",
+		"build": "vite build && cp src/highlight.css dist/highlight.css",
 		"dev": "vite build --watch",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},
 	"dependencies": {
-		"@braccato/types": "workspace:^",
-		"fast-xml-parser": "^5.10.1"
+		"@braccato/parsers": "workspace:^"
 	},
 	"devDependencies": {
 		"typescript": "^5.7.3",
