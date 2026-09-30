@@ -54,7 +54,7 @@ const { songwriters } = detectParser(inputText).metadata(inputText); // ["Max Ma
 
 Names that LRC and QRC hold as free text are split on `/`, `、`, `，` and `,`. Every format drops duplicates and keeps the order the file gives.
 
-`detectParser` tries each format in priority order: TTML, LRC, SRT, QRC, Plain.
+`detectParser` tries each format in priority order: TTML, LRC, SRT, QRC, Plain. The same rules are exported on their own as `detectFormat` from the dependency-free `@braccato/parsers/format` subpath, which returns `"ttml" | "lrc" | "srt" | "qrc" | "plain"` without loading the XML parser.
 
 `TTMLParser.parse` ignores its `duration` argument, because a TTML document states its own duration on `<body dur>`. Pass a duration through `parseTTMLContent` instead when the document omits it.
 

@@ -1,6 +1,6 @@
 # @braccato/highlight
 
-Zero-dependency syntax highlighting for TTML, LRC, QRC and SRT lyrics. It ships a pure tokenizer, a DOM renderer for read-only panes, and a textarea overlay for editors. Stamps and markup recede, and the sung words stay bright.
+Syntax highlighting for TTML, LRC, QRC and SRT lyrics, with zero runtime dependencies beyond `@braccato/parsers/format`. It ships a pure tokenizer, a DOM renderer for read-only panes, and a textarea overlay for editors. Stamps and markup recede, and the sung words stay bright.
 
 ## Install
 
@@ -35,9 +35,12 @@ const editor = attachEditor(textarea);
 
 It returns `{ wrap, layer, refresh, destroy }`:
 
-- Setting `textarea.value` from code does not fire `input`, so call `editor.refresh()` afterwards.
-- `editor.destroy()` puts the textarea back where it was and removes the wrapper.
+- Setting `textarea.value` from code does not fire `input`, so call `editor.refresh()` after every programmatic write.
+- `editor.destroy()` puts the textarea back where it was, removes the wrapper and drops the `bh-input` class. Calling it twice is safe.
+- Attaching a textarea that already has a live editor returns that editor's handle.
 - Pass `{ format }` to pin a format. Without it the format is detected on every render, so pasting a different format re-colours.
+
+The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `width: 100%` and `resize: none` on the textarea. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
 
 Use a monospace font on highlighted editors. Background vocals render in italics, and italics change glyph widths in proportional fonts, which moves the layer off the caret.
 
