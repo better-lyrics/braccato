@@ -888,6 +888,19 @@ assert.equal(
   "Given the no lyrics message, When the view ticks with passive scroll switched on, Then nothing scrolls it"
 );
 
+relayout(placeholderEngine, false);
+
+assert.equal(
+  asFakeNode(placeholderEngine.lyricsContainer!).style.getPropertyValue("padding-bottom"),
+  "0px",
+  "regression: Given the no lyrics message, When the view sizes its scroll room, Then it adds none, so nothing scrolls and what follows the message stays in view"
+);
+assert.equal(
+  placeholderDocument.documentElement.style.getPropertyValue("--blyrics-padding-top"),
+  "0px",
+  "Given the no lyrics message, When the view sizes its scroll room, Then it asks for none above the message either"
+);
+
 placeholderEngine.destroy();
 
 // -- The end of the song is somewhere the scroll can actually reach -----------------------------

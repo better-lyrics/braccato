@@ -3795,6 +3795,11 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
   const tabRenderer = engine.host.getScrollElement();
   if (!lyricsElement || !tabRenderer) return;
 
+  if (hasNoLyricsPlaceholder(engine)) {
+    setScrollPadding(engine, lyricsElement, { top: 0, bottom: 0 });
+    return;
+  }
+
   const tabRendererHeight = tabRenderer.getBoundingClientRect().height;
   const scrollPosOffsetRatio = getTargetScrollRatio(engine, lyricsElement);
   const currentPaddingBottom = Number.parseFloat(engine.window.getComputedStyle(lyricsElement).paddingBottom) || 0;
@@ -3824,6 +3829,14 @@ function applyScrollPadding(engine: AnimationEngineInstance): void {
     footerHeight: footer ? getRelativeLayoutBounds(lyricsElement, footer).height : 0,
   });
 
+  setScrollPadding(engine, lyricsElement, { top, bottom });
+}
+
+function setScrollPadding(
+  engine: AnimationEngineInstance,
+  lyricsElement: HTMLElement,
+  { top, bottom }: { top: number; bottom: number }
+): void {
   engine.document.documentElement.style.setProperty("--blyrics-padding-top", top + "px");
   engine.document.documentElement.style.setProperty("--blyrics-padding-bottom", bottom + "px");
   // Inline, because a theme's own `.blyrics-container { padding }` is appended after the package's
