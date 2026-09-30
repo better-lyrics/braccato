@@ -10,7 +10,7 @@ read -r OTP
 pnpm build:packages
 
 # types first: @braccato/core and @braccato/parsers both depend on it.
-for pkg in types parsers rics provider-blyrics core; do
+for pkg in types parsers highlight rics provider-blyrics core; do
 	(cd "packages/$pkg" && pnpm publish --access public --no-git-checks --otp="$OTP" 2>&1) || echo "Skipped $pkg (already published or error)"
 done
 
