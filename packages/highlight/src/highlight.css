@@ -1,0 +1,90 @@
+.bh {
+	color: var(--bh-text, rgba(255, 255, 255, 0.95));
+}
+
+/* Hosts often set `* { font-family }` (Better Lyrics' options.css does); tokens must inherit the pane's font or the editor overlay drifts off the caret. */
+.bh span {
+	font: inherit;
+	line-height: inherit;
+	letter-spacing: inherit;
+}
+
+.bh-bgText {
+	color: var(--bh-bgText, rgba(255, 255, 255, 0.82));
+	font-style: var(--bh-bgText-style, italic);
+}
+.bh-timestamp {
+	color: var(--bh-timestamp, rgba(165, 180, 252, 0.7));
+}
+.bh-wordTime {
+	color: var(--bh-wordTime, rgba(165, 180, 252, 0.52));
+}
+.bh-agent {
+	color: var(--bh-agent, rgba(252, 211, 77, 0.45));
+}
+.bh-meta {
+	color: var(--bh-meta, rgba(249, 168, 212, 0.38));
+}
+.bh-tag {
+	color: var(--bh-tag, rgba(255, 255, 255, 0.26));
+}
+.bh-attr {
+	color: var(--bh-attr, rgba(255, 255, 255, 0.22));
+}
+.bh-value {
+	color: var(--bh-value, rgba(134, 239, 172, 0.3));
+}
+.bh-punct {
+	color: var(--bh-punct, rgba(255, 255, 255, 0.16));
+}
+.bh-comment {
+	color: var(--bh-comment, rgba(255, 255, 255, 0.2));
+	font-style: italic;
+}
+
+/* -- Editor overlay -------------------------- */
+
+.bh-edit {
+	position: relative;
+}
+
+.bh-edit > .bh-layer,
+.bh-edit > .bh-input {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	scrollbar-width: none;
+}
+
+.bh-edit > .bh-layer {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	pointer-events: none;
+	border-style: solid;
+	border-color: transparent;
+}
+
+.bh-edit > .bh-input {
+	position: relative;
+	display: block;
+	width: 100%;
+	resize: none;
+	background: transparent;
+	color: transparent;
+	caret-color: var(--bh-caret, #fff);
+}
+
+.bh-edit > .bh-input::selection {
+	background: var(--bh-selection, rgba(165, 180, 252, 0.28));
+	color: transparent;
+}
+
+.bh-edit > .bh-input::placeholder {
+	color: var(--bh-placeholder, rgba(255, 255, 255, 0.35));
+}
+
+.bh-edit > .bh-layer::-webkit-scrollbar,
+.bh-edit > .bh-input::-webkit-scrollbar {
+	display: none;
+}
