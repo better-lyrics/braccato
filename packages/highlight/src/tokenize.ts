@@ -84,6 +84,20 @@ function qrcLine(line: string, out: Token[]): void {
 	}
 }
 
+const SRT_CUE = /^(\s*)(\d{2}:\d{2}:\d{2}[,.]\d{3})(\s*-->\s*)(\d{2}:\d{2}:\d{2}[,.]\d{3})(.*)$/;
+
+function srtLine(line: string, out: Token[]): void {
+	const cue = SRT_CUE.exec(line);
+	if (cue) {
+		push(out, "text", cue[1]);
+		push(out, "timestamp", cue[2]);
+		push(out, "punct", cue[3]);
+		push(out, "timestamp", cue[4]);
+		push(out, "text", cue[5]);
+	} else if (/^\s*\d+\s*$/.test(line)) push(out, "meta", line);
+	else push(out, "text", line);
+}
+
 // -- Entry --------------------------
 
 export function tokenize(src: string, format: LyricFormat = detectFormat(src)): Token[] {
@@ -92,6 +106,8 @@ export function tokenize(src: string, format: LyricFormat = detectFormat(src)): 
 			return tokenizeLines(src, lrcLine);
 		case "qrc":
 			return tokenizeLines(src, qrcLine);
+		case "srt":
+			return tokenizeLines(src, srtLine);
 		default:
 			return src ? [{ type: "text", text: src }] : [];
 	}

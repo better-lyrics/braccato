@@ -89,3 +89,24 @@ describe("tokenize qrc", () => {
 		]);
 	});
 });
+
+describe("tokenize srt", () => {
+	it("reads cue numbers, times and text", () => {
+		const src = "1\n00:00:14,210 --> 00:00:18,560\nAmazing grace";
+		expect(pairs(tokenize(src, "srt"))).toEqual([
+			"meta:1",
+			"text:\n",
+			"timestamp:00:00:14,210",
+			"punct: --> ",
+			"timestamp:00:00:18,560",
+			"text:\n",
+			"text:Amazing grace",
+		]);
+	});
+
+	it("handles CRLF cues", () => {
+		const src = "2\r\n00:00:18,560 --> 00:00:22,910\r\nThat saved";
+		expect(pairs(tokenize(src, "srt"))).toContain("timestamp:00:00:22,910");
+		expect(joined(tokenize(src, "srt"))).toBe(src);
+	});
+});
