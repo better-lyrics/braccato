@@ -1743,6 +1743,74 @@ assert.deepEqual(
   "Given a host that asked where the stage is, When the element reports it, Then the host is still told, and told the same thing"
 );
 
+const stagedContainer = stagedElement.renderer?.container;
+assert.ok(stagedContainer, "Given synced lyrics on a stage, When the lines are built, Then they have a container");
+const STAGE_LINE_PADDING_PX = 10;
+for (const line of asFakeNode(stagedContainer).childNodes) {
+  staged.fakeWindow.paddingXByElement.set(line, `${STAGE_LINE_PADDING_PX}px`);
+  line.clientWidth = STAGE_LINE_WIDTH_PX;
+  for (const child of line.childNodes) child.offsetWidth = STAGE_LINE_WIDTH_PX - 2 * STAGE_LINE_PADDING_PX;
+  const pending = [...line.childNodes];
+  for (let node = pending.pop(); node !== undefined; node = pending.pop()) {
+    if (node.kind === "text") node.textRects = [{ x: 60, width: 80 }];
+    pending.push(...node.childNodes);
+  }
+}
+measureStage(stagedElement);
+stagedElement.currentTime = PLAYBACK_TIME_S + 0.01;
+
+const wrappedBox = consumerStageBoxes.at(-1);
+assert.ok(
+  wrappedBox?.x === 50 && wrappedBox.width === 100,
+  "Given a sung line that wrapped inside a wider box, When the stage measures it, Then it says where the text is, not where the box is"
+);
+
+const stagedLines = asFakeNode(stagedContainer).childNodes;
+function remeasureStageWith(configure: (child: FakeNode) => void, time: number): StageBox | null | undefined {
+  for (const line of stagedLines) {
+    for (const child of line.childNodes) configure(child);
+  }
+  measureStage(stagedElement);
+  stagedElement.currentTime = time;
+  return consumerStageBoxes.at(-1);
+}
+
+const inlineBox = remeasureStageWith(child => {
+  staged.fakeWindow.displayByElement.set(child, "inline");
+  child.offsetLeft = 70;
+  child.offsetWidth = 60;
+}, PLAYBACK_TIME_S + 0.02);
+assert.ok(
+  inlineBox?.x === 60 && inlineBox.width === 80,
+  "Given a line of inline words, When the stage measures it, Then each word's own box counts"
+);
+
+const shrunkBox = remeasureStageWith(child => {
+  staged.fakeWindow.displayByElement.set(child, "block");
+  child.offsetLeft = 80;
+  child.offsetWidth = 40;
+}, PLAYBACK_TIME_S + 0.03);
+assert.ok(
+  shrunkBox?.x === 70 && shrunkBox.width === 60,
+  "Given a block that shrank to its text, like the romanization pill, When the stage measures it, Then its whole box counts"
+);
+
+const contentsBox = remeasureStageWith(child => {
+  staged.fakeWindow.displayByElement.delete(child);
+  child.isDisplayContents = true;
+  child.offsetLeft = 0;
+  child.offsetWidth = 0;
+  for (const word of child.childNodes) {
+    staged.fakeWindow.displayByElement.set(word, "inline");
+    word.offsetLeft = 60;
+    word.offsetWidth = 80;
+  }
+}, PLAYBACK_TIME_S + 0.04);
+assert.ok(
+  contentsBox?.x === 50 && contentsBox.width === 100,
+  "regression: Given right-to-left words grouped with display: contents, When the stage measures them, Then the words inside the groups count"
+);
+
 await nextMicrotask();
 
 assert.deepEqual(

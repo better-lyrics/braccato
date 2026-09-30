@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { layoutStage, overlapsPrevious, planStage, type StageItem, type StageMetrics, stageEnterTimes } from "./stage";
+import {
+  layoutStage,
+  overlapsPrevious,
+  planStage,
+  type StageItem,
+  type StageMetrics,
+  stageEnterTimes,
+  stageTextSpan,
+} from "./stage";
 
 const line = (start: number, end: number): StageItem => ({ kind: "line", start, end });
 const instrumental = (start: number, end: number): StageItem => ({ kind: "instrumental", start, end });
@@ -182,6 +190,85 @@ const GEOMETRY = { stageHeight: 500, gap: 10, activeScale: 1 };
     planStage([line(0, 3), blank(2, 4)], 2.5),
     ["gone", "current"],
     "regression: a blank line that starts before the line ahead ends still clears it"
+  );
+}
+
+// -- Text span --------------------------------------------
+
+{
+  const box = { x: 0, width: 1400 };
+  const noPadding = { left: 0, right: 0 };
+  const CENTRE = 0.5;
+  const LEFT = 0;
+  const RIGHT = 1;
+  const wrapped = [
+    { x: 146, width: 1108 },
+    { x: 562.5, width: 275 },
+  ];
+
+  assert.deepEqual(
+    stageTextSpan(20, 1400, box, wrapped, noPadding, CENTRE),
+    { left: 166, width: 1108 },
+    "regression: wrapped credits are measured by their widest line, not the full-width box they wrap in"
+  );
+
+  assert.deepEqual(
+    stageTextSpan(20, 1400, box, [{ x: 350, width: 800 }], noPadding, CENTRE),
+    { left: 270, width: 900 },
+    "regression: a centred line keeps the label its stylesheet prints before the measured text"
+  );
+
+  assert.deepEqual(
+    stageTextSpan(20, 1400, box, [{ x: 110, width: 790 }], { left: 10, right: 10 }, LEFT),
+    { left: 20, width: 910 },
+    "a left-aligned line starts where its content does, so a printed label at its start stays inside"
+  );
+
+  assert.deepEqual(
+    stageTextSpan(20, 1400, box, wrapped, noPadding, RIGHT),
+    { left: 20, width: 1400 },
+    "a right-aligned line keeps its box, since what starts each of its lines cannot be seen"
+  );
+
+  assert.deepEqual(
+    stageTextSpan(20, 430, { x: 100, width: 430 }, [{ x: 115, width: 400 }], { left: 15, right: 15 }, CENTRE),
+    { left: 20, width: 430 },
+    "a line that fits keeps its own box"
+  );
+
+  assert.deepEqual(
+    stageTextSpan(20, 1400, box, [], noPadding, CENTRE),
+    { left: 20, width: 1400 },
+    "with no text to measure the box stands"
+  );
+  assert.deepEqual(
+    stageTextSpan(20, 1400, box, [{ x: 300, width: 0 }], noPadding, CENTRE),
+    { left: 20, width: 1400 },
+    "empty text rects are ignored"
+  );
+  assert.deepEqual(
+    stageTextSpan(20, 1400, { x: 0, width: 0 }, wrapped, noPadding, CENTRE),
+    { left: 20, width: 1400 },
+    "an unrendered box keeps its offsets"
+  );
+
+  const scaled = stageTextSpan(
+    20,
+    1400,
+    { x: 0, width: 1400 * 1.1 },
+    [{ x: 146 * 1.1, width: 1108 * 1.1 }],
+    noPadding,
+    CENTRE
+  );
+  assert.ok(
+    Math.abs(scaled.left - 166) < 1e-6 && Math.abs(scaled.width - 1108) < 1e-6,
+    "a scaled line is measured in its unscaled pixels"
+  );
+
+  assert.deepEqual(
+    stageTextSpan(20, 430, { x: 100, width: 430 }, [{ x: 90, width: 460 }], noPadding, CENTRE),
+    { left: 20, width: 430 },
+    "the span never grows past the box it came from"
   );
 }
 

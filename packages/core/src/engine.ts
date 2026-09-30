@@ -44,6 +44,8 @@ import {
   type StageItem,
   type StageMetrics,
   type StagePlacement,
+  type StageSpanRect,
+  stageTextSpan,
 } from "./stage";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsLayout, LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
@@ -3008,11 +3010,50 @@ function stageElements(engine: AnimationEngineInstance): { elements: HTMLElement
   return { elements, items };
 }
 
-function originXOf(engine: AnimationEngineInstance, element: HTMLElement): number {
-  const align = engine.window.getComputedStyle(element).textAlign;
+function originXOf(align: string): number {
   if (align === "center") return 0.5;
   if (align === "right" || align === "end") return 1;
   return 0;
+}
+
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+
+function contentWidthOf(element: HTMLElement, style: CSSStyleDeclaration): number {
+  return (
+    element.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0)
+  );
+}
+
+// A block that fills its parent is looked inside; inline boxes and shrunk blocks (the romanization pill) count whole.
+function collectContentRects(
+  engine: AnimationEngineInstance,
+  range: Range,
+  node: HTMLElement,
+  contentWidth: number,
+  rects: StageSpanRect[]
+): StageSpanRect[] {
+  for (const child of node.childNodes) {
+    if (child.nodeType === TEXT_NODE) {
+      range.selectNodeContents(child);
+      rects.push(...range.getClientRects());
+      continue;
+    }
+    if (child.nodeType !== ELEMENT_NODE) continue;
+    const element = child as HTMLElement;
+    const style = engine.window.getComputedStyle(element);
+    if (style.display === "none") continue;
+    if (style.display === "contents") {
+      collectContentRects(engine, range, element, contentWidth, rects);
+    } else if (style.display.startsWith("inline")) {
+      rects.push(...element.getClientRects());
+    } else if (element.offsetWidth < contentWidth - 1) {
+      rects.push(element.getBoundingClientRect());
+    } else {
+      collectContentRects(engine, range, element, contentWidthOf(element, style), rects);
+    }
+  }
+  return rects;
 }
 
 export function measureStage(engine: AnimationEngineInstance): void {
@@ -3020,12 +3061,23 @@ export function measureStage(engine: AnimationEngineInstance): void {
   const container = engine.lyricsContainer;
   if (!container) return;
   engine.stageFontSize = Number.parseFloat(engine.window.getComputedStyle(container).fontSize) || 16;
+  const range = engine.document.createRange();
   for (const element of stageElements(engine).elements) {
+    const style = engine.window.getComputedStyle(element);
+    const originX = originXOf(style.textAlign);
+    const span = stageTextSpan(
+      element.offsetLeft,
+      element.offsetWidth,
+      element.getBoundingClientRect(),
+      collectContentRects(engine, range, element, contentWidthOf(element, style), []),
+      { left: Number.parseFloat(style.paddingLeft) || 0, right: Number.parseFloat(style.paddingRight) || 0 },
+      originX
+    );
     engine.stageMetrics.set(element, {
       height: element.offsetHeight,
-      left: element.offsetLeft,
-      width: element.offsetWidth,
-      originX: originXOf(engine, element),
+      left: span.left,
+      width: span.width,
+      originX,
     });
   }
   engine.stageKey = "";

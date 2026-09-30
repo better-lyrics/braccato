@@ -148,6 +148,9 @@ export class FakeNode {
   // `display: contents`, which is the other half of that: this node generates no box of its own
   // while everything under it is laid out exactly as it would have been.
   isDisplayContents = false;
+  // Where a text node's glyphs landed, one rect per line it wrapped onto. Unset, a range over it
+  // measures nothing, which leaves every box its own full width.
+  textRects: { x: number; width: number }[] = [];
   private ownText = "";
 
   constructor(
@@ -184,6 +187,10 @@ export class FakeNode {
       if (node.generatesBox) return node;
     }
     return null;
+  }
+
+  get nodeType(): number {
+    return this.kind === "text" ? 3 : this.kind === "fragment" ? 11 : 1;
   }
 
   get parentElement(): FakeNode | null {
@@ -333,6 +340,18 @@ export class FakeNode {
   }
 }
 
+export class FakeRange {
+  private node: FakeNode | null = null;
+
+  selectNodeContents(node: FakeNode): void {
+    this.node = node;
+  }
+
+  getClientRects(): { x: number; width: number }[] {
+    return this.node?.isRendered ? this.node.textRects : [];
+  }
+}
+
 export class FakeDocument {
   readonly calls: FactoryCall[] = [];
   // Where a stylesheet goes. Built directly rather than through the factories, so it stays out of
@@ -356,6 +375,10 @@ export class FakeDocument {
     const node = this.record("createTextNode", "text", "#text", null);
     node.textContent = text;
     return node;
+  }
+
+  createRange(): FakeRange {
+    return new FakeRange();
   }
 
   createDocumentFragment(): FakeNode {
