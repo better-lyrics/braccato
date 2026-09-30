@@ -160,3 +160,44 @@ describe("tokenize ttml", () => {
 		expect(tokens[1]).toBe("comment:<!-- note -->");
 	});
 });
+
+describe("tokenize ttml edge cases", () => {
+	it("survives an unterminated tag", () => {
+		const src = `<tt><p begin="1.0`;
+		expect(joined(tokenize(src, "ttml"))).toBe(src);
+	});
+
+	it("survives an unterminated comment", () => {
+		expect(pairs(tokenize("<tt><!-- open", "ttml")).at(-1)).toBe("comment:<!-- open");
+	});
+
+	it("keeps unicode text intact", () => {
+		expect(pairs(tokenize("<tt><p>愛は衝動 🎶</p></tt>", "ttml"))).toContain("text:愛は衝動 🎶");
+	});
+
+	it("handles single-quoted values", () => {
+		expect(pairs(tokenize("<tt><p begin='1.0'>x</p></tt>", "ttml"))).toContain("timestamp:1.0");
+	});
+});
+
+describe("regressions", () => {
+	it("regression: attributes are not re-emitted as punctuation after the last match", () => {
+		const tokens = tokenize(`<p begin="1" end="2">x</p>`, "ttml");
+		const punct = tokens.filter((t) => t.type === "punct").map((t) => t.text);
+		expect(punct.some((p) => p.includes("begin"))).toBe(false);
+		expect(tokens.filter((t) => t.type === "attr")).toHaveLength(2);
+	});
+
+	it("regression: bgText ends when the x-bg span closes, even when nested", () => {
+		const src = `<tt><p><span ttm:role="x-bg"><span>(a)</span> <span>(b)</span></span> after</p></tt>`;
+		const tokens = pairs(tokenize(src, "ttml"));
+		expect(tokens).toContain("bgText:(a)");
+		expect(tokens).toContain("bgText:(b)");
+		expect(tokens).toContain("text: after");
+	});
+
+	it("regression: self-closing tags do not leak bg depth", () => {
+		const src = `<tt><p><span ttm:role="x-bg"/>after</p></tt>`;
+		expect(pairs(tokenize(src, "ttml"))).toContain("text:after");
+	});
+});
