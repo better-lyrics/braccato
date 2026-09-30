@@ -1,5 +1,11 @@
 # @braccato/parsers
 
+## 0.3.2
+
+### Patch Changes
+
+- 8ddaae2: Add @braccato/highlight, and expose format detection as @braccato/parsers/format
+
 ## 0.3.1
 
 ### Patch Changes
