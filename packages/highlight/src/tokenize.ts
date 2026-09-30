@@ -9,12 +9,14 @@ function push(out: Token[], type: TokenType, text: string): void {
 
 // -- Line formats --------------------------
 
+const LINE_BREAK = /(\r\n|\n|\r)/;
+
 function tokenizeLines(src: string, line: LineTokenizer): Token[] {
 	const out: Token[] = [];
-	for (const part of src.split(/(\r?\n)/)) {
-		if (part === "\n" || part === "\r\n") push(out, "text", part);
+	src.split(LINE_BREAK).forEach((part, index) => {
+		if (index % 2 === 1) push(out, "text", part);
 		else line(part, out);
-	}
+	});
 	return out;
 }
 
@@ -104,6 +106,7 @@ function srtLine(line: string, out: Token[]): void {
 const TIME_ATTRS = new Set(["begin", "end", "dur"]);
 const AGENT_ATTRS = new Set(["ttm:agent", "ttm:role", "xml:id"]);
 const TAG_HEAD = /^<(\/?)([\w:.-]*)/;
+const HEAD_TAGS = new Set(["head", "tt:head"]);
 
 function tokenizeXml(src: string): Token[] {
 	const out: Token[] = [];
@@ -153,10 +156,10 @@ function tokenizeXml(src: string): Token[] {
 			if (!closing && !tag.endsWith("/>")) {
 				bgStack.push(isBg);
 				if (isBg) bgDepth++;
-				if (name === "head") headDepth++;
+				if (HEAD_TAGS.has(name)) headDepth++;
 			} else if (closing) {
 				if (bgStack.pop()) bgDepth--;
-				if (name === "head") headDepth--;
+				if (HEAD_TAGS.has(name)) headDepth--;
 			}
 			i = j;
 			continue;

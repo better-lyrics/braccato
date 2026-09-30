@@ -343,3 +343,27 @@ describe("invariants: seeded random input", () => {
 		}
 	});
 });
+
+describe("line endings and namespaces", () => {
+	it("treats a lone carriage return as a line ending", () => {
+		const lrc = pairs(tokenize("[00:01.00]a\r[00:02.00]b", "lrc"));
+		expect(lrc).toContain("text:\r");
+		expect(lrc).toContain("timestamp:00:02.00");
+		const srt = pairs(tokenize("2\r00:00:18,560 --> 00:00:22,910\rThat saved", "srt"));
+		expect(srt).toContain("meta:2");
+		expect(srt).toContain("timestamp:00:00:22,910");
+	});
+
+	it("still keeps CRLF as one line ending", () => {
+		expect(pairs(tokenize("[00:01.00]a\r\n[00:02.00]b", "lrc")).filter((p) => p.startsWith("text:\r"))).toEqual([
+			"text:\r\n",
+		]);
+	});
+
+	it("marks text inside a namespaced tt:head as meta", () => {
+		const src = "<tt:tt><tt:head><tt:metadata>Leland</tt:metadata></tt:head><tt:body><tt:p>x</tt:p></tt:body></tt:tt>";
+		const tokens = pairs(tokenize(src, "ttml"));
+		expect(tokens).toContain("meta:Leland");
+		expect(tokens).toContain("text:x");
+	});
+});
