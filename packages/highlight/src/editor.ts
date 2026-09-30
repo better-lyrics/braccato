@@ -38,7 +38,12 @@ export interface EditorHandle {
 	destroy(): void;
 }
 
+const attached = new WeakMap<HTMLTextAreaElement, EditorHandle>();
+
+/** Attaching the same textarea twice returns the handle that is already live, whatever the options. */
 export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptions = {}): EditorHandle {
+	const existing = attached.get(textarea);
+	if (existing) return existing;
 	const doc = textarea.ownerDocument;
 	const view = doc.defaultView;
 	if (!view) throw new Error("attachEditor needs a textarea in a document with a window");
@@ -49,6 +54,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	layer.setAttribute("aria-hidden", "true");
 	textarea.before(wrap);
 	wrap.append(layer, textarea);
+	const addedInputClass = !textarea.classList.contains("bh-input");
 	textarea.classList.add("bh-input");
 
 	const syncBox = () => {
@@ -72,17 +78,23 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	textarea.addEventListener("scroll", syncScroll, { passive: true });
 	refresh();
 
-	return {
+	let destroyed = false;
+	const handle: EditorHandle = {
 		wrap,
 		layer,
 		refresh,
 		destroy() {
+			if (destroyed) return;
+			destroyed = true;
+			attached.delete(textarea);
 			resize.disconnect();
 			textarea.removeEventListener("input", refresh);
 			textarea.removeEventListener("scroll", syncScroll);
-			textarea.classList.remove("bh-input");
+			if (addedInputClass) textarea.classList.remove("bh-input");
 			wrap.before(textarea);
 			wrap.remove();
 		},
 	};
+	attached.set(textarea, handle);
+	return handle;
 }
