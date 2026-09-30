@@ -110,3 +110,53 @@ describe("tokenize srt", () => {
 		expect(joined(tokenize(src, "srt"))).toBe(src);
 	});
 });
+
+describe("tokenize ttml", () => {
+	it("splits tags, attributes and text", () => {
+		expect(pairs(tokenize(`<p begin="1.5" end="2.0">Hi</p>`, "ttml"))).toEqual([
+			"punct:<",
+			"tag:p",
+			"text: ",
+			"attr:begin",
+			"punct:=",
+			'punct:"',
+			"timestamp:1.5",
+			'punct:"',
+			"text: ",
+			"attr:end",
+			"punct:=",
+			'punct:"',
+			"timestamp:2.0",
+			'punct:"',
+			"punct:>",
+			"text:Hi",
+			"punct:</",
+			"tag:p",
+			"punct:>",
+		]);
+	});
+
+	it("marks agents and roles", () => {
+		const tokens = pairs(tokenize(`<tt><p ttm:agent="v1">x</p></tt>`, "ttml"));
+		expect(tokens).toContain("attr:ttm:agent");
+		expect(tokens).toContain("agent:v1");
+	});
+
+	it("marks background vocals as bgText", () => {
+		const src = `<tt><p><span>Yeah</span> <span ttm:role="x-bg"><span>(yeah)</span></span></p></tt>`;
+		const tokens = pairs(tokenize(src, "ttml"));
+		expect(tokens).toContain("text:Yeah");
+		expect(tokens).toContain("bgText:(yeah)");
+	});
+
+	it("marks head text as meta", () => {
+		const src = "<tt><head><metadata><songwriter>Leland Wayne</songwriter></metadata></head><body/></tt>";
+		expect(pairs(tokenize(src, "ttml"))).toContain("meta:Leland Wayne");
+	});
+
+	it("marks declarations and comments", () => {
+		const tokens = pairs(tokenize(`<?xml version="1.0"?><!-- note --><tt></tt>`, "ttml"));
+		expect(tokens[0]).toBe(`comment:<?xml version="1.0"?>`);
+		expect(tokens[1]).toBe("comment:<!-- note -->");
+	});
+});

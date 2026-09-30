@@ -98,10 +98,82 @@ function srtLine(line: string, out: Token[]): void {
 	else push(out, "text", line);
 }
 
+// -- TTML --------------------------
+
+const TIME_ATTRS = new Set(["begin", "end", "dur"]);
+const AGENT_ATTRS = new Set(["ttm:agent", "ttm:role", "xml:id"]);
+const TAG_HEAD = /^<(\/?)([\w:.-]*)/;
+
+function tokenizeXml(src: string): Token[] {
+	const out: Token[] = [];
+	const bgStack: boolean[] = [];
+	let bgDepth = 0;
+	let headDepth = 0;
+	let i = 0;
+	while (i < src.length) {
+		if (src.startsWith("<!--", i) || src.startsWith("<?", i)) {
+			const close = src.startsWith("<!--", i) ? "-->" : "?>";
+			const end = src.indexOf(close, i);
+			const j = end < 0 ? src.length : end + close.length;
+			push(out, "comment", src.slice(i, j));
+			i = j;
+			continue;
+		}
+		if (src[i] === "<") {
+			const end = src.indexOf(">", i);
+			const j = end < 0 ? src.length : end + 1;
+			const tag = src.slice(i, j);
+			const head = TAG_HEAD.exec(tag) as RegExpExecArray;
+			const closing = head[1] === "/";
+			const name = head[2];
+			push(out, "punct", `<${head[1]}`);
+			push(out, "tag", name);
+			// A sticky regex resets lastIndex to 0 when exec fails, so track the position separately:
+			// reading lastIndex after the loop re-emitted every attribute as punctuation.
+			const attr = /(\s+)([\w:.-]+)(\s*=\s*)?("[^"]*"|'[^']*')?/y;
+			let pos = head[0].length;
+			attr.lastIndex = pos;
+			let isBg = false;
+			for (let m = attr.exec(tag); m; m = attr.exec(tag)) {
+				pos = attr.lastIndex;
+				push(out, "text", m[1]);
+				push(out, "attr", m[2]);
+				if (m[3]) push(out, "punct", m[3]);
+				if (m[4]) {
+					const inner = m[4].slice(1, -1);
+					const type: TokenType = TIME_ATTRS.has(m[2]) ? "timestamp" : AGENT_ATTRS.has(m[2]) ? "agent" : "value";
+					push(out, "punct", m[4][0]);
+					push(out, type, inner);
+					push(out, "punct", m[4][0]);
+					if (m[2] === "ttm:role" && inner === "x-bg") isBg = true;
+				}
+			}
+			push(out, "punct", tag.slice(pos));
+			if (!closing && !tag.endsWith("/>")) {
+				bgStack.push(isBg);
+				if (isBg) bgDepth++;
+				if (name === "head") headDepth++;
+			} else if (closing) {
+				if (bgStack.pop()) bgDepth--;
+				if (name === "head") headDepth--;
+			}
+			i = j;
+			continue;
+		}
+		const next = src.indexOf("<", i);
+		const j = next < 0 ? src.length : next;
+		push(out, headDepth > 0 ? "meta" : bgDepth > 0 ? "bgText" : "text", src.slice(i, j));
+		i = j;
+	}
+	return out;
+}
+
 // -- Entry --------------------------
 
 export function tokenize(src: string, format: LyricFormat = detectFormat(src)): Token[] {
 	switch (format) {
+		case "ttml":
+			return tokenizeXml(src);
 		case "lrc":
 			return tokenizeLines(src, lrcLine);
 		case "qrc":
