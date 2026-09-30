@@ -1,5 +1,5 @@
 import { isCreditLine, songwritersInCreditLine, splitCreditNames, uniqueNames } from "./credits.js";
-import { isLrc } from "./format.js";
+import { isLrc } from "./formatPredicates.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];

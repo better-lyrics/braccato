@@ -1,5 +1,5 @@
 import { isCreditRole, songwritersInCreditLine, uniqueNames } from "./credits.js";
-import { isQrc } from "./format.js";
+import { isQrc } from "./formatPredicates.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import { stringSimilarity } from "./stringSimilarity.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";

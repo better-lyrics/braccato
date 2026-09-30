@@ -1,4 +1,4 @@
-import { isSrt } from "./format.js";
+import { isSrt } from "./formatPredicates.js";
 import type { Lyric, LyricMetadata, LyricParser } from "./types.js";
 
 function parseSRTTime(timeStr: string): number {

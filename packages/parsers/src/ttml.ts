@@ -1,6 +1,6 @@
 import { type X2jOptions, XMLParser } from "fast-xml-parser";
 import { uniqueNames } from "./credits.js";
-import { isTtml } from "./format.js";
+import { isTtml } from "./formatPredicates.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import type {
 	MetadataElement,

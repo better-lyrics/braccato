@@ -61,4 +61,10 @@ describe("detectFormat", () => {
 			}
 		});
 	});
+
+	describe("public surface", () => {
+		it("exposes only detectFormat at runtime", async () => {
+			expect(Object.keys(await import("../format.js"))).toEqual(["detectFormat"]);
+		});
+	});
 });
