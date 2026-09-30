@@ -201,3 +201,43 @@ describe("regressions", () => {
 		expect(pairs(tokenize(src, "ttml"))).toContain("text:after");
 	});
 });
+
+const FIXTURES: Record<string, string> = {
+	ttml: `<tt xmlns="http://www.w3.org/ns/ttml"><head><metadata><ttm:agent type="person" xml:id="v1"/></metadata></head><body dur="3:25.347"><div begin="0.443" end="17.093"><p begin="0.443" end="2.027" ttm:agent="v1"><span begin="0.443" end="0.979">Yeah,</span> <span ttm:role="x-bg"><span begin="9.550" end="10.117">(Yeah)</span></span></p></div></body></tt>`,
+	lrc: "[ti:Amazing Grace]\n[ar:John Newton]\n\n[00:14.21]Amazing grace\n[00:18.56]<00:18.56>That <00:18.90>saved\n[00:27.26]v1: Was blind",
+	qrc: "[ti:Amazing Grace]\n[14210,4350]A(14210,300)ma(14510,280)zing(14790,420)",
+	srt: "1\n00:00:14,210 --> 00:00:18,560\nAmazing grace\n\n2\n00:00:18,560 --> 00:00:22,910\nThat saved",
+	plain: "no timing\nat all",
+};
+
+describe("auto-detection", () => {
+	it("detects through @braccato/parsers/format", () => {
+		expect(tokenize(FIXTURES.lrc).some((t) => t.type === "timestamp")).toBe(true);
+		expect(tokenize(FIXTURES.ttml).some((t) => t.type === "tag")).toBe(true);
+		expect(pairs(tokenize(FIXTURES.plain))).toEqual(["text:no timing\nat all"]);
+	});
+});
+
+describe("invariants", () => {
+	it("concatenated tokens always equal the input", () => {
+		for (const [format, src] of Object.entries(FIXTURES)) {
+			expect(joined(tokenize(src)), format).toBe(src);
+			expect(joined(tokenize(src.replace(/\n/g, "\r\n"))), `${format} crlf`).toBe(src.replace(/\n/g, "\r\n"));
+		}
+	});
+
+	it("never emits empty tokens", () => {
+		for (const src of Object.values(FIXTURES)) {
+			expect(tokenize(src).every((t) => t.text.length > 0)).toBe(true);
+		}
+	});
+
+	it("returns [] for empty input", () => {
+		expect(tokenize("")).toEqual([]);
+		expect(tokenize("", "ttml")).toEqual([]);
+	});
+
+	it("is deterministic", () => {
+		expect(tokenize(FIXTURES.ttml)).toEqual(tokenize(FIXTURES.ttml));
+	});
+});
