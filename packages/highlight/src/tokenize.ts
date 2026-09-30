@@ -62,12 +62,36 @@ function lrcLine(line: string, out: Token[]): void {
 	}
 }
 
+const QRC_LINE_STAMP = /^\[(\d+,\d+)\]/;
+const QRC_WORD_STAMP = /(\(\d+,\d+\))/;
+
+function qrcLine(line: string, out: Token[]): void {
+	if (metaLine(line, out)) return;
+	let rest = line;
+	const lead = QRC_LINE_STAMP.exec(rest);
+	if (lead) {
+		push(out, "punct", "[");
+		push(out, "timestamp", lead[1]);
+		push(out, "punct", "]");
+		rest = rest.slice(lead[0].length);
+	}
+	for (const piece of rest.split(QRC_WORD_STAMP)) {
+		if (/^\(\d/.test(piece)) {
+			push(out, "punct", "(");
+			push(out, "wordTime", piece.slice(1, -1));
+			push(out, "punct", ")");
+		} else push(out, "text", piece);
+	}
+}
+
 // -- Entry --------------------------
 
 export function tokenize(src: string, format: LyricFormat = detectFormat(src)): Token[] {
 	switch (format) {
 		case "lrc":
 			return tokenizeLines(src, lrcLine);
+		case "qrc":
+			return tokenizeLines(src, qrcLine);
 		default:
 			return src ? [{ type: "text", text: src }] : [];
 	}

@@ -61,3 +61,31 @@ describe("tokenize lrc", () => {
 		expect(pairs(tokenize(src, "lrc"))).toContain("text:\r\n");
 	});
 });
+
+describe("tokenize qrc", () => {
+	it("splits line and word stamps", () => {
+		expect(pairs(tokenize("[14210,4350]A(14210,300)ma(14510,280)", "qrc"))).toEqual([
+			"punct:[",
+			"timestamp:14210,4350",
+			"punct:]",
+			"text:A",
+			"punct:(",
+			"wordTime:14210,300",
+			"punct:)",
+			"text:ma",
+			"punct:(",
+			"wordTime:14510,280",
+			"punct:)",
+		]);
+	});
+
+	it("reads metadata lines", () => {
+		expect(pairs(tokenize("[ar:John Newton]", "qrc"))).toEqual([
+			"punct:[",
+			"meta:ar",
+			"punct::",
+			"value:John Newton",
+			"punct:]",
+		]);
+	});
+});
