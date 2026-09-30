@@ -174,7 +174,12 @@ function tokenizeXml(src: string): Token[] {
 
 // -- Entry --------------------------
 
+const BYTE_ORDER_MARK = "\uFEFF";
+
 export function tokenize(src: string, format: LyricFormat = detectFormat(src)): Token[] {
+	if (src.startsWith(BYTE_ORDER_MARK)) {
+		return [{ type: "text", text: BYTE_ORDER_MARK }, ...tokenize(src.slice(BYTE_ORDER_MARK.length), format)];
+	}
 	switch (format) {
 		case "ttml":
 			return tokenizeXml(src);

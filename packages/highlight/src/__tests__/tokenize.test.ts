@@ -367,3 +367,13 @@ describe("line endings and namespaces", () => {
 		expect(tokens).toContain("text:x");
 	});
 });
+
+describe("regressions: malformed input", () => {
+	it("regression: a leading byte order mark does not hide the first lrc stamp", () => {
+		const src = "\uFEFF[00:01.00]Hi\n[00:02.00]there";
+		const tokens = pairs(tokenize(src));
+		expect(tokens[0]).toBe("text:\uFEFF");
+		expect(tokens[2]).toBe("timestamp:00:01.00");
+		expect(joined(tokenize(src))).toBe(src);
+	});
+});
