@@ -669,6 +669,27 @@ button {
 	gap: 10px;
 }
 
+/* The highlighter defaults are drawn for a dark pane; this one sits on a light card. */
+.paste .bh-edit {
+	--bh-text: var(--ink);
+	--bh-bgText: var(--ink-2);
+	--bh-timestamp: oklch(0.5 0.15 275);
+	--bh-wordTime: oklch(0.5 0.15 275 / 0.7);
+	--bh-agent: oklch(0.56 0.13 70);
+	--bh-meta: oklch(0.55 0.16 350);
+	--bh-tag: oklch(0.19 0.008 30 / 0.45);
+	--bh-attr: oklch(0.19 0.008 30 / 0.4);
+	--bh-value: oklch(0.5 0.12 150);
+	--bh-punct: oklch(0.19 0.008 30 / 0.32);
+	--bh-comment: oklch(0.19 0.008 30 / 0.4);
+	--bh-caret: var(--ink);
+	--bh-selection: oklch(0.6 0.12 275 / 0.25);
+	--bh-placeholder: var(--ink-3);
+	justify-self: stretch;
+	border-radius: var(--r-control);
+	background: var(--card);
+}
+
 /* Segmented control, built from radios so the arrow keys come for free. */
 .seg {
 	position: relative;

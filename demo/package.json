@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@braccato/core": "workspace:*",
+    "@braccato/highlight": "workspace:*",
     "@braccato/parsers": "workspace:*",
     "torph": "^0.1.3"
   },

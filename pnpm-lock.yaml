@@ -32,6 +32,9 @@ importers:
       '@braccato/core':
         specifier: workspace:*
         version: link:../packages/core
+      '@braccato/highlight':
+        specifier: workspace:*
+        version: link:../packages/highlight
       '@braccato/parsers':
         specifier: workspace:*
         version: link:../packages/parsers
