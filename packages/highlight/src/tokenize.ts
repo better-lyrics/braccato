@@ -121,6 +121,7 @@ function lastOpenIndex(open: OpenElement[], name: string): number {
 function tokenizeXml(src: string): Token[] {
 	const out: Token[] = [];
 	const open: OpenElement[] = [];
+	const openCount = new Map<string, number>();
 	let bgDepth = 0;
 	let headDepth = 0;
 	let i = 0;
@@ -165,12 +166,14 @@ function tokenizeXml(src: string): Token[] {
 			push(out, "punct", tag.slice(pos));
 			if (!closing && !tag.endsWith("/>")) {
 				open.push({ name, isBg });
+				openCount.set(name, (openCount.get(name) ?? 0) + 1);
 				if (isBg) bgDepth++;
 				if (HEAD_TAGS.has(name)) headDepth++;
 			} else if (closing) {
-				const at = lastOpenIndex(open, name);
 				// Unmatched close tags are ignored; a matching one also closes anything still open inside it.
+				const at = openCount.get(name) ? lastOpenIndex(open, name) : -1;
 				for (const closed of at < 0 ? [] : open.splice(at)) {
+					openCount.set(closed.name, (openCount.get(closed.name) ?? 1) - 1);
 					if (closed.isBg) bgDepth--;
 					if (HEAD_TAGS.has(closed.name)) headDepth--;
 				}
@@ -191,9 +194,15 @@ function tokenizeXml(src: string): Token[] {
 const BYTE_ORDER_MARK = "\uFEFF";
 
 export function tokenize(src: string, format: LyricFormat = detectFormat(src)): Token[] {
-	if (src.startsWith(BYTE_ORDER_MARK)) {
-		return [{ type: "text", text: BYTE_ORDER_MARK }, ...tokenize(src.slice(BYTE_ORDER_MARK.length), format)];
-	}
+	let marks = 0;
+	while (src.startsWith(BYTE_ORDER_MARK, marks)) marks += BYTE_ORDER_MARK.length;
+	if (marks === 0) return tokenizeBody(src, format);
+	const body = tokenizeBody(src.slice(marks), format);
+	body.unshift({ type: "text", text: src.slice(0, marks) });
+	return body;
+}
+
+function tokenizeBody(src: string, format: LyricFormat): Token[] {
 	switch (format) {
 		case "ttml":
 			return tokenizeXml(src);

@@ -395,3 +395,20 @@ describe("regressions: malformed input", () => {
 		expect(tokens).toContain("text: after");
 	});
 });
+
+describe("performance", () => {
+	it("regression: unmatched close tags stay linear", () => {
+		const src = `<tt>${"<a>".repeat(50_000)}${"</b>".repeat(50_000)}</tt>`;
+		const started = performance.now();
+		const tokens = tokenize(src, "ttml");
+		expect(performance.now() - started).toBeLessThan(1000);
+		expect(joined(tokens)).toBe(src);
+	});
+
+	it("regression: many leading byte order marks do not overflow the stack", () => {
+		const src = `${"\uFEFF".repeat(20_000)}[00:01.00]Hi`;
+		const tokens = tokenize(src);
+		expect(joined(tokens)).toBe(src);
+		expect(pairs(tokens)).toContain("timestamp:00:01.00");
+	});
+});
