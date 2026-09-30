@@ -13,8 +13,8 @@ fi
 
 for pkg in "$@"; do
 	manifest="packages/$pkg/package.json"
-	name=$(node -p "require('./$manifest').name")
-	version=$(node -p "require('./$manifest').version")
+	name=$(node -p "require('./$manifest').name") || exit 1
+	version=$(node -p "require('./$manifest').version") || exit 1
 	if [ "$version" = "0.0.0" ]; then
 		echo "Refusing to publish: $name is still at 0.0.0 in $manifest." >&2
 		exit 1
