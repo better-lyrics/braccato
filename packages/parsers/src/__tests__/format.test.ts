@@ -1,0 +1,64 @@
+import { describe, expect, it } from "vitest";
+import { detectParser } from "../detect.js";
+import { detectFormat } from "../format.js";
+import { LRCParser } from "../lrc.js";
+import { PlainParser } from "../plain.js";
+import { QRCParser } from "../qrc.js";
+import { SRTParser } from "../srt.js";
+import { TTMLParser } from "../ttml.js";
+
+const SAMPLES = {
+	ttml: `<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="1.0" end="2.0">Hi</p></div></body></tt>`,
+	lrc: "[ti:Song]\n[00:12.50]Hello\n[00:14.00]<00:14.00>Word <00:14.40>timed",
+	srt: "1\n00:00:01,000 --> 00:00:04,000\nHello",
+	qrc: "[1000,3000]Hel(1000,500)lo(1500,500)",
+	qrcEnvelope: `<QrcInfos><LyricInfo><Lyric_1 LyricContent="[1000,2000]Hello world"/></LyricInfo></QrcInfos>`,
+	plain: "just some words\nno timing at all",
+};
+
+describe("detectFormat", () => {
+	describe("happy paths", () => {
+		it("detects each format", () => {
+			expect(detectFormat(SAMPLES.ttml)).toBe("ttml");
+			expect(detectFormat(SAMPLES.lrc)).toBe("lrc");
+			expect(detectFormat(SAMPLES.srt)).toBe("srt");
+			expect(detectFormat(SAMPLES.qrc)).toBe("qrc");
+			expect(detectFormat(SAMPLES.qrcEnvelope)).toBe("qrc");
+			expect(detectFormat(SAMPLES.plain)).toBe("plain");
+		});
+	});
+
+	describe("edge cases", () => {
+		it("treats empty and whitespace input as plain", () => {
+			expect(detectFormat("")).toBe("plain");
+			expect(detectFormat("   \n\t")).toBe("plain");
+		});
+
+		it("accepts CRLF SRT", () => {
+			expect(detectFormat("1\r\n00:00:01,000 --> 00:00:04,000\r\nHello")).toBe("srt");
+		});
+
+		it("does not call LRC without fractional seconds", () => {
+			expect(detectFormat("[00:12]Hello")).toBe("plain");
+		});
+
+		it("needs both line and word stamps for bare QRC", () => {
+			expect(detectFormat("[1000,3000]Hello")).toBe("plain");
+		});
+	});
+
+	describe("invariants", () => {
+		it("honours the priority TTML > LRC > SRT > QRC", () => {
+			expect(detectFormat("<tt>[00:01.00]x</tt>")).toBe("ttml");
+			expect(detectFormat("[00:01.00]x\n[1000,200]y(1000,100)")).toBe("lrc");
+			expect(detectFormat("1\n00:00:01,000 --> 00:00:02,000\n[1000,200]y(1000,100)")).toBe("srt");
+		});
+
+		it("agrees with detectParser on every sample", () => {
+			const byFormat = { ttml: TTMLParser, lrc: LRCParser, srt: SRTParser, qrc: QRCParser, plain: PlainParser };
+			for (const text of Object.values(SAMPLES)) {
+				expect(detectParser(text)).toBe(byFormat[detectFormat(text)]);
+			}
+		});
+	});
+});
