@@ -65,6 +65,14 @@
 	border-color: transparent;
 }
 
+.bh-edit > .bh-layer > .bh-line {
+	display: block;
+}
+
+.bh-edit > .bh-layer > .bh-line + .bh-line {
+	text-indent: 0;
+}
+
 .bh-edit > .bh-input {
 	position: relative;
 	display: block;

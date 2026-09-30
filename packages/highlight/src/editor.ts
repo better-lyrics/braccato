@@ -1,6 +1,8 @@
 import { detectFormat } from "@braccato/parsers/format";
-import { highlightInto } from "./render.js";
-import type { LyricFormat } from "./types.js";
+import { changedRange, splitLines } from "./lines.js";
+import { appendTokens, mergeTokens } from "./render.js";
+import { tokenize } from "./tokenize.js";
+import type { LyricFormat, Token } from "./types.js";
 
 export const SYNCED_BOX_PROPERTIES = [
 	"font-family",
@@ -80,16 +82,41 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		layer.scrollTop = textarea.scrollTop;
 		layer.scrollLeft = textarea.scrollLeft;
 	};
-	const refresh = () => {
+	let lines: Token[][] = [];
+	let lineEls: HTMLElement[] = [];
+	const lineElement = (tokens: Token[]) => {
+		const el = doc.createElement("span");
+		el.className = "bh-line";
+		appendTokens(el, tokens);
+		return el;
+	};
+	const render = (full: boolean) => {
 		syncBox();
 		const src = textarea.value;
-		highlightInto(layer, layerText(src), { format: options.format ?? detectFormat(src) });
+		const next = splitLines(mergeTokens(tokenize(layerText(src), options.format ?? detectFormat(src))));
+		const { start, prevEnd, nextEnd } = full
+			? { start: 0, prevEnd: lines.length, nextEnd: next.length }
+			: changedRange(lines, next);
+		const fresh = next.slice(start, nextEnd).map(lineElement);
+		const fragment = doc.createDocumentFragment();
+		for (const el of fresh) fragment.append(el);
+		if (full) layer.replaceChildren(fragment);
+		else {
+			for (const el of lineEls.slice(start, prevEnd)) el.remove();
+			const anchor = lineEls[prevEnd];
+			if (anchor) anchor.before(fragment);
+			else layer.append(fragment);
+		}
+		lineEls = [...lineEls.slice(0, start), ...fresh, ...lineEls.slice(prevEnd)];
+		lines = next;
 		syncScroll();
 	};
+	const refresh = () => render(true);
+	const update = () => render(false);
 
 	const resize = new view.ResizeObserver(syncBox);
 	resize.observe(textarea);
-	textarea.addEventListener("input", refresh);
+	textarea.addEventListener("input", update);
 	textarea.addEventListener("scroll", syncScroll, { passive: true });
 	refresh();
 
@@ -103,7 +130,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 			destroyed = true;
 			attached.delete(textarea);
 			resize.disconnect();
-			textarea.removeEventListener("input", refresh);
+			textarea.removeEventListener("input", update);
 			textarea.removeEventListener("scroll", syncScroll);
 			if (addedInputClass) textarea.classList.remove("bh-input");
 			wrap.before(textarea);

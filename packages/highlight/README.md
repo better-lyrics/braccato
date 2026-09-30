@@ -32,6 +32,8 @@ const editor = attachEditor(textarea);
 
 `attachEditor` wraps the textarea in a `div.bh-edit` and lays a highlighted `pre.bh-layer` under it. The textarea becomes transparent and keeps the caret, the selection and all input. The layer copies the textarea's font, padding, border widths and box sizing on every render and on every resize, and follows its scroll position.
 
+Every input re-tokenizes the whole document, so TTML state such as background vocals stays correct on later lines, but only the lines whose tokens changed are rebuilt. The layer holds one `span.bh-line` block per source line, so an edit lays out only the lines it touched.
+
 It returns `{ wrap, layer, refresh, destroy }`:
 
 - Setting `textarea.value` from code does not fire `input`, so call `editor.refresh()` after every programmatic write.
@@ -55,7 +57,7 @@ Without `pretty`, the tokens' concatenated text always equals the input.
 
 ## Tokens
 
-Each token renders as `<span class="bh-<type>">`, except `text`, which renders as a plain text node.
+Adjacent tokens of the same type render as one `<span class="bh-<type>">`, except `text`, which renders as a plain text node.
 
 | Token | Meaning |
 |---|---|
