@@ -2,6 +2,11 @@
 
 cd "$(dirname "$0")/.."
 
+# types first: @braccato/core and @braccato/parsers both depend on it.
+PACKAGES=(types parsers highlight rics provider-blyrics core)
+
+bash scripts/release-guard.sh "${PACKAGES[@]}" || exit 1
+
 echo -n "OTP: "
 read -r OTP
 
@@ -9,8 +14,7 @@ read -r OTP
 # tooling/build-package.ts that `pnpm package` runs.
 pnpm build:packages
 
-# types first: @braccato/core and @braccato/parsers both depend on it.
-for pkg in types parsers highlight rics provider-blyrics core; do
+for pkg in "${PACKAGES[@]}"; do
 	(cd "packages/$pkg" && pnpm publish --access public --no-git-checks --otp="$OTP" 2>&1) || echo "Skipped $pkg (already published or error)"
 done
 
