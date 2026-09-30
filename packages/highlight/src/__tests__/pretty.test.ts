@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { prettyTtml } from "../pretty.js";
 
+const WHITESPACE_RUN = 512_000;
+
 describe("prettyTtml", () => {
 	it("breaks a minified document at head, body, div and p", () => {
 		const out = prettyTtml("<tt><head><metadata/></head><body><div><p>a</p><p>b</p></div></body></tt>");
@@ -47,5 +49,13 @@ describe("prettyTtml", () => {
 		}
 		expect(prettyTtml(formatted).split("\n")).toHaveLength(formatted.split("\n").length);
 		expect(prettyTtml(formatted.replace(/\n/g, "\r\n"))).not.toMatch(/\n\s*\n/);
+	});
+
+	it("regression: stays linear on long runs of whitespace", () => {
+		const src = `<tt>${" ".repeat(WHITESPACE_RUN)}x${"\n".repeat(WHITESPACE_RUN)}<body></body></tt>`;
+		const started = performance.now();
+		const out = prettyTtml(src);
+		expect(performance.now() - started).toBeLessThan(1000);
+		expect(out.endsWith("\n<body>\n</body>\n</tt>")).toBe(true);
 	});
 });
