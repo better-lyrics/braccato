@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.2
+
+### Patch Changes
+
+- 6f17993: The stage box measures the text a line or the credits wrapped onto, so a plate behind wrapped text hugs its widest line instead of the full stage width.
+
 ## 1.16.1
 
 ### Patch Changes
