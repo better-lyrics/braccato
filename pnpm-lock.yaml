@@ -52,6 +52,25 @@ importers:
         specifier: workspace:^
         version: link:../types
 
+  packages/highlight:
+    dependencies:
+      '@braccato/parsers':
+        specifier: workspace:^
+        version: link:../parsers
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.3(@types/node@22.20.1)(tsx@4.23.5)(yaml@2.9.1)
+      vite-plugin-dts:
+        specifier: ^4.3.0
+        version: 4.5.4(@types/node@22.20.1)(rollup@4.62.4)(typescript@5.9.3)(vite@6.4.3(@types/node@22.20.1)(tsx@4.23.5)(yaml@2.9.1))
+      vitest:
+        specifier: ^3.0.4
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.5)(yaml@2.9.1)
+
   packages/parsers:
     dependencies:
       '@braccato/types':

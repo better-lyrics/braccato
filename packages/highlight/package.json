@@ -1,0 +1,44 @@
+{
+	"name": "@braccato/highlight",
+	"version": "0.0.0",
+	"description": "Zero-dependency syntax highlighting for TTML, LRC, QRC and SRT lyrics",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/better-lyrics/braccato",
+		"directory": "packages/highlight"
+	},
+	"homepage": "https://braccato.boidu.dev",
+	"keywords": ["lyrics", "syntax-highlighting", "ttml", "lrc", "qrc", "srt"],
+	"sideEffects": ["./dist/highlight.css"],
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./highlight.css": "./dist/highlight.css"
+	},
+	"files": ["dist"],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vite build && cp src/highlight.css dist/highlight.css",
+		"dev": "vite build --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"dependencies": {
+		"@braccato/parsers": "workspace:^"
+	},
+	"devDependencies": {
+		"typescript": "^5.7.3",
+		"vite": "^6.0.7",
+		"vite-plugin-dts": "^4.3.0",
+		"vitest": "^3.0.4"
+	}
+}
