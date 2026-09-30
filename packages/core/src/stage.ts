@@ -78,6 +78,52 @@ export interface StageBox {
   height: number;
 }
 
+export interface StageSpanRect {
+  x: number;
+  width: number;
+}
+
+/**
+ * A wrapped `fit-content` box fills the width offered, so the plate follows the text instead. The rects
+ * miss printed `::before` labels, so the span is widened to what the alignment guarantees.
+ */
+export function stageTextSpan(
+  offsetLeft: number,
+  offsetWidth: number,
+  box: StageSpanRect,
+  textRects: Iterable<StageSpanRect>,
+  padding: { left: number; right: number },
+  originX: number
+): { left: number; width: number } {
+  const whole = { left: offsetLeft, width: offsetWidth };
+  if (box.width <= 0 || offsetWidth <= 0 || originX === 1) return whole;
+
+  const scale = box.width / offsetWidth;
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const rect of textRects) {
+    if (rect.width <= 0) continue;
+    start = Math.min(start, (rect.x - box.x) / scale);
+    end = Math.max(end, (rect.x + rect.width - box.x) / scale);
+  }
+  if (start > end) return whole;
+
+  const contentLeft = padding.left;
+  const contentRight = offsetWidth - padding.right;
+  if (originX === 0) {
+    start = contentLeft;
+  } else {
+    const centre = (contentLeft + contentRight) / 2;
+    const half = Math.max(end - centre, centre - start);
+    start = centre - half;
+    end = centre + half;
+  }
+
+  const left = Math.max(0, start - padding.left);
+  const right = Math.min(offsetWidth, end + padding.right);
+  return { left: offsetLeft + left, width: right - left };
+}
+
 function unionBox(box: StageBox | null, next: StageBox): StageBox {
   if (box === null) return next;
   const x = Math.min(box.x, next.x);

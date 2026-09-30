@@ -180,6 +180,8 @@ export class FakeWindow {
   readonly CustomEvent = FakeCustomEvent;
   readonly listeners = new Map<string, Set<() => void>>();
   readonly overflowByElement = new WeakMap<FakeNode, string>();
+  readonly paddingXByElement = new WeakMap<FakeNode, string>();
+  readonly displayByElement = new WeakMap<FakeNode, string>();
   // Whether this window's document loaded `stage.css`, which is the rule that takes a stage
   // container out of the flow.
   stageStylesheetLoaded = true;
@@ -217,11 +219,15 @@ export class FakeWindow {
   }
 
   getComputedStyle(element: FakeNode): {
+    display: string;
     overflowY: string;
     paddingBottom: string;
+    paddingLeft: string;
+    paddingRight: string;
     position: string;
     scrollPaddingBottom: string;
     scrollPaddingTop: string;
+    textAlign: string;
     transform: string;
     transitionDuration: string;
     transitionTimingFunction: string;
@@ -230,11 +236,16 @@ export class FakeWindow {
   } {
     this.computedStyleTargets.push(element);
     return {
+      display: this.displayByElement.get(element) ?? (element.isDisplayContents ? "contents" : "block"),
       overflowY: this.overflowByElement.get(element) ?? "visible",
       paddingBottom: "0px",
+      paddingLeft: this.paddingXByElement.get(element) ?? "0px",
+      paddingRight: this.paddingXByElement.get(element) ?? "0px",
       position: this.stageStylesheetLoaded && element.dataset?.layout === "stage" ? "absolute" : "static",
       scrollPaddingBottom: "auto",
       scrollPaddingTop: "auto",
+      // stage.css centres everything placed on a stage.
+      textAlign: this.stageStylesheetLoaded && element.parentNode?.dataset?.layout === "stage" ? "center" : "start",
       transform: "none",
       // The probes the line scroll planner writes and reads back. Answering nothing leaves it on
       // the engine's own defaults, which is what a document carrying no theme resolves to.
