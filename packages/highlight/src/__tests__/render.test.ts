@@ -43,4 +43,12 @@ describe("highlightInto", () => {
 		highlightInto(el as unknown as HTMLElement, "");
 		expect(el.children).toEqual([]);
 	});
+
+	it("regression: renders a very long document without overflowing the call stack", () => {
+		const el = host();
+		const src = "[00:01.00]a\n".repeat(40_000);
+		expect(() => highlightInto(el as unknown as HTMLElement, src, { format: "lrc" })).not.toThrow();
+		expect(el.children).toHaveLength(200_000);
+		expect(el.textContent).toBe(src);
+	});
 });

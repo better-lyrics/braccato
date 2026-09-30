@@ -13,14 +13,17 @@ export function highlightInto(el: HTMLElement, src: string, options: HighlightOp
 	const format = options.format ?? detectFormat(src);
 	const text = options.pretty && format === "ttml" ? prettyTtml(src) : src;
 	const doc = el.ownerDocument;
-	el.replaceChildren(
-		...tokenize(text, format).map(({ type, text: part }) => {
-			if (type === "text") return doc.createTextNode(part);
-			const span = doc.createElement("span");
-			span.className = `bh-${type}`;
-			span.textContent = part;
-			return span;
-		}),
-	);
+	const fragment = doc.createDocumentFragment();
+	for (const { type, text: part } of tokenize(text, format)) {
+		if (type === "text") {
+			fragment.append(doc.createTextNode(part));
+			continue;
+		}
+		const span = doc.createElement("span");
+		span.className = `bh-${type}`;
+		span.textContent = part;
+		fragment.append(span);
+	}
+	el.replaceChildren(fragment);
 	return format;
 }

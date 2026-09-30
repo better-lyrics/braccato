@@ -42,6 +42,7 @@ export interface FakeDocument {
 	defaultView: FakeWindow;
 	createElement(tag: string): FakeNode;
 	createTextNode(text: string): FakeNode;
+	createDocumentFragment(): FakeNode;
 }
 
 export function createFakeDocument(): FakeDocument {
@@ -67,6 +68,7 @@ export function createFakeDocument(): FakeDocument {
 		defaultView: view,
 		createElement: (tag) => node(tag.toUpperCase(), ""),
 		createTextNode: (text) => node("#text", text),
+		createDocumentFragment: () => node("#document-fragment", ""),
 	};
 	function detach(child: FakeNode): void {
 		if (!child.parent) return;
@@ -109,13 +111,16 @@ export function createFakeDocument(): FakeDocument {
 				for (const child of n.children) child.parent = null;
 				n.children = [];
 				n.append(...nodes);
-				n.textContent = nodes.map((c) => c.textContent).join("");
+				n.textContent = n.children.map((c) => c.textContent).join("");
 			},
 			append(...nodes) {
-				for (const child of nodes) {
-					detach(child);
-					child.parent = n;
-					n.children.push(child);
+				for (const node of nodes) {
+					const incoming = node.nodeName === "#document-fragment" ? node.children.splice(0) : [node];
+					for (const child of incoming) {
+						detach(child);
+						child.parent = n;
+						n.children.push(child);
+					}
 				}
 			},
 			before(...nodes) {
