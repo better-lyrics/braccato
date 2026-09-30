@@ -303,7 +303,7 @@ interface LyricPart {
 
 `@braccato/highlight` colours the raw file rather than rendering it: timestamps, word stamps,
 background vocals, agents and TTML markup each get their own class, and the lyric text stays the
-brightest thing on screen. It is about 2.6 KB gzipped, and the only thing it imports is the format check from
+brightest thing on screen. It is about 2.8 KB gzipped, and the only thing it imports is the format check from
 `@braccato/parsers/format`.
 
 ```typescript
