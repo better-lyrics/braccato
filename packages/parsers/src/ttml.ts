@@ -1,5 +1,6 @@
 import { type X2jOptions, XMLParser } from "fast-xml-parser";
 import { uniqueNames } from "./credits.js";
+import { isTtml } from "./format.js";
 import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import type {
 	MetadataElement,
@@ -429,7 +430,7 @@ export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): P
 
 export const TTMLParser: LyricParser = {
 	detect(input: string): boolean {
-		return input.includes("<tt") && input.includes("</tt>");
+		return isTtml(input);
 	},
 	// The duration is deliberately unused. `@braccato/provider-blyrics` calls this with one argument,
 	// and a version that honoured the parameter would hand that call site a 0 song duration.
