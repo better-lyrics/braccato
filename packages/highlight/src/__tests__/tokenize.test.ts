@@ -376,4 +376,22 @@ describe("regressions: malformed input", () => {
 		expect(tokens[2]).toBe("timestamp:00:01.00");
 		expect(joined(tokenize(src))).toBe(src);
 	});
+	it("regression: a stray </head> does not unbalance later head text", () => {
+		const tokens = pairs(tokenize("<tt></head>lyric<head>credit</head>after</tt>", "ttml"));
+		expect(tokens).toContain("text:lyric");
+		expect(tokens).toContain("meta:credit");
+		expect(tokens).toContain("text:after");
+	});
+
+	it("regression: a mismatched close tag does not end background vocals", () => {
+		const tokens = pairs(tokenize(`<tt><p><span ttm:role="x-bg"></div>(yeah)</span> after</p></tt>`, "ttml"));
+		expect(tokens).toContain("bgText:(yeah)");
+		expect(tokens).toContain("text: after");
+	});
+
+	it("closing the bg span also closes unclosed children inside it", () => {
+		const tokens = pairs(tokenize(`<tt><p><span ttm:role="x-bg"><br>(oh)</span> after</p></tt>`, "ttml"));
+		expect(tokens).toContain("bgText:(oh)");
+		expect(tokens).toContain("text: after");
+	});
 });

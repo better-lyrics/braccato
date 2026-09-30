@@ -108,9 +108,19 @@ const AGENT_ATTRS = new Set(["ttm:agent", "ttm:role", "xml:id"]);
 const TAG_HEAD = /^<(\/?)([\w:.-]*)/;
 const HEAD_TAGS = new Set(["head", "tt:head"]);
 
+interface OpenElement {
+	name: string;
+	isBg: boolean;
+}
+
+function lastOpenIndex(open: OpenElement[], name: string): number {
+	for (let k = open.length - 1; k >= 0; k--) if (open[k].name === name) return k;
+	return -1;
+}
+
 function tokenizeXml(src: string): Token[] {
 	const out: Token[] = [];
-	const bgStack: boolean[] = [];
+	const open: OpenElement[] = [];
 	let bgDepth = 0;
 	let headDepth = 0;
 	let i = 0;
@@ -154,12 +164,16 @@ function tokenizeXml(src: string): Token[] {
 			}
 			push(out, "punct", tag.slice(pos));
 			if (!closing && !tag.endsWith("/>")) {
-				bgStack.push(isBg);
+				open.push({ name, isBg });
 				if (isBg) bgDepth++;
 				if (HEAD_TAGS.has(name)) headDepth++;
 			} else if (closing) {
-				if (bgStack.pop()) bgDepth--;
-				if (HEAD_TAGS.has(name)) headDepth--;
+				const at = lastOpenIndex(open, name);
+				// Unmatched close tags are ignored; a matching one also closes anything still open inside it.
+				for (const closed of at < 0 ? [] : open.splice(at)) {
+					if (closed.isBg) bgDepth--;
+					if (HEAD_TAGS.has(closed.name)) headDepth--;
+				}
 			}
 			i = j;
 			continue;
