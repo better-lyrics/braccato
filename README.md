@@ -270,27 +270,6 @@ const lyrics = parser.parse(inputText, durationMs);
 If you only need to know the format, import `detectFormat` from `@braccato/parsers/format`. It runs
 the same checks in the same order, but skips the XML parser, so it costs almost nothing in a bundle.
 
-## Highlighting
-
-`@braccato/highlight` colours the raw file rather than rendering it: timestamps, word stamps,
-background vocals, agents and TTML markup each get their own class, and the lyric text stays the
-brightest thing on screen. It is about 2.6 KB gzipped, and the only thing it imports is the format check from
-`@braccato/parsers/format`.
-
-```typescript
-import { attachEditor, highlightInto } from "@braccato/highlight";
-import "@braccato/highlight/highlight.css";
-
-highlightInto(preElement, ttmlSource, { pretty: true });
-
-const editor = attachEditor(textarea);
-textarea.value = loadedLyrics;
-editor.refresh();
-```
-
-Colours are `--bh-*` custom properties. The [package README](packages/highlight/README.md) lists
-them, along with the editor's layout rules.
-
 ### Core types
 
 Declared in `@braccato/types`, which both `@braccato/core` and `@braccato/parsers` depend on and
@@ -319,6 +298,27 @@ interface LyricPart {
   explicit?: boolean;
 }
 ```
+
+## Highlighting
+
+`@braccato/highlight` colours the raw file rather than rendering it: timestamps, word stamps,
+background vocals, agents and TTML markup each get their own class, and the lyric text stays the
+brightest thing on screen. It is about 2.6 KB gzipped, and the only thing it imports is the format check from
+`@braccato/parsers/format`.
+
+```typescript
+import { attachEditor, highlightInto } from "@braccato/highlight";
+import "@braccato/highlight/highlight.css";
+
+highlightInto(preElement, ttmlSource, { pretty: true });
+
+const editor = attachEditor(textarea);
+textarea.value = loadedLyrics;
+editor.refresh();
+```
+
+Colours are `--bh-*` custom properties. The [package README](packages/highlight/README.md) lists
+them, along with the editor's layout rules.
 
 ## Provider chain
 
