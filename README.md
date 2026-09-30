@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@braccato/core"><img src="https://img.shields.io/npm/v/@braccato/core?style=flat-square&label=core&color=F50032" alt="@braccato/core on npm" /></a>
   <a href="https://www.npmjs.com/package/@braccato/parsers"><img src="https://img.shields.io/npm/v/@braccato/parsers?style=flat-square&label=parsers&color=F50032" alt="@braccato/parsers on npm" /></a>
+  <a href="https://www.npmjs.com/package/@braccato/highlight"><img src="https://img.shields.io/npm/v/@braccato/highlight?style=flat-square&label=highlight&color=F50032" alt="@braccato/highlight on npm" /></a>
   <a href="https://www.npmjs.com/package/@braccato/provider-blyrics"><img src="https://img.shields.io/npm/v/@braccato/provider-blyrics?style=flat-square&label=provider-blyrics&color=F50032" alt="@braccato/provider-blyrics on npm" /></a>
   <a href="https://www.npmjs.com/package/@braccato/rics"><img src="https://img.shields.io/npm/v/@braccato/rics?style=flat-square&label=rics&color=F50032" alt="@braccato/rics on npm" /></a>
   <a href="https://www.npmjs.com/package/@braccato/types"><img src="https://img.shields.io/npm/v/@braccato/types?style=flat-square&label=types&color=F50032" alt="@braccato/types on npm" /></a>
@@ -34,6 +35,7 @@
 |---------|-------------|
 | `@braccato/core` | The `<braccato-lyrics>` element: synchronized lyrics, word by word |
 | `@braccato/parsers` | Format parsers: TTML, LRC, SRT, QRC, Plain |
+| `@braccato/highlight` | Syntax highlighting for raw lyric files, plus a textarea overlay for editing them |
 | `@braccato/provider-blyrics` | Lyrics provider chain with priority and validation |
 | `@braccato/rics` | RICS CSS preprocessor |
 | `@braccato/types` | The lyric shapes core and parsers share |
@@ -265,6 +267,30 @@ const parser = detectParser(inputText);
 const lyrics = parser.parse(inputText, durationMs);
 ```
 
+If you only need to know the format, import `detectFormat` from `@braccato/parsers/format`. It runs
+the same checks in the same order, but skips the XML parser, so it costs almost nothing in a bundle.
+
+## Highlighting
+
+`@braccato/highlight` colours the raw file rather than rendering it: timestamps, word stamps,
+background vocals, agents and TTML markup each get their own class, and the lyric text stays the
+brightest thing on screen. It is about 2.6 KB gzipped, and the only thing it imports is the format check from
+`@braccato/parsers/format`.
+
+```typescript
+import { attachEditor, highlightInto } from "@braccato/highlight";
+import "@braccato/highlight/highlight.css";
+
+highlightInto(preElement, ttmlSource, { pretty: true });
+
+const editor = attachEditor(textarea);
+textarea.value = loadedLyrics;
+editor.refresh();
+```
+
+Colours are `--bh-*` custom properties. The [package README](packages/highlight/README.md) lists
+them, along with the editor's layout rules.
+
 ### Core types
 
 Declared in `@braccato/types`, which both `@braccato/core` and `@braccato/parsers` depend on and
@@ -372,6 +398,7 @@ braccato/
   packages/
     core/              # The <braccato-lyrics> element and the renderer behind it
     parsers/           # TTML, LRC, SRT, QRC, Plain parsers
+    highlight/         # Syntax highlighting for raw TTML, LRC, QRC and SRT
     provider-blyrics/  # Provider chain + built-in providers
     rics/              # RICS CSS preprocessor
     types/             # The lyric shapes core and parsers share
