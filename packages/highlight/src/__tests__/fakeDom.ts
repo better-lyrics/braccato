@@ -73,6 +73,11 @@ export interface FakeDocument {
 	createTextNode(text: string): FakeNode;
 	createDocumentFragment(): FakeNode;
 	createRange(): FakeRange;
+	fonts: {
+		listeners: Map<string, Set<Listener>>;
+		addEventListener(type: string, listener: Listener): void;
+		removeEventListener(type: string, listener: Listener): void;
+	};
 	/** Opt-in layout: every bh-line is one row of this height, so rows map to lines. */
 	rowHeight: number;
 	/** Opt-in wrapping: with a non-zero value, each bh-line wraps every this many characters, one row each. */
@@ -148,6 +153,17 @@ export function createFakeDocument(): FakeDocument {
 				},
 				getBoundingClientRect: () => (start ? layout(start, startOffset, endOffset) : rect(0, 0)),
 			};
+		},
+		fonts: {
+			listeners: new Map(),
+			addEventListener(type, listener) {
+				const set = this.listeners.get(type) ?? new Set();
+				set.add(listener);
+				this.listeners.set(type, set);
+			},
+			removeEventListener(type, listener) {
+				this.listeners.get(type)?.delete(listener);
+			},
 		},
 		rowHeight: 0,
 		charsPerRow: 0,

@@ -521,6 +521,24 @@ describe("attachEditor style window", () => {
 		expect(layer.textContent).toBe(layerText(textarea.value));
 	});
 
+	it("measures again when a web font finishes loading, and stops listening on destroy", () => {
+		const { layer, doc, textarea } = mountWindowed(LRC_LINES);
+		let measures = 0;
+		const measure = layer.getBoundingClientRect;
+		layer.getBoundingClientRect = () => {
+			measures++;
+			return measure();
+		};
+		const fire = () => {
+			for (const listener of doc.fonts.listeners.get("loadingdone") ?? []) listener();
+			doc.defaultView.flushFrames();
+		};
+		fire();
+		expect(measures).toBeGreaterThan(0);
+		attachEditor(textarea as unknown as HTMLTextAreaElement).destroy();
+		expect(doc.fonts.listeners.get("loadingdone")?.size ?? 0).toBe(0);
+	});
+
 	it("measures again when the textarea's text box changes", () => {
 		const { layer, input, textarea } = mountWindowed(LRC_LINES);
 		let measures = 0;

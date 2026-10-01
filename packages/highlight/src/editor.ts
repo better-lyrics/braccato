@@ -277,6 +277,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	resize.observe(textarea);
 	textarea.addEventListener("input", update);
 	textarea.addEventListener("scroll", onScroll, { passive: true });
+	doc.fonts?.addEventListener("loadingdone", scheduleRestyle);
 	if (layer.clientHeight) styled = NOTHING;
 	refresh();
 
@@ -294,6 +295,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 			view.clearTimeout(settle);
 			textarea.removeEventListener("input", update);
 			textarea.removeEventListener("scroll", onScroll);
+			doc.fonts?.removeEventListener("loadingdone", scheduleRestyle);
 			if (addedInputClass) textarea.classList.remove("bh-input");
 			wrap.before(textarea);
 			wrap.remove();
