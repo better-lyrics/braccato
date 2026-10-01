@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedRange, splitLines } from "../lines.js";
+import { changedRange, changedTokens, matchByOffset, splitLines } from "../lines.js";
 import { tokenize } from "../tokenize.js";
 import type { Token } from "../types.js";
 
@@ -104,6 +104,79 @@ describe("changedRange", () => {
 			const range = changedRange(prev, splitLines(tokenize(edited, "ttml")));
 			expect(performance.now() - started).toBeLessThan(1000);
 			expect(range.nextEnd - range.start).toBe(1);
+		});
+	});
+});
+
+describe("changedTokens", () => {
+	const tokens = (...texts: string[]) => texts.map((text) => ({ type: "text" as const, text }));
+
+	it("finds the one token a keystroke changed", () => {
+		expect(changedTokens(tokens("a", "b", "c"), tokens("a", "bx", "c"))).toEqual({ start: 1, prevEnd: 2, nextEnd: 2 });
+	});
+
+	it("finds inserted and removed tokens", () => {
+		expect(changedTokens(tokens("a", "c"), tokens("a", "b", "c"))).toEqual({ start: 1, prevEnd: 1, nextEnd: 2 });
+		expect(changedTokens(tokens("a", "b", "c"), tokens("a", "c"))).toEqual({ start: 1, prevEnd: 2, nextEnd: 1 });
+	});
+
+	it("compares types as well as text", () => {
+		expect(changedTokens([{ type: "text", text: "a" }], [{ type: "bgText", text: "a" }])).toEqual({
+			start: 0,
+			prevEnd: 1,
+			nextEnd: 1,
+		});
+	});
+
+	describe("edge cases", () => {
+		it("reports nothing changed for equal tokens", () => {
+			expect(changedTokens(tokens("a", "b"), tokens("a", "b"))).toEqual({ start: 2, prevEnd: 2, nextEnd: 2 });
+		});
+
+		it("never lets prefix and suffix overlap on repeated tokens", () => {
+			expect(changedTokens(tokens("a", "a"), tokens("a", "a", "a"))).toEqual({ start: 2, prevEnd: 2, nextEnd: 3 });
+		});
+
+		it("handles empty sides", () => {
+			expect(changedTokens([], tokens("a"))).toEqual({ start: 0, prevEnd: 0, nextEnd: 1 });
+			expect(changedTokens(tokens("a"), [])).toEqual({ start: 0, prevEnd: 1, nextEnd: 0 });
+		});
+	});
+});
+
+describe("matchByOffset", () => {
+	const t = (type: Token["type"], text: string): Token => ({ type, text });
+
+	it("pairs tokens that start at the same offset with the same type", () => {
+		const prev = [t("text", "ab"), t("tag", "p"), t("punct", ">"), t("text", "cd")];
+		const next = [t("text", "abp"), t("punct", ">"), t("text", "cd")];
+		expect([...matchByOffset(prev, next)]).toEqual([0, 2, 3]);
+	});
+
+	it("leaves unmatched tokens at -1", () => {
+		const prev = [t("text", "abc")];
+		const next = [t("text", "a"), t("tag", "b"), t("text", "c")];
+		expect([...matchByOffset(prev, next)]).toEqual([0, -1, -1]);
+	});
+
+	it("never pairs tokens of different types", () => {
+		expect([...matchByOffset([t("text", "ab")], [t("tag", "ab")])]).toEqual([-1]);
+	});
+
+	describe("edge cases", () => {
+		it("handles empty sides", () => {
+			expect([...matchByOffset([], [t("text", "a")])]).toEqual([-1]);
+			expect([...matchByOffset([t("text", "a")], [])]).toEqual([]);
+		});
+	});
+
+	describe("invariants", () => {
+		it("matches old indices in increasing order", () => {
+			const prev = [t("text", "a"), t("tag", "b"), t("text", "c"), t("tag", "d"), t("text", "e")];
+			const next = [t("text", "abc"), t("tag", "d"), t("text", "e")];
+			const matched = [...matchByOffset(prev, next)].filter((k) => k >= 0);
+			expect(matched).toEqual([...matched].sort((a, b) => a - b));
+			expect(matched).toEqual([0, 3, 4]);
 		});
 	});
 });

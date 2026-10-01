@@ -1,6 +1,7 @@
 import { detectFormat } from "@braccato/parsers/format";
 import { describe, expect, it } from "vitest";
 import { SYNCED_BOX_PROPERTIES, attachEditor, layerText } from "../editor.js";
+import { splitLines } from "../lines.js";
 import { mergeTokens } from "../render.js";
 import { tokenize } from "../tokenize.js";
 import { TOKEN_TYPES, type TokenType } from "../types.js";
@@ -106,6 +107,16 @@ describe("attachEditor lifecycle", () => {
 		expect(textarea.className).toBe("input input--area");
 	});
 
+	it("refresh after destroy does nothing", () => {
+		const { doc, textarea, attach } = mount();
+		const editor = attach();
+		editor.destroy();
+		textarea.value = "[00:09.00]Late";
+		editor.refresh();
+		doc.defaultView.flushFrames();
+		expect(editor.layer.textContent).toBe("[00:01.00]Hi");
+	});
+
 	it("keeps a class the host set itself", () => {
 		const { textarea, attach } = mount();
 		textarea.className = "bh-input";
@@ -168,6 +179,57 @@ describe("attachEditor box sync", () => {
 	});
 });
 
+describe("attachEditor layout reads", () => {
+	it("does not read scroll offsets while handling input", () => {
+		const { textarea, attach } = mount();
+		attach();
+		let reads = 0;
+		let top = 0;
+		Object.defineProperty(textarea, "scrollTop", {
+			get: () => {
+				reads++;
+				return top;
+			},
+			set: (value: number) => {
+				top = value;
+			},
+			configurable: true,
+		});
+		textarea.value = "[00:02.00]Bye";
+		textarea.dispatch("input");
+		expect(reads).toBe(0);
+	});
+
+	it("follows the textarea's scroll position on scroll", () => {
+		const { textarea, attach } = mount();
+		const layer = attach().layer as unknown as FakeNode;
+		textarea.scrollTop = 40;
+		textarea.scrollLeft = 7;
+		textarea.dispatch("scroll");
+		expect(layer.scrollTop).toBe(40);
+		expect(layer.scrollLeft).toBe(7);
+	});
+
+	it("writes only the box properties that changed", () => {
+		const { textarea, attach } = mount();
+		textarea.computed = { "font-size": "13px", "padding-top": "4px" };
+		const layer = attach().layer as unknown as FakeNode;
+		const writes: string[] = [];
+		const setProperty = layer.style.setProperty;
+		layer.style.setProperty = (prop, value) => {
+			writes.push(prop);
+			setProperty(prop, value);
+		};
+		textarea.value = "[00:02.00]Bye";
+		textarea.dispatch("input");
+		expect(writes).toEqual([]);
+		textarea.computed = { "font-size": "20px", "padding-top": "4px" };
+		textarea.dispatch("input");
+		expect(writes).toEqual(["font-size"]);
+		expect(layer.style.getPropertyValue("font-size")).toBe("20px");
+	});
+});
+
 describe("attachEditor preconditions", () => {
 	it("throws a clear error for a textarea that is not in the DOM", () => {
 		const textarea = createFakeDocument().createElement("textarea");
@@ -191,6 +253,8 @@ const TTML = [
 	"</body>",
 	"</tt>",
 ].join("\n");
+
+const ONE_LINE = TTML.replace(/\n/g, "");
 
 function mountWith(value: string) {
 	const doc = createFakeDocument();
@@ -221,13 +285,34 @@ function mountWith(value: string) {
 describe("attachEditor incremental rendering", () => {
 	it("keeps the nodes of lines an edit did not touch", () => {
 		const { layer, input, leaves } = mountWith(TTML);
+		const lineEls = [...layer.children];
 		const before = leaves(layer);
-		input(TTML.replace(">three<", ">thre<"));
+		input(TTML.replace(">three<", '><span ttm:role="x-bg">three</span><'));
+		expect(layer.children).toEqual(lineEls);
+		const edited = layer.children[6];
+		const rebuilt = leaves(layer).filter((leaf) => !before.includes(leaf));
+		expect(rebuilt.length).toBeGreaterThan(0);
+		expect(rebuilt.every((leaf) => leaves(edited).includes(leaf))).toBe(true);
+	});
+
+	it("edits a token's text in place when a keystroke stays inside it", () => {
+		const { layer, input, leaves, rendered, expected } = mountWith(ONE_LINE);
+		const before = leaves(layer);
+		input(ONE_LINE.replace(">three<", ">thrxee<"));
 		const after = leaves(layer);
-		const rebuilt = after.filter((leaf) => !before.includes(leaf));
-		expect(rebuilt.map((leaf) => leaf.textContent).join("")).toBe(
-			'<p begin="00:02.000" end="00:03.000"><span begin="00:02.000" end="00:03.000">thre</span></p>\n',
-		);
+		expect(after).toHaveLength(before.length);
+		expect(after.every((leaf, k) => leaf === before[k])).toBe(true);
+		expect(rendered()).toEqual(expected());
+	});
+
+	it("rebuilds only the tokens a structural edit changed inside one long line", () => {
+		const { layer, input, leaves, rendered, expected } = mountWith(ONE_LINE);
+		const before = leaves(layer);
+		input(ONE_LINE.replace("</p><p", '</p><p begin="00:09.000">new</p><p'));
+		const after = leaves(layer);
+		expect(before.filter((leaf) => !after.includes(leaf)).length).toBeLessThanOrEqual(2);
+		expect(after.filter((leaf) => !before.includes(leaf)).length).toBeLessThanOrEqual(12);
+		expect(rendered()).toEqual(expected());
 	});
 
 	it("renders one bh-line element per line", () => {
@@ -324,5 +409,287 @@ describe("attachEditor incremental rendering", () => {
 			const { layer } = mountWith(src);
 			expect(layer.children).toHaveLength(150_001);
 		});
+	});
+});
+
+// -- Style window --------------------------
+
+function mountWindowed(value: string, rows = 3, charsPerRow = 0) {
+	const doc = createFakeDocument();
+	doc.rowHeight = 10;
+	doc.charsPerRow = charsPerRow;
+	doc.layerHeight = rows * 10;
+	const parent = doc.createElement("div");
+	const textarea = doc.createElement("textarea");
+	textarea.value = value;
+	parent.append(textarea);
+	const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
+	const layer = editor.layer as unknown as FakeNode;
+	const attachedPlain = layer.children.every((line) => line.children.every((c) => c.nodeName === "#text"));
+	doc.defaultView.flushFrames();
+	const isPlain = (line: number) => layer.children[line].children.every((c) => c.nodeName === "#text");
+	const type = (text: FakeNode): TokenType => {
+		for (let at = text.parent; at && at !== layer; at = at.parent) {
+			const found = TOKEN_TYPES.find((t) => at.className === `bh-${t}`);
+			if (found) return found;
+		}
+		return "text";
+	};
+	const lineTypes = (line: number) =>
+		mergeTokens(layer.children[line].children.map((c) => ({ type: type(c.firstChild ?? c), text: c.textContent })));
+	const expectedTypes = (line: number) =>
+		splitLines(mergeTokens(tokenize(layerText(textarea.value), detectFormat(textarea.value))))[line];
+	const input = (next: string) => {
+		textarea.value = next;
+		textarea.dispatch("input");
+		doc.defaultView.flushFrames();
+	};
+	const scrollTo = (top: number) => {
+		textarea.scrollTop = top;
+		textarea.dispatch("scroll");
+	};
+	const charTypes = (line: number) =>
+		lineTypes(line).flatMap((token) => Array.from({ length: token.text.length }, () => token.type));
+	const expectedCharTypes = (line: number) =>
+		expectedTypes(line).flatMap((token) => Array.from({ length: token.text.length }, () => token.type));
+	return {
+		doc,
+		textarea,
+		layer,
+		isPlain,
+		lineTypes,
+		expectedTypes,
+		charTypes,
+		expectedCharTypes,
+		input,
+		scrollTo,
+		attachedPlain,
+	};
+}
+
+const LRC_LINES = Array.from({ length: 200 }, (_, k) => `[00:${String(k % 60).padStart(2, "0")}.00]line ${k}`).join(
+	"\n",
+);
+
+describe("attachEditor style window", () => {
+	it("styles the rows near the visible ones and renders far rows as plain text", () => {
+		const { isPlain, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
+		for (const line of [0, 2, 5]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		expect(isPlain(100)).toBe(true);
+		expect(isPlain(199)).toBe(true);
+	});
+
+	it("attaches a sized editor as plain text and styles the visible rows in the first frame", () => {
+		const { attachedPlain, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
+		expect(attachedPlain).toBe(true);
+		expect(lineTypes(0)).toEqual(expectedTypes(0));
+	});
+
+	it("styles the rows a scroll brings into view before the next paint", () => {
+		const { isPlain, lineTypes, expectedTypes, scrollTo, layer } = mountWindowed(LRC_LINES);
+		scrollTo(1000);
+		expect(layer.scrollTop).toBe(1000);
+		for (const line of [99, 100, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		expect(isPlain(0)).toBe(true);
+	});
+
+	it("does not restyle on a small scroll that stays inside the window", () => {
+		const { layer, scrollTo } = mountWindowed(LRC_LINES);
+		const before = [...layer.children[4].children];
+		scrollTo(10);
+		expect(layer.children[4].children).toEqual(before);
+	});
+
+	it("waits for scrolling to settle before recentring a window that still covers the visible rows", () => {
+		const { isPlain, scrollTo, doc } = mountWindowed(LRC_LINES);
+		expect(isPlain(7)).toBe(true);
+		scrollTo(20);
+		expect(isPlain(7)).toBe(true);
+		doc.defaultView.flushFrames();
+		expect(isPlain(7)).toBe(false);
+	});
+
+	it("measures no layout for a keystroke or a scroll that stays well inside the window", () => {
+		const { layer, input, textarea, scrollTo } = mountWindowed(LRC_LINES);
+		let measures = 0;
+		const measure = layer.getBoundingClientRect;
+		layer.getBoundingClientRect = () => {
+			measures++;
+			return measure();
+		};
+		input(textarea.value.replace("line 1\n", "line 1x\n"));
+		scrollTo(5);
+		expect(measures).toBe(0);
+	});
+
+	it("regression: survives emptying the document and scrolling", () => {
+		const { input, scrollTo, layer, textarea } = mountWindowed(LRC_LINES);
+		input("");
+		scrollTo(40);
+		expect(layer.textContent).toBe("");
+		input(LRC_LINES);
+		expect(layer.textContent).toBe(layerText(textarea.value));
+	});
+
+	it("measures again when a web font finishes loading, and stops listening on destroy", () => {
+		const { layer, doc, textarea } = mountWindowed(LRC_LINES);
+		let measures = 0;
+		const measure = layer.getBoundingClientRect;
+		layer.getBoundingClientRect = () => {
+			measures++;
+			return measure();
+		};
+		const fire = () => {
+			for (const listener of doc.fonts.listeners.get("loadingdone") ?? []) listener();
+			doc.defaultView.flushFrames();
+		};
+		fire();
+		expect(measures).toBeGreaterThan(0);
+		attachEditor(textarea as unknown as HTMLTextAreaElement).destroy();
+		expect(doc.fonts.listeners.get("loadingdone")?.size ?? 0).toBe(0);
+	});
+
+	it("measures again when the textarea's text box changes", () => {
+		const { layer, input, textarea } = mountWindowed(LRC_LINES);
+		let measures = 0;
+		const measure = layer.getBoundingClientRect;
+		layer.getBoundingClientRect = () => {
+			measures++;
+			return measure();
+		};
+		textarea.computed = { "font-size": "20px" };
+		input(textarea.value.replace("line 1\n", "line 1x\n"));
+		expect(measures).toBeGreaterThan(0);
+	});
+
+	it("regression: keeps visible rows styled while lines are joined one newline at a time", () => {
+		const { input, textarea, lineTypes, expectedTypes } = mountWindowed(LRC_LINES.split("\n").slice(0, 60).join("\n"));
+		for (let step = 0; step < 40; step++) {
+			const value = textarea.value;
+			const at = value.indexOf("\n");
+			input(value.slice(0, at) + value.slice(at + 1));
+			for (const line of [0, 1, 2]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		}
+	});
+
+	it("regression: windows a document typed into an editor attached empty", () => {
+		const { input, isPlain, lineTypes, expectedTypes } = mountWindowed("");
+		input(LRC_LINES);
+		expect(isPlain(150)).toBe(true);
+		expect(lineTypes(1)).toEqual(expectedTypes(1));
+	});
+
+	it("regression: windows a document pasted after deleting everything", () => {
+		const { input, isPlain, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
+		input("");
+		input(LRC_LINES);
+		expect(isPlain(150)).toBe(true);
+		expect(lineTypes(1)).toEqual(expectedTypes(1));
+	});
+
+	it("measures again after an edit large enough to pull unstyled text into view", () => {
+		const { input, textarea, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
+		const value = textarea.value;
+		input(value.slice(0, value.indexOf("[00:03.00]")) + value.slice(value.indexOf("[00:00.00]line 60")));
+		for (const line of [0, 3, 4, 5]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+	});
+
+	it("edits a far plain row in place without styling it", () => {
+		const { layer, isPlain, input, textarea } = mountWindowed(LRC_LINES);
+		const node = layer.children[150].children[0];
+		input(textarea.value.replace("line 150", "line 150 edited"));
+		expect(isPlain(150)).toBe(true);
+		expect(layer.children[150].children[0]).toBe(node);
+		expect(layer.textContent).toBe(layerText(textarea.value));
+	});
+
+	it("keeps its window while hidden and measures again when shown", () => {
+		const { isPlain, textarea, doc, lineTypes, expectedTypes, layer } = mountWindowed(LRC_LINES);
+		const resize = () => {
+			for (const observer of doc.defaultView.observers) if (observer.connected) observer.callback();
+			doc.defaultView.flushFrames();
+		};
+		doc.layerHeight = 0;
+		resize();
+		expect(isPlain(150)).toBe(true);
+		textarea.value = `${LRC_LINES}\n`;
+		const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
+		editor.refresh();
+		doc.defaultView.flushFrames();
+		expect(isPlain(150)).toBe(true);
+		doc.layerHeight = 30;
+		textarea.scrollTop = 1000;
+		layer.scrollTop = 1000;
+		resize();
+		for (const line of [100, 101, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		expect(isPlain(150)).toBe(true);
+	});
+
+	describe("invariants", () => {
+		it("keeps the text exact and the visible rows coloured like a full render through random edits and scrolls", () => {
+			let seed = 7;
+			const random = () => {
+				seed = (seed * 1103515245 + 12345) % 2147483648;
+				return seed / 2147483648;
+			};
+			const SNIPPETS = ["x", "\n", "\n\n", "[00:01.00]", "<00:02.00>", "v1:", "[ti:", "]"];
+			const { textarea, layer, input, scrollTo, lineTypes, expectedTypes } = mountWindowed(LRC_LINES, 4);
+			for (let step = 0; step < 150; step++) {
+				const value = textarea.value;
+				const at = Math.floor(random() * (value.length + 1));
+				const roll = random();
+				if (roll < 0.45) input(value.slice(0, at) + SNIPPETS[Math.floor(random() * SNIPPETS.length)] + value.slice(at));
+				else if (roll < 0.8) input(value.slice(0, at) + value.slice(at + Math.floor(random() * 120)));
+				else if (roll < 0.83) input(LRC_LINES);
+				else scrollTo(Math.floor(random() * layer.children.length) * 10);
+				expect(layer.textContent).toBe(layerText(textarea.value));
+				const first = Math.floor(layer.scrollTop / 10);
+				for (let line = first; line < Math.min(layer.children.length, first + 4); line++)
+					expect(lineTypes(line)).toEqual(expectedTypes(line));
+			}
+		});
+	});
+});
+
+// -- Style window on one wrapped line --------------------------
+
+const LONG_ONE_LINE = ONE_LINE.replace(
+	"<body>",
+	`<body>${'<p begin="00:05.000" end="00:06.000"><span begin="00:05.000" end="00:05.500">la</span><span ttm:role="x-bg">ooh</span></p>'.repeat(120)}`,
+);
+const ROWS = 3;
+const PER_ROW = 40;
+
+describe("attachEditor style window on one wrapped line", () => {
+	const visibleChars = (layer: FakeNode) => {
+		const first = Math.floor(layer.scrollTop / 10) * PER_ROW;
+		return [first, first + ROWS * PER_ROW];
+	};
+
+	it("styles every visible character and leaves text far outside the window plain, wherever it scrolls", () => {
+		const { layer, scrollTo, doc, charTypes, expectedCharTypes } = mountWindowed(LONG_ONE_LINE, ROWS, PER_ROW);
+		const rows = Math.ceil(LONG_ONE_LINE.length / PER_ROW);
+		for (const row of [0, 40, 41, Math.floor(rows / 2), 120, rows - ROWS, 7]) {
+			scrollTo(row * 10);
+			doc.defaultView.flushFrames();
+			const got = charTypes(0);
+			const want = expectedCharTypes(0);
+			const [from, to] = visibleChars(layer);
+			for (let at = from; at < Math.min(to, want.length); at++) expect(got[at]).toBe(want[at]);
+			const margin = 3 * ROWS * PER_ROW;
+			for (let at = 0; at < got.length; at++) if (at < from - margin || at >= to + margin) expect(got[at]).toBe("text");
+		}
+	});
+
+	it("regression: keeps the visible characters styled through many small deletions", () => {
+		const { layer, input, textarea, charTypes, expectedCharTypes } = mountWindowed(LONG_ONE_LINE, ROWS, PER_ROW);
+		for (let step = 0; step < 300; step++) {
+			const value = textarea.value;
+			input(value.slice(0, 60) + value.slice(61));
+			const got = charTypes(0);
+			const want = expectedCharTypes(0);
+			const [from, to] = visibleChars(layer);
+			for (let k = from; k < Math.min(to, want.length); k++) expect(got[k]).toBe(want[k]);
+		}
 	});
 });

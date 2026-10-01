@@ -17,9 +17,13 @@ export function splitLines(tokens: readonly Token[]): Token[][] {
 	return lines;
 }
 
+function sameToken(a: Token, b: Token): boolean {
+	return a.type === b.type && a.text === b.text;
+}
+
 function sameLine(a: readonly Token[], b: readonly Token[]): boolean {
 	if (a.length !== b.length) return false;
-	for (let k = 0; k < a.length; k++) if (a[k].type !== b[k].type || a[k].text !== b[k].text) return false;
+	for (let k = 0; k < a.length; k++) if (!sameToken(a[k], b[k])) return false;
 	return true;
 }
 
@@ -29,12 +33,34 @@ export interface LineRange {
 	nextEnd: number;
 }
 
-/** Lines [start, prevEnd) of prev became lines [start, nextEnd) of next; everything around them is unchanged. */
-export function changedRange(prev: readonly Token[][], next: readonly Token[][]): LineRange {
+/** Items [start, prevEnd) of prev became items [start, nextEnd) of next; everything around them is unchanged. */
+function changedItems<T>(prev: readonly T[], next: readonly T[], same: (a: T, b: T) => boolean): LineRange {
 	const shorter = Math.min(prev.length, next.length);
 	let start = 0;
-	while (start < shorter && sameLine(prev[start], next[start])) start++;
+	while (start < shorter && same(prev[start], next[start])) start++;
 	let tail = 0;
-	while (tail < shorter - start && sameLine(prev[prev.length - 1 - tail], next[next.length - 1 - tail])) tail++;
+	while (tail < shorter - start && same(prev[prev.length - 1 - tail], next[next.length - 1 - tail])) tail++;
 	return { start, prevEnd: prev.length - tail, nextEnd: next.length - tail };
+}
+
+export function changedRange(prev: readonly Token[][], next: readonly Token[][]): LineRange {
+	return changedItems(prev, next, sameLine);
+}
+
+export function changedTokens(prev: readonly Token[], next: readonly Token[]): LineRange {
+	return changedItems(prev, next, sameToken);
+}
+
+/** For each token of next, the index of the token of prev that starts at the same offset with the same type, or -1. */
+export function matchByOffset(prev: readonly Token[], next: readonly Token[]): Int32Array {
+	const matched = new Int32Array(next.length).fill(-1);
+	let i = 0;
+	let prevAt = 0;
+	let nextAt = 0;
+	for (let j = 0; j < next.length; j++) {
+		while (i < prev.length && prevAt < nextAt) prevAt += prev[i++].text.length;
+		if (i < prev.length && prevAt === nextAt && prev[i].type === next[j].type) matched[j] = i;
+		nextAt += next[j].text.length;
+	}
+	return matched;
 }
