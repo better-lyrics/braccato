@@ -618,9 +618,10 @@ describe("attachEditor style window", () => {
 		doc.defaultView.flushFrames();
 		expect(isPlain(150)).toBe(true);
 		doc.layerHeight = 30;
-		layer.scrollTop = 0;
+		textarea.scrollTop = 1000;
+		layer.scrollTop = 1000;
 		resize();
-		for (const line of [0, 1, 2]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		for (const line of [100, 101, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
 		expect(isPlain(150)).toBe(true);
 	});
 
