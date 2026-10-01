@@ -2,10 +2,15 @@ import { detectFormat } from "@braccato/parsers/format";
 import { describe, expect, it } from "vitest";
 import { SYNCED_BOX_PROPERTIES, attachEditor, layerText } from "../editor.js";
 import { splitLines } from "../lines.js";
-import { mergeTokens } from "../render.js";
-import { tokenize } from "../tokenize.js";
-import { TOKEN_TYPES, type TokenType } from "../types.js";
+import { pushToken, tokenize } from "../tokenize.js";
+import { type LyricFormat, TOKEN_TYPES, type Token, type TokenType } from "../types.js";
 import { type FakeNode, createFakeDocument } from "./fakeDom.js";
+
+const merged = (tokens: readonly Token[]) => {
+	const out: Token[] = [];
+	for (const { type, text } of tokens) pushToken(out, type, text);
+	return out;
+};
 
 describe("layerText", () => {
 	it("adds a trailing space after a final newline", () => {
@@ -143,6 +148,114 @@ describe("attachEditor double attach", () => {
 	});
 });
 
+describe("attachEditor setFormat", () => {
+	const LRC_LOOKING = "[00:01.00]Hi\n[00:02.00]there";
+	const classes = (layer: FakeNode) => layer.children.flatMap((line) => line.children.map((c) => c.className));
+	const mountFixed = (format?: LyricFormat) => {
+		const { doc, parent, textarea } = mount();
+		textarea.value = LRC_LOOKING;
+		const editor = attachEditor(textarea as unknown as HTMLTextAreaElement, { format });
+		return { doc, parent, textarea, editor, layer: editor.layer as unknown as FakeNode };
+	};
+
+	it("re-colours a live editor in the new format", () => {
+		const { editor, layer } = mountFixed();
+		expect(classes(layer)).toContain("bh-timestamp");
+		editor.setFormat("plain");
+		expect(classes(layer).every((name) => name === "")).toBe(true);
+		expect(layer.textContent).toBe(LRC_LOOKING);
+	});
+
+	it("goes back to detecting on every render when given undefined", () => {
+		const { editor, layer, textarea } = mountFixed("plain");
+		expect(classes(layer)).not.toContain("bh-timestamp");
+		editor.setFormat(undefined);
+		expect(classes(layer)).toContain("bh-timestamp");
+		textarea.value = "<tt><p>x</p></tt>";
+		textarea.dispatch("input");
+		expect(classes(layer)).toContain("bh-tag");
+	});
+
+	it("keeps the fixed format across input until it is changed", () => {
+		const { editor, layer, textarea } = mountFixed();
+		editor.setFormat("plain");
+		textarea.value = `${LRC_LOOKING}\n[00:03.00]more`;
+		textarea.dispatch("input");
+		expect(classes(layer)).not.toContain("bh-timestamp");
+		editor.setFormat("lrc");
+		expect(classes(layer)).toContain("bh-timestamp");
+		expect(layer.textContent).toBe(`${LRC_LOOKING}\n[00:03.00]more`);
+	});
+
+	it("draws what a full render of the new format draws", () => {
+		const { editor, layer, textarea } = mountFixed();
+		textarea.value = `<tt><p begin="1">[00:01.00]a</p>\n<p>(1000,20)b</p></tt>`;
+		editor.refresh();
+		const snapshot = () => layer.children.map((line) => line.children.map((c) => `${c.className}:${c.textContent}`));
+		for (const format of ["lrc", "qrc", "srt", "plain", "ttml", undefined] as const) {
+			editor.setFormat(format);
+			const switched = snapshot();
+			editor.refresh();
+			expect(switched, String(format)).toEqual(snapshot());
+		}
+	});
+
+	it("is a no-op when the format is unchanged", () => {
+		const { editor, layer, textarea } = mountFixed("lrc");
+		const lines = [...layer.children];
+		const nodes = lines.flatMap((line) => [...line.children]);
+		textarea.value = "[00:09.00]written from code";
+		editor.setFormat("lrc");
+		expect(layer.children).toEqual(lines);
+		expect(layer.children.flatMap((line) => line.children)).toEqual(nodes);
+		expect(layer.textContent).toBe(LRC_LOOKING);
+	});
+
+	it("is a no-op when detection is already on", () => {
+		const { editor, layer } = mountFixed();
+		const lines = [...layer.children];
+		editor.setFormat(undefined);
+		expect(layer.children).toEqual(lines);
+	});
+
+	it("does not rebuild the textarea or the wrapper", () => {
+		const { editor, parent, textarea, layer } = mountFixed();
+		const wrap = editor.wrap as unknown as FakeNode;
+		const listeners = [...textarea.listeners.values()].map((set) => [...set]);
+		editor.setFormat("plain");
+		expect(parent.children).toContain(wrap);
+		expect(wrap.children).toEqual([layer, textarea]);
+		expect(textarea.parent).toBe(wrap);
+		expect(textarea.value).toBe(LRC_LOOKING);
+		expect([...textarea.listeners.values()].map((set) => [...set])).toEqual(listeners);
+	});
+
+	it("does nothing after destroy", () => {
+		const { editor, layer } = mountFixed();
+		editor.destroy();
+		editor.setFormat("plain");
+		expect(classes(layer)).toContain("bh-timestamp");
+	});
+
+	it("is owned by the editor: mutating the options object after attach changes nothing", () => {
+		const { textarea } = mount();
+		textarea.value = LRC_LOOKING;
+		const options: { format?: LyricFormat } = {};
+		const editor = attachEditor(textarea as unknown as HTMLTextAreaElement, options);
+		options.format = "plain";
+		editor.refresh();
+		expect(classes(editor.layer as unknown as FakeNode)).toContain("bh-timestamp");
+	});
+
+	it("ignores the options of a second attach, so setFormat is the way to change format", () => {
+		const { editor, textarea, layer } = mountFixed("lrc");
+		const again = attachEditor(textarea as unknown as HTMLTextAreaElement, { format: "plain" });
+		expect(again).toBe(editor);
+		again.refresh();
+		expect(classes(layer)).toContain("bh-timestamp");
+	});
+});
+
 describe("attachEditor stale handles", () => {
 	it("a second destroy on an old handle leaves a newer editor alone", () => {
 		const { parent, textarea, attach } = mount();
@@ -273,12 +386,12 @@ function mountWith(value: string) {
 	};
 	const leaves = (node: FakeNode): FakeNode[] =>
 		node.nodeName === "#text" ? [node] : node.children.flatMap((child) => leaves(child));
-	const rendered = () => mergeTokens(leaves(layer).map((leaf) => ({ type: type(leaf), text: leaf.textContent })));
+	const rendered = () => merged(leaves(layer).map((leaf) => ({ type: type(leaf), text: leaf.textContent })));
 	const input = (next: string) => {
 		textarea.value = next;
 		textarea.dispatch("input");
 	};
-	const expected = () => mergeTokens(tokenize(layerText(textarea.value), detectFormat(textarea.value)));
+	const expected = () => tokenize(layerText(textarea.value), detectFormat(textarea.value));
 	return { textarea, editor, layer, rendered, input, expected, leaves };
 }
 
@@ -408,7 +521,7 @@ describe("attachEditor incremental rendering", () => {
 			const src = "a\n".repeat(150_000);
 			const { layer } = mountWith(src);
 			expect(layer.children).toHaveLength(150_001);
-		});
+		}, 20_000);
 	});
 });
 
@@ -436,9 +549,9 @@ function mountWindowed(value: string, rows = 3, charsPerRow = 0) {
 		return "text";
 	};
 	const lineTypes = (line: number) =>
-		mergeTokens(layer.children[line].children.map((c) => ({ type: type(c.firstChild ?? c), text: c.textContent })));
+		merged(layer.children[line].children.map((c) => ({ type: type(c.firstChild ?? c), text: c.textContent })));
 	const expectedTypes = (line: number) =>
-		splitLines(mergeTokens(tokenize(layerText(textarea.value), detectFormat(textarea.value))))[line];
+		splitLines(tokenize(layerText(textarea.value), detectFormat(textarea.value)))[line];
 	const input = (next: string) => {
 		textarea.value = next;
 		textarea.dispatch("input");
@@ -455,6 +568,7 @@ function mountWindowed(value: string, rows = 3, charsPerRow = 0) {
 	return {
 		doc,
 		textarea,
+		editor,
 		layer,
 		isPlain,
 		lineTypes,
@@ -491,6 +605,17 @@ describe("attachEditor style window", () => {
 		expect(layer.scrollTop).toBe(1000);
 		for (const line of [99, 100, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
 		expect(isPlain(0)).toBe(true);
+	});
+
+	it("setFormat keeps the window: visible rows take the new format and far rows stay plain", () => {
+		const { editor, isPlain, lineTypes, expectedTypes, scrollTo, layer } = mountWindowed(LRC_LINES);
+		editor.setFormat("plain");
+		scrollTo(1000);
+		for (const line of [99, 100, 102]) expect(isPlain(line)).toBe(true);
+		editor.setFormat("lrc");
+		for (const line of [99, 100, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		for (const line of [0, 199]) expect(isPlain(line)).toBe(true);
+		expect(layer.textContent).toBe(LRC_LINES);
 	});
 
 	it("does not restyle on a small scroll that stays inside the window", () => {

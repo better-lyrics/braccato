@@ -9,20 +9,6 @@ export interface HighlightOptions {
 	pretty?: boolean;
 }
 
-export function mergeTokens(tokens: readonly Token[]): Token[] {
-	const out: Token[] = [];
-	let last: Token | undefined;
-	for (const token of tokens) {
-		if (last && last.type === token.type) {
-			last.text += token.text;
-			continue;
-		}
-		last = { type: token.type, text: token.text };
-		out.push(last);
-	}
-	return out;
-}
-
 export function tokenNode(doc: Document, { type, text }: Token): ChildNode {
 	if (type === "text") return doc.createTextNode(text);
 	const span = doc.createElement("span");
@@ -41,7 +27,7 @@ export function highlightInto(el: HTMLElement, src: string, options: HighlightOp
 	const text = options.pretty && format === "ttml" ? prettyTtml(src) : src;
 	el.classList.add("bh");
 	const fragment = el.ownerDocument.createDocumentFragment();
-	appendTokens(fragment, mergeTokens(tokenize(text, format)));
+	appendTokens(fragment, tokenize(text, format));
 	el.replaceChildren(fragment);
 	return format;
 }
