@@ -63,7 +63,8 @@ export interface EditorHandle {
 	/**
 	 * Changes the fixed format of the live editor without re-attaching, so the textarea keeps its native undo
 	 * history. `undefined` goes back to detecting the format on every render. Re-renders at once; does nothing
-	 * when the format is unchanged or the editor is destroyed.
+	 * when the format is unchanged or the editor is destroyed. It does not replace `refresh()` after a
+	 * programmatic write to `textarea.value`.
 	 */
 	setFormat(format?: LyricFormat): void;
 	destroy(): void;
