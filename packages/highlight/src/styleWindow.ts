@@ -53,7 +53,7 @@ export interface RenderedLines {
 	length: number;
 }
 
-function firstIndex(count: number, passes: (index: number) => boolean): number {
+export function firstIndex(count: number, passes: (index: number) => boolean): number {
 	let lo = 0;
 	let hi = count;
 	while (lo < hi) {

@@ -495,6 +495,15 @@ describe("attachEditor style window", () => {
 		expect(measures).toBe(0);
 	});
 
+	it("regression: survives emptying the document and scrolling", () => {
+		const { input, scrollTo, layer, textarea } = mountWindowed(LRC_LINES);
+		input("");
+		scrollTo(40);
+		expect(layer.textContent).toBe("");
+		input(LRC_LINES);
+		expect(layer.textContent).toBe(layerText(textarea.value));
+	});
+
 	it("measures again when the textarea's text box changes", () => {
 		const { layer, input, textarea } = mountWindowed(LRC_LINES);
 		let measures = 0;

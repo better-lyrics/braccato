@@ -1,7 +1,15 @@
 import { detectFormat } from "@braccato/parsers/format";
 import { changedRange, changedTokens, matchByOffset, splitLines } from "./lines.js";
 import { mergeTokens, tokenNode } from "./render.js";
-import { EVERYTHING, NOTHING, projectLine, shiftWindow, visibleWindow } from "./styleWindow.js";
+import {
+	EVERYTHING,
+	NOTHING,
+	type StyleWindow,
+	firstIndex,
+	projectLine,
+	shiftWindow,
+	visibleWindow,
+} from "./styleWindow.js";
 import { tokenize } from "./tokenize.js";
 import type { LyricFormat, Token } from "./types.js";
 
@@ -209,6 +217,8 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		if (full || boxChanged || Math.abs(text.length - prevLength) > (styled.to - styled.from) * REMEASURE_SHARE)
 			scheduleRestyle();
 	};
+	const lineAt = (offset: number) => Math.max(0, firstIndex(starts.length, (k) => starts[k] > offset) - 1);
+	const linesIn = ({ from, to }: StyleWindow) => [lineAt(from), lineAt(Math.max(from, to - 1))];
 	const rendered = () => ({ layer, lineEls, lineNodes, shown, starts, length: source.length });
 	let measuredAt = Number.NaN;
 	let settle = 0;
@@ -222,9 +232,15 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 			settle = view.setTimeout(() => restyle(false), SETTLE_MS);
 			return;
 		}
+		const prev = styled;
 		styled = visibleWindow(rendered(), WINDOW_MARGIN);
 		measuredAt = height ? scrolledTo : Number.NaN;
-		for (let k = 0; k < lines.length; k++) restyleLine(k);
+		if (lines.length === 0) return;
+		const [prevFirst, prevLast] = linesIn(prev);
+		const [first, last] = linesIn(styled);
+		for (let k = prevFirst; k <= prevLast; k++) restyleLine(k);
+		for (let k = Math.max(first, prevLast + 1); k <= last; k++) restyleLine(k);
+		for (let k = first; k <= Math.min(last, prevFirst - 1); k++) restyleLine(k);
 	};
 	let frame = 0;
 	const scheduleRestyle = () => {
