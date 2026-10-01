@@ -1,6 +1,6 @@
 import { detectFormat } from "@braccato/parsers/format";
 import { changedRange, changedTokens, matchByOffset, splitLines } from "./lines.js";
-import { mergeTokens, tokenNode } from "./render.js";
+import { tokenNode } from "./render.js";
 import {
 	EVERYTHING,
 	NOTHING,
@@ -48,14 +48,24 @@ export function layerText(src: string): string {
 }
 
 export interface EditorOptions {
-	/** Fixed format; omitted means detect on every render so pasting a different format re-colours. */
+	/**
+	 * Fixed format; omitted means detect on every render so pasting a different format re-colours.
+	 * Read once at attach time: later writes to this object are ignored. Change it with `EditorHandle.setFormat`.
+	 */
 	format?: LyricFormat;
 }
 
 export interface EditorHandle {
 	wrap: HTMLElement;
 	layer: HTMLElement;
+	/** Re-renders from `textarea.value`. Call it after every programmatic write, which fires no `input` event. */
 	refresh(): void;
+	/**
+	 * Changes the fixed format of the live editor without re-attaching, so the textarea keeps its native undo
+	 * history. `undefined` goes back to detecting the format on every render. Re-renders at once; does nothing
+	 * when the format is unchanged or the editor is destroyed.
+	 */
+	setFormat(format?: LyricFormat): void;
 	destroy(): void;
 }
 
@@ -68,10 +78,15 @@ const REMEASURE_SHARE = 0.125;
 
 const attached = new WeakMap<HTMLTextAreaElement, EditorHandle>();
 
-/** Attaching the same textarea twice returns the handle that is already live, whatever the options. */
+/**
+ * Lays a highlighted layer under `textarea`. The editor copies `options` at attach time and owns its format from
+ * then on. Attaching a textarea that already has a live editor returns that handle and ignores the new
+ * `options`; call `setFormat` on the handle to change the format.
+ */
 export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptions = {}): EditorHandle {
 	const existing = attached.get(textarea);
 	if (existing) return existing;
+	let format = options.format;
 	const doc = textarea.ownerDocument;
 	const view = doc.defaultView;
 	if (!view) throw new Error("attachEditor needs a textarea in a document with a window");
@@ -196,7 +211,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		const boxChanged = syncBox();
 		const src = textarea.value;
 		const text = layerText(src);
-		const next = splitLines(mergeTokens(tokenize(text, options.format ?? detectFormat(src))));
+		const next = splitLines(tokenize(text, format ?? detectFormat(src)));
 		const prevLines = lines;
 		const prevLength = source.length;
 		if (!full) styled = shiftWindow(styled, source, text);
@@ -288,6 +303,11 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		wrap,
 		layer,
 		refresh,
+		setFormat(next) {
+			if (destroyed || next === format) return;
+			format = next;
+			render(false);
+		},
 		destroy() {
 			if (destroyed) return;
 			destroyed = true;

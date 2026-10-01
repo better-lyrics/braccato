@@ -1,3 +1,4 @@
+import { pushToken } from "./tokenize.js";
 import type { Token } from "./types.js";
 
 /** Source offsets [from, to) whose tokens render styled; everything else renders as plain text. */
@@ -17,10 +18,7 @@ export function projectLine(tokens: readonly Token[], lineStart: number, window:
 	let at = lineStart;
 	for (const token of tokens) {
 		const end = at + token.text.length;
-		const type = end > window.from && at < window.to ? token.type : "text";
-		const last = out[out.length - 1];
-		if (last && last.type === type) last.text += token.text;
-		else out.push({ type, text: token.text });
+		pushToken(out, end > window.from && at < window.to ? token.type : "text", token.text);
 		at = end;
 	}
 	return out;

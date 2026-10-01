@@ -10,8 +10,7 @@ describe("tokenize lrc", () => {
 		expect(pairs(tokenize("[00:01.00]<00:01.00>Hi <00:01.50>there", "lrc"))).toEqual([
 			"punct:[",
 			"timestamp:00:01.00",
-			"punct:]",
-			"punct:<",
+			"punct:]<",
 			"wordTime:00:01.00",
 			"punct:>",
 			"text:Hi ",
@@ -36,8 +35,7 @@ describe("tokenize lrc", () => {
 		expect(pairs(tokenize("[00:33.71][01:07.46]Twas", "lrc"))).toEqual([
 			"punct:[",
 			"timestamp:00:33.71",
-			"punct:]",
-			"punct:[",
+			"punct:][",
 			"timestamp:01:07.46",
 			"punct:]",
 			"text:Twas",
@@ -58,7 +56,37 @@ describe("tokenize lrc", () => {
 	it("keeps newlines as text tokens, CRLF included", () => {
 		const src = "[00:01.00]a\r\n[00:02.00]b";
 		expect(joined(tokenize(src, "lrc"))).toBe(src);
-		expect(pairs(tokenize(src, "lrc"))).toContain("text:\r\n");
+		expect(pairs(tokenize(src, "lrc"))).toContain("text:a\r\n");
+	});
+});
+
+describe("tokenize merging", () => {
+	it("merges punctuation that meets across stamps", () => {
+		expect(pairs(tokenize("[00:01.00]<00:01.00>Hi", "lrc"))).toEqual([
+			"punct:[",
+			"timestamp:00:01.00",
+			"punct:]<",
+			"wordTime:00:01.00",
+			"punct:>",
+			"text:Hi",
+		]);
+	});
+
+	it("merges a newline into the lyric text around it", () => {
+		expect(pairs(tokenize("[00:01.00]a\n[00:02.00]b", "lrc"))).toEqual([
+			"punct:[",
+			"timestamp:00:01.00",
+			"punct:]",
+			"text:a\n",
+			"punct:[",
+			"timestamp:00:02.00",
+			"punct:]",
+			"text:b",
+		]);
+	});
+
+	it("merges a leading byte order mark into the text after it", () => {
+		expect(pairs(tokenize("\uFEFFno timing", "plain"))).toEqual(["text:\uFEFFno timing"]);
 	});
 });
 
@@ -99,8 +127,7 @@ describe("tokenize srt", () => {
 			"timestamp:00:00:14,210",
 			"punct: --> ",
 			"timestamp:00:00:18,560",
-			"text:\n",
-			"text:Amazing grace",
+			"text:\nAmazing grace",
 		]);
 	});
 
@@ -118,17 +145,14 @@ describe("tokenize ttml", () => {
 			"tag:p",
 			"text: ",
 			"attr:begin",
-			"punct:=",
-			'punct:"',
+			'punct:="',
 			"timestamp:1.5",
 			'punct:"',
 			"text: ",
 			"attr:end",
-			"punct:=",
-			'punct:"',
+			'punct:="',
 			"timestamp:2.0",
-			'punct:"',
-			"punct:>",
+			'punct:">',
 			"text:Hi",
 			"punct:</",
 			"tag:p",
@@ -156,8 +180,8 @@ describe("tokenize ttml", () => {
 
 	it("marks declarations and comments", () => {
 		const tokens = pairs(tokenize(`<?xml version="1.0"?><!-- note --><tt></tt>`, "ttml"));
-		expect(tokens[0]).toBe(`comment:<?xml version="1.0"?>`);
-		expect(tokens[1]).toBe("comment:<!-- note -->");
+		expect(tokens[0]).toBe(`comment:<?xml version="1.0"?><!-- note -->`);
+		expect(tokens[1]).toBe("punct:<");
 	});
 });
 
@@ -235,6 +259,16 @@ describe("invariants", () => {
 	it("returns [] for empty input", () => {
 		expect(tokenize("")).toEqual([]);
 		expect(tokenize("", "ttml")).toEqual([]);
+	});
+
+	it("never emits two adjacent tokens of the same type", () => {
+		for (const [format, src] of Object.entries(FIXTURES)) {
+			const tokens = tokenize(src);
+			expect(
+				tokens.every((t, k) => k === 0 || tokens[k - 1].type !== t.type),
+				format,
+			).toBe(true);
+		}
 	});
 
 	it("is deterministic", () => {
@@ -339,6 +373,7 @@ describe("invariants: seeded random input", () => {
 				const tokens = tokenize(src, format);
 				expect(joined(tokens), `${format ?? "auto"}: ${JSON.stringify(src)}`).toBe(src);
 				expect(tokens.every((t) => t.text.length > 0)).toBe(true);
+				expect(tokens.every((t, k) => k === 0 || tokens[k - 1].type !== t.type)).toBe(true);
 			}
 		}
 	});
@@ -347,7 +382,7 @@ describe("invariants: seeded random input", () => {
 describe("line endings and namespaces", () => {
 	it("treats a lone carriage return as a line ending", () => {
 		const lrc = pairs(tokenize("[00:01.00]a\r[00:02.00]b", "lrc"));
-		expect(lrc).toContain("text:\r");
+		expect(lrc).toContain("text:a\r");
 		expect(lrc).toContain("timestamp:00:02.00");
 		const srt = pairs(tokenize("2\r00:00:18,560 --> 00:00:22,910\rThat saved", "srt"));
 		expect(srt).toContain("meta:2");
@@ -355,8 +390,15 @@ describe("line endings and namespaces", () => {
 	});
 
 	it("still keeps CRLF as one line ending", () => {
-		expect(pairs(tokenize("[00:01.00]a\r\n[00:02.00]b", "lrc")).filter((p) => p.startsWith("text:\r"))).toEqual([
-			"text:\r\n",
+		expect(pairs(tokenize("[00:01.00]a\r\n[00:02.00]b", "lrc"))).toEqual([
+			"punct:[",
+			"timestamp:00:01.00",
+			"punct:]",
+			"text:a\r\n",
+			"punct:[",
+			"timestamp:00:02.00",
+			"punct:]",
+			"text:b",
 		]);
 	});
 
