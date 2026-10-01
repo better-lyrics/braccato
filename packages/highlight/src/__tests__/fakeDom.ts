@@ -67,6 +67,8 @@ export interface FakeResizeObserver {
 	connected: boolean;
 	/** Delivers a resize entry for every observed node, the way the browser does after layout. */
 	callback: Listener;
+	/** Delivers exactly these entries, for engines that report less than a full entry. */
+	deliver(entries: Partial<FakeResizeEntry>[]): void;
 }
 
 export interface FakeWindow {
@@ -138,6 +140,7 @@ export function createFakeDocument(): FakeDocument {
 					observed: [],
 					connected: true,
 					callback: () => callback(record.observed.map(resizeEntry)),
+					deliver: (entries) => callback(entries as FakeResizeEntry[]),
 				};
 				this.record = record;
 				observers.push(record);

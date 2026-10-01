@@ -378,7 +378,7 @@ describe("attachEditor scrollbar gutters", () => {
 			px(layer, "border-bottom-width");
 		const textareaClientHeight = () =>
 			box().height - css("border-top-width") - css("border-bottom-width") - textarea.scrollbar.horizontal;
-		return { textarea, layer, resize, layerContent, textareaContent, layerClientHeight, textareaClientHeight };
+		return { doc, textarea, layer, resize, layerContent, textareaContent, layerClientHeight, textareaClientHeight };
 	};
 
 	it("lays the layer's text out in the textarea's content box when a classic scrollbar takes width from it", () => {
@@ -446,6 +446,13 @@ describe("attachEditor scrollbar gutters", () => {
 		resize();
 		for (const side of ["left", "right", "bottom"])
 			expect(Number.parseFloat(layer.style.getPropertyValue(side)) || 0).toBe(0);
+	});
+
+	it("applies no insets for a resize entry without box sizes", () => {
+		const { doc, textarea, layer } = mountBox({ vertical: 15 });
+		for (const observer of doc.defaultView.observers)
+			expect(() => observer.deliver([{ target: textarea }])).not.toThrow();
+		for (const side of ["left", "right", "bottom"]) expect(layer.style.getPropertyValue(side)).toBe("");
 	});
 
 	it("keeps the layer at the full box with overlay scrollbars", () => {
