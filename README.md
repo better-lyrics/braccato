@@ -303,8 +303,12 @@ interface LyricPart {
 
 `@braccato/highlight` colours the raw file rather than rendering it: timestamps, word stamps,
 background vocals, agents and TTML markup each get their own class, and the lyric text stays the
-brightest thing on screen. It is about 2.8 KB gzipped, and the only thing it imports is the format check from
+brightest thing on screen. It is 4.7 KB gzipped, and the only thing it imports is the format check from
 `@braccato/parsers/format`.
+
+The editor overlay stays under one frame per keystroke even on minified one-line TTML: about 2.7 ms
+for a 21k-character line and 6.6 ms for a 98k one in Chrome, because it patches only the tokens
+that changed and colours only the text near the visible part of the editor.
 
 ```typescript
 import { attachEditor, highlightInto } from "@braccato/highlight";
