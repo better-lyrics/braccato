@@ -404,9 +404,10 @@ describe("attachEditor incremental rendering", () => {
 
 // -- Style window --------------------------
 
-function mountWindowed(value: string, rows = 3) {
+function mountWindowed(value: string, rows = 3, charsPerRow = 0) {
 	const doc = createFakeDocument();
 	doc.rowHeight = 10;
+	doc.charsPerRow = charsPerRow;
 	doc.layerHeight = rows * 10;
 	const parent = doc.createElement("div");
 	const textarea = doc.createElement("textarea");
@@ -437,7 +438,23 @@ function mountWindowed(value: string, rows = 3) {
 		textarea.scrollTop = top;
 		textarea.dispatch("scroll");
 	};
-	return { doc, textarea, layer, isPlain, lineTypes, expectedTypes, input, scrollTo, attachedPlain };
+	const charTypes = (line: number) =>
+		lineTypes(line).flatMap((token) => Array.from({ length: token.text.length }, () => token.type));
+	const expectedCharTypes = (line: number) =>
+		expectedTypes(line).flatMap((token) => Array.from({ length: token.text.length }, () => token.type));
+	return {
+		doc,
+		textarea,
+		layer,
+		isPlain,
+		lineTypes,
+		expectedTypes,
+		charTypes,
+		expectedCharTypes,
+		input,
+		scrollTo,
+		attachedPlain,
+	};
 }
 
 const LRC_LINES = Array.from({ length: 200 }, (_, k) => `[00:${String(k % 60).padStart(2, "0")}.00]line ${k}`).join(
@@ -602,5 +619,48 @@ describe("attachEditor style window", () => {
 					expect(lineTypes(line)).toEqual(expectedTypes(line));
 			}
 		});
+	});
+});
+
+// -- Style window on one wrapped line --------------------------
+
+const LONG_ONE_LINE = ONE_LINE.replace(
+	"<body>",
+	`<body>${'<p begin="00:05.000" end="00:06.000"><span begin="00:05.000" end="00:05.500">la</span><span ttm:role="x-bg">ooh</span></p>'.repeat(120)}`,
+);
+const ROWS = 3;
+const PER_ROW = 40;
+
+describe("attachEditor style window on one wrapped line", () => {
+	const visibleChars = (layer: FakeNode) => {
+		const first = Math.floor(layer.scrollTop / 10) * PER_ROW;
+		return [first, first + ROWS * PER_ROW];
+	};
+
+	it("styles every visible character and leaves text far outside the window plain, wherever it scrolls", () => {
+		const { layer, scrollTo, doc, charTypes, expectedCharTypes } = mountWindowed(LONG_ONE_LINE, ROWS, PER_ROW);
+		const rows = Math.ceil(LONG_ONE_LINE.length / PER_ROW);
+		for (const row of [0, 40, 41, Math.floor(rows / 2), 120, rows - ROWS, 7]) {
+			scrollTo(row * 10);
+			doc.defaultView.flushFrames();
+			const got = charTypes(0);
+			const want = expectedCharTypes(0);
+			const [from, to] = visibleChars(layer);
+			for (let at = from; at < Math.min(to, want.length); at++) expect(got[at]).toBe(want[at]);
+			const margin = 3 * ROWS * PER_ROW;
+			for (let at = 0; at < got.length; at++) if (at < from - margin || at >= to + margin) expect(got[at]).toBe("text");
+		}
+	});
+
+	it("regression: keeps the visible characters styled through many small deletions", () => {
+		const { layer, input, textarea, charTypes, expectedCharTypes } = mountWindowed(LONG_ONE_LINE, ROWS, PER_ROW);
+		for (let step = 0; step < 300; step++) {
+			const value = textarea.value;
+			input(value.slice(0, 60) + value.slice(61));
+			const got = charTypes(0);
+			const want = expectedCharTypes(0);
+			const [from, to] = visibleChars(layer);
+			for (let k = from; k < Math.min(to, want.length); k++) expect(got[k]).toBe(want[k]);
+		}
 	});
 });

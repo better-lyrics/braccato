@@ -75,6 +75,8 @@ export interface FakeDocument {
 	createRange(): FakeRange;
 	/** Opt-in layout: every bh-line is one row of this height, so rows map to lines. */
 	rowHeight: number;
+	/** Opt-in wrapping: with a non-zero value, each bh-line wraps every this many characters, one row each. */
+	charsPerRow: number;
 	/** The clientHeight every bh-layer reports unless a test sets its own. */
 	layerHeight: number;
 }
@@ -129,18 +131,26 @@ export function createFakeDocument(): FakeDocument {
 		createDocumentFragment: () => node("#document-fragment", ""),
 		createRange: () => {
 			let start: FakeNode | null = null;
+			let startOffset = 0;
+			let endOffset = 0;
 			return {
-				setStart: (node) => {
+				setStart: (node, offset) => {
 					start = node;
+					startOffset = offset;
 				},
-				setEnd: () => {},
+				setEnd: (_node, offset) => {
+					endOffset = offset;
+				},
 				selectNode: (node) => {
 					start = node;
+					startOffset = 0;
+					endOffset = node.textContent.length;
 				},
-				getBoundingClientRect: () => (start ? start.getBoundingClientRect() : rect(0, 0)),
+				getBoundingClientRect: () => (start ? layout(start, startOffset, endOffset) : rect(0, 0)),
 			};
 		},
 		rowHeight: 0,
+		charsPerRow: 0,
 		layerHeight: 0,
 	};
 	const rect = (top: number, height: number): FakeRect => ({
@@ -151,14 +161,31 @@ export function createFakeDocument(): FakeDocument {
 		width: 100,
 		height,
 	});
-	function layout(n: FakeNode): FakeRect {
+	const rowsOf = (line: FakeNode) =>
+		doc.charsPerRow ? Math.max(1, Math.ceil(line.textContent.length / doc.charsPerRow)) : 1;
+	function layout(n: FakeNode, from = 0, to = n.textContent.length): FakeRect {
 		if (!doc.rowHeight) return rect(0, 0);
 		if (n.classList.contains("bh-layer")) return rect(0, n.clientHeight);
 		let line: FakeNode | null = n;
-		while (line && !line.classList.contains("bh-line")) line = line.parent;
+		let child: FakeNode = n;
+		while (line && !line.classList.contains("bh-line")) {
+			child = line;
+			line = line.parent;
+		}
 		if (!line?.parent) return rect(0, 0);
-		const row = line.parent.children.indexOf(line);
-		return rect(row * doc.rowHeight - line.parent.scrollTop, doc.rowHeight);
+		const lines = line.parent.children;
+		let row = 0;
+		for (const previous of lines.slice(0, lines.indexOf(line))) row += rowsOf(previous);
+		const top = (rows: number) => (row + rows) * doc.rowHeight - (line?.parent?.scrollTop ?? 0);
+		if (n === line || !doc.charsPerRow) return rect(top(0), rowsOf(line) * doc.rowHeight);
+		let offset = 0;
+		for (const sibling of line.children) {
+			if (sibling === child) break;
+			offset += sibling.textContent.length;
+		}
+		const first = Math.floor((offset + from) / doc.charsPerRow);
+		const last = Math.floor((offset + Math.max(from, to - 1)) / doc.charsPerRow);
+		return rect(top(first), (last - first + 1) * doc.rowHeight);
 	}
 	function detach(child: FakeNode): void {
 		if (!child.parent) return;
