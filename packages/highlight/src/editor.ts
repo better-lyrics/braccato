@@ -134,6 +134,10 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		const border = entry?.borderBoxSize?.[0];
 		const content = entry?.contentBoxSize?.[0];
 		if (!border || !content) return;
+		if (view.getComputedStyle(textarea).getPropertyValue("writing-mode") !== "horizontal-tb") {
+			for (const side of ["left", "right", "bottom"] as const) setInset(side, 0);
+			return;
+		}
 		const frame = (a: string, b: string) =>
 			boxPx(`padding-${a}`) + boxPx(`padding-${b}`) + boxPx(`border-${a}-width`) + boxPx(`border-${b}-width`);
 		const snap = (px: number) => Math.max(0, Math.round(px * 64) / 64);

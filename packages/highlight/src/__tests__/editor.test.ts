@@ -341,6 +341,7 @@ describe("attachEditor scrollbar gutters", () => {
 		"border-right-width": "2px",
 		"border-bottom-width": "2px",
 		"border-left-width": "2px",
+		"writing-mode": "horizontal-tb",
 	};
 	const mountBox = (scrollbar: Partial<FakeNode["scrollbar"]> = {}) => {
 		const { doc, textarea, attach } = mount();
@@ -435,6 +436,16 @@ describe("attachEditor scrollbar gutters", () => {
 		resize();
 		expect(layerClientHeight()).toBe(textareaClientHeight());
 		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("leaves the layer at the full box in a vertical writing mode, where the gutters fall on other edges", () => {
+		const { textarea, layer, resize } = mountBox({ vertical: 15, horizontal: 15 });
+		resize();
+		expect(Number.parseFloat(layer.style.getPropertyValue("right"))).toBe(15);
+		textarea.computed = { ...FRAME, "writing-mode": "vertical-rl" };
+		resize();
+		for (const side of ["left", "right", "bottom"])
+			expect(Number.parseFloat(layer.style.getPropertyValue(side)) || 0).toBe(0);
 	});
 
 	it("keeps the layer at the full box with overlay scrollbars", () => {
