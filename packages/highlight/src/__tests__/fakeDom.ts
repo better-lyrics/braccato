@@ -12,6 +12,9 @@ export interface FakeNode {
 	value: string;
 	scrollTop: number;
 	scrollLeft: number;
+	clientHeight: number;
+	clientTop: number;
+	getBoundingClientRect(): FakeRect;
 	computed: Record<string, string>;
 	listeners: Map<string, Set<Listener>>;
 	classList: { add(name: string): void; remove(name: string): void; contains(name: string): boolean };
@@ -30,6 +33,22 @@ export interface FakeNode {
 	dispatch(type: string): void;
 }
 
+export interface FakeRect {
+	top: number;
+	bottom: number;
+	left: number;
+	right: number;
+	width: number;
+	height: number;
+}
+
+export interface FakeRange {
+	setStart(node: FakeNode, offset: number): void;
+	setEnd(node: FakeNode, offset: number): void;
+	selectNode(node: FakeNode): void;
+	getBoundingClientRect(): FakeRect;
+}
+
 export interface FakeResizeObserver {
 	observed: FakeNode[];
 	connected: boolean;
@@ -40,6 +59,12 @@ export interface FakeWindow {
 	observers: FakeResizeObserver[];
 	getComputedStyle(el: FakeNode): { getPropertyValue(prop: string): string };
 	ResizeObserver: new (callback: Listener) => { observe(el: FakeNode): void; disconnect(): void };
+	requestAnimationFrame(callback: Listener): number;
+	cancelAnimationFrame(id: number): void;
+	setTimeout(callback: Listener, delay: number): number;
+	clearTimeout(id: number): void;
+	/** Runs every pending animation frame and timer. */
+	flushFrames(): void;
 }
 
 export interface FakeDocument {
@@ -47,12 +72,41 @@ export interface FakeDocument {
 	createElement(tag: string): FakeNode;
 	createTextNode(text: string): FakeNode;
 	createDocumentFragment(): FakeNode;
+	createRange(): FakeRange;
+	/** Opt-in layout: every bh-line is one row of this height, so rows map to lines. */
+	rowHeight: number;
+	/** The clientHeight every bh-layer reports unless a test sets its own. */
+	layerHeight: number;
 }
 
 export function createFakeDocument(): FakeDocument {
 	const observers: FakeResizeObserver[] = [];
+	const frames = new Map<number, Listener>();
+	let frameId = 0;
 	const view: FakeWindow = {
 		observers,
+		requestAnimationFrame(callback) {
+			frames.set(++frameId, callback);
+			return frameId;
+		},
+		cancelAnimationFrame(id) {
+			frames.delete(id);
+		},
+		setTimeout(callback) {
+			frames.set(++frameId, callback);
+			return frameId;
+		},
+		clearTimeout(id) {
+			frames.delete(id);
+		},
+		flushFrames() {
+			for (let round = 0; frames.size > 0; round++) {
+				if (round === 100) throw new Error("frames keep scheduling frames");
+				const pending = [...frames.values()];
+				frames.clear();
+				for (const callback of pending) callback();
+			}
+		},
 		getComputedStyle: (el) => ({ getPropertyValue: (prop) => el.computed[prop] ?? "" }),
 		ResizeObserver: class {
 			private record: FakeResizeObserver;
@@ -73,7 +127,39 @@ export function createFakeDocument(): FakeDocument {
 		createElement: (tag) => node(tag.toUpperCase(), ""),
 		createTextNode: (text) => node("#text", text),
 		createDocumentFragment: () => node("#document-fragment", ""),
+		createRange: () => {
+			let start: FakeNode | null = null;
+			return {
+				setStart: (node) => {
+					start = node;
+				},
+				setEnd: () => {},
+				selectNode: (node) => {
+					start = node;
+				},
+				getBoundingClientRect: () => (start ? start.getBoundingClientRect() : rect(0, 0)),
+			};
+		},
+		rowHeight: 0,
+		layerHeight: 0,
 	};
+	const rect = (top: number, height: number): FakeRect => ({
+		top,
+		bottom: top + height,
+		left: 0,
+		right: 100,
+		width: 100,
+		height,
+	});
+	function layout(n: FakeNode): FakeRect {
+		if (!doc.rowHeight) return rect(0, 0);
+		if (n.classList.contains("bh-layer")) return rect(0, n.clientHeight);
+		let line: FakeNode | null = n;
+		while (line && !line.classList.contains("bh-line")) line = line.parent;
+		if (!line?.parent) return rect(0, 0);
+		const row = line.parent.children.indexOf(line);
+		return rect(row * doc.rowHeight - line.parent.scrollTop, doc.rowHeight);
+	}
 	function detach(child: FakeNode): void {
 		if (!child.parent) return;
 		const siblings = child.parent.children;
@@ -86,6 +172,7 @@ export function createFakeDocument(): FakeDocument {
 	}
 	function node(nodeName: string, text: string): FakeNode {
 		let data = text;
+		let height: number | undefined;
 		const attributes = new Map<string, string>();
 		const style = new Map<string, string>();
 		const classes = () => n.className.split(/\s+/).filter(Boolean);
@@ -111,6 +198,14 @@ export function createFakeDocument(): FakeDocument {
 			value: "",
 			scrollTop: 0,
 			scrollLeft: 0,
+			get clientHeight() {
+				return height ?? (n.classList.contains("bh-layer") ? doc.layerHeight : 0);
+			},
+			set clientHeight(value: number) {
+				height = value;
+			},
+			clientTop: 0,
+			getBoundingClientRect: () => layout(n),
 			computed: {},
 			listeners: new Map(),
 			classList: {

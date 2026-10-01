@@ -1,6 +1,7 @@
 import { detectFormat } from "@braccato/parsers/format";
-import { changedRange, changedTokens, splitLines } from "./lines.js";
+import { changedRange, changedTokens, matchByOffset, splitLines } from "./lines.js";
 import { mergeTokens, tokenNode } from "./render.js";
+import { EVERYTHING, NOTHING, projectLine, shiftWindow, visibleWindow } from "./styleWindow.js";
 import { tokenize } from "./tokenize.js";
 import type { LyricFormat, Token } from "./types.js";
 
@@ -50,6 +51,13 @@ export interface EditorHandle {
 	destroy(): void;
 }
 
+/** Layer heights styled above and below the visible box. Scrolling past a quarter of that restyles once scrolling settles; past all of it, at once. */
+const WINDOW_MARGIN = 1;
+const WINDOW_SLACK = 0.25;
+const SETTLE_MS = 150;
+/** An edit that changes the length by more than this share of the styled range can pull unstyled text into view. */
+const REMEASURE_SHARE = 0.125;
+
 const attached = new WeakMap<HTMLTextAreaElement, EditorHandle>();
 
 /** Attaching the same textarea twice returns the handle that is already live, whatever the options. */
@@ -72,26 +80,35 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	textarea.classList.add("bh-input");
 
 	const boxValues = new Map<string, string>();
-	const syncBox = () => {
+	const syncBox = (): boolean => {
 		const computed = view.getComputedStyle(textarea);
+		let changed = false;
 		for (const prop of SYNCED_BOX_PROPERTIES) {
 			const value = computed.getPropertyValue(prop);
 			if (boxValues.get(prop) === value) continue;
 			boxValues.set(prop, value);
 			layer.style.setProperty(prop, value);
+			changed = true;
 		}
 		const dir = textarea.getAttribute("dir");
-		if (dir === layer.getAttribute("dir")) return;
+		if (dir === layer.getAttribute("dir")) return changed;
 		if (dir === null) layer.removeAttribute("dir");
 		else layer.setAttribute("dir", dir);
+		return true;
 	};
+	let scrolledTo = 0;
 	const syncScroll = () => {
-		layer.scrollTop = textarea.scrollTop;
+		scrolledTo = textarea.scrollTop;
+		layer.scrollTop = scrolledTo;
 		layer.scrollLeft = textarea.scrollLeft;
 	};
 	let lines: Token[][] = [];
+	let shown: (readonly Token[])[] = [];
+	let starts: number[] = [];
 	let lineEls: HTMLElement[] = [];
 	let lineNodes: ChildNode[][] = [];
+	let source = "";
+	let styled = EVERYTHING;
 	const splice = <T extends ChildNode>(parent: Node, nodes: T[], start: number, end: number, fresh: T[]): T[] => {
 		const fragment = doc.createDocumentFragment();
 		for (const node of fresh) fragment.append(node);
@@ -99,7 +116,8 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		parent.insertBefore(fragment, nodes[end] ?? null);
 		return nodes.slice(0, start).concat(fresh, nodes.slice(end));
 	};
-	const replaceLines = (start: number, prevEnd: number, tokens: Token[][]) => {
+	const replaceLines = (start: number, prevEnd: number, nextEnd: number) => {
+		const tokens = lines.slice(start, nextEnd).map((line, k) => projectLine(line, starts[start + k], styled));
 		const nodes = tokens.map((line) => line.map((token) => tokenNode(doc, token)));
 		const els = nodes.map((line) => {
 			const el = doc.createElement("span");
@@ -109,12 +127,17 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		});
 		lineEls = splice(layer, lineEls, start, prevEnd, els);
 		lineNodes = lineNodes.slice(0, start).concat(nodes, lineNodes.slice(prevEnd));
+		shown = shown.slice(0, start).concat(tokens, shown.slice(prevEnd));
 	};
 	// Unchanged nodes keep their shaping in Blink; a whole-string data write measured faster than replaceData.
-	const patchLine = (index: number, tokens: Token[]) => {
-		const prev = lines[index];
+	const patchLine = (index: number) => {
+		const prev = shown[index];
+		const tokens = projectLine(lines[index], starts[index], styled);
+		shown[index] = tokens;
+		if (tokens === prev) return;
 		const nodes = lineNodes[index];
 		const { start, prevEnd, nextEnd } = changedTokens(prev, tokens);
+		if (start === prevEnd && start === nextEnd) return;
 		if (prevEnd - start === 1 && nextEnd - start === 1 && prev[start].type === tokens[start].type) {
 			const node = nodes[start];
 			const text = (prev[start].type === "text" ? node : node.firstChild) as Text;
@@ -124,31 +147,111 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		const fresh = tokens.slice(start, nextEnd).map((token) => tokenNode(doc, token));
 		lineNodes[index] = splice(lineEls[index], nodes, start, prevEnd, fresh);
 	};
+	// Restyling never changes the text, so nodes are matched by offset and only the tokens entering or leaving the window change.
+	const restyleLine = (index: number) => {
+		const prev = shown[index];
+		const tokens = projectLine(lines[index], starts[index], styled);
+		if (tokens === prev) return;
+		shown[index] = tokens;
+		const nodes = lineNodes[index];
+		const matched = matchByOffset(prev, tokens);
+		const kept = new Uint8Array(prev.length);
+		for (const i of matched) if (i >= 0) kept[i] = 1;
+		for (let i = 0; i < prev.length; i++) if (!kept[i]) nodes[i].remove();
+		const next: ChildNode[] = new Array(tokens.length);
+		let after: ChildNode | null = null;
+		for (let j = tokens.length - 1; j >= 0; j--) {
+			const i = matched[j];
+			if (i < 0) {
+				next[j] = lineEls[index].insertBefore(tokenNode(doc, tokens[j]), after);
+			} else {
+				next[j] = nodes[i];
+				if (prev[i].text !== tokens[j].text)
+					((tokens[j].type === "text" ? nodes[i] : nodes[i].firstChild) as Text).data = tokens[j].text;
+			}
+			after = next[j];
+		}
+		lineNodes[index] = next;
+	};
+	const lineStarts = (next: Token[][]) => {
+		const out: number[] = [];
+		let at = 0;
+		for (const line of next) {
+			out.push(at);
+			for (const token of line) at += token.text.length;
+		}
+		return out;
+	};
 	const render = (full: boolean) => {
 		if (full) boxValues.clear();
-		syncBox();
+		const boxChanged = syncBox();
 		const src = textarea.value;
-		const next = splitLines(mergeTokens(tokenize(layerText(src), options.format ?? detectFormat(src))));
+		const text = layerText(src);
+		const next = splitLines(mergeTokens(tokenize(text, options.format ?? detectFormat(src))));
+		const prevLines = lines;
+		const prevLength = source.length;
+		if (!full) styled = shiftWindow(styled, source, text);
+		lines = next;
+		starts = lineStarts(next);
+		source = text;
 		if (full) {
 			lineEls = [];
 			lineNodes = [];
+			shown = [];
 			layer.replaceChildren();
-			replaceLines(0, 0, next);
+			replaceLines(0, 0, next.length);
 		} else {
-			const { start, prevEnd, nextEnd } = changedRange(lines, next);
-			if (prevEnd - start === nextEnd - start) for (let k = start; k < prevEnd; k++) patchLine(k, next[k]);
-			else replaceLines(start, prevEnd, next.slice(start, nextEnd));
+			const { start, prevEnd, nextEnd } = changedRange(prevLines, next);
+			if (prevEnd - start === nextEnd - start) for (let k = start; k < prevEnd; k++) patchLine(k);
+			else replaceLines(start, prevEnd, nextEnd);
 		}
-		lines = next;
 		if (full) syncScroll();
+		if (full || boxChanged || Math.abs(text.length - prevLength) > (styled.to - styled.from) * REMEASURE_SHARE)
+			scheduleRestyle();
+	};
+	const rendered = () => ({ layer, lineEls, lineNodes, shown, starts, length: source.length });
+	let measuredAt = Number.NaN;
+	let settle = 0;
+	// Restyling relays out the rest of a long line, so while the visible text is still styled it waits for scrolling to stop.
+	const restyle = (urgentOnly: boolean) => {
+		const height = layer.clientHeight;
+		const drift = Number.isNaN(measuredAt) ? Number.POSITIVE_INFINITY : Math.abs(scrolledTo - measuredAt);
+		if (drift <= height * WINDOW_SLACK) return;
+		if (urgentOnly && drift < height * WINDOW_MARGIN) {
+			view.clearTimeout(settle);
+			settle = view.setTimeout(() => restyle(false), SETTLE_MS);
+			return;
+		}
+		styled = visibleWindow(rendered(), WINDOW_MARGIN);
+		measuredAt = height ? scrolledTo : Number.NaN;
+		for (let k = 0; k < lines.length; k++) restyleLine(k);
+	};
+	let frame = 0;
+	const scheduleRestyle = () => {
+		measuredAt = Number.NaN;
+		if (!frame)
+			frame = view.requestAnimationFrame(() => {
+				frame = 0;
+				restyle(true);
+			});
 	};
 	const refresh = () => render(true);
 	const update = () => render(false);
+	const onScroll = () => {
+		syncScroll();
+		restyle(true);
+	};
+	const onResize = () => {
+		syncBox();
+		measuredAt = Number.NaN;
+		restyle(false);
+	};
 
-	const resize = new view.ResizeObserver(syncBox);
+	const resize = new view.ResizeObserver(onResize);
 	resize.observe(textarea);
 	textarea.addEventListener("input", update);
-	textarea.addEventListener("scroll", syncScroll, { passive: true });
+	textarea.addEventListener("scroll", onScroll, { passive: true });
+	if (layer.clientHeight) styled = NOTHING;
 	refresh();
 
 	let destroyed = false;
@@ -161,8 +264,10 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 			destroyed = true;
 			attached.delete(textarea);
 			resize.disconnect();
+			view.cancelAnimationFrame(frame);
+			view.clearTimeout(settle);
 			textarea.removeEventListener("input", update);
-			textarea.removeEventListener("scroll", syncScroll);
+			textarea.removeEventListener("scroll", onScroll);
 			if (addedInputClass) textarea.classList.remove("bh-input");
 			wrap.before(textarea);
 			wrap.remove();

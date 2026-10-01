@@ -50,3 +50,17 @@ export function changedRange(prev: readonly Token[][], next: readonly Token[][])
 export function changedTokens(prev: readonly Token[], next: readonly Token[]): LineRange {
 	return changedItems(prev, next, sameToken);
 }
+
+/** For each token of next, the index of the token of prev that starts at the same offset with the same type, or -1. */
+export function matchByOffset(prev: readonly Token[], next: readonly Token[]): Int32Array {
+	const matched = new Int32Array(next.length).fill(-1);
+	let i = 0;
+	let prevAt = 0;
+	let nextAt = 0;
+	for (let j = 0; j < next.length; j++) {
+		while (i < prev.length && prevAt < nextAt) prevAt += prev[i++].text.length;
+		if (i < prev.length && prevAt === nextAt && prev[i].type === next[j].type) matched[j] = i;
+		nextAt += next[j].text.length;
+	}
+	return matched;
+}

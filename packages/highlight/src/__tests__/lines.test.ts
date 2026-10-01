@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedRange, changedTokens, splitLines } from "../lines.js";
+import { changedRange, changedTokens, matchByOffset, splitLines } from "../lines.js";
 import { tokenize } from "../tokenize.js";
 import type { Token } from "../types.js";
 
@@ -140,6 +140,43 @@ describe("changedTokens", () => {
 		it("handles empty sides", () => {
 			expect(changedTokens([], tokens("a"))).toEqual({ start: 0, prevEnd: 0, nextEnd: 1 });
 			expect(changedTokens(tokens("a"), [])).toEqual({ start: 0, prevEnd: 1, nextEnd: 0 });
+		});
+	});
+});
+
+describe("matchByOffset", () => {
+	const t = (type: Token["type"], text: string): Token => ({ type, text });
+
+	it("pairs tokens that start at the same offset with the same type", () => {
+		const prev = [t("text", "ab"), t("tag", "p"), t("punct", ">"), t("text", "cd")];
+		const next = [t("text", "abp"), t("punct", ">"), t("text", "cd")];
+		expect([...matchByOffset(prev, next)]).toEqual([0, 2, 3]);
+	});
+
+	it("leaves unmatched tokens at -1", () => {
+		const prev = [t("text", "abc")];
+		const next = [t("text", "a"), t("tag", "b"), t("text", "c")];
+		expect([...matchByOffset(prev, next)]).toEqual([0, -1, -1]);
+	});
+
+	it("never pairs tokens of different types", () => {
+		expect([...matchByOffset([t("text", "ab")], [t("tag", "ab")])]).toEqual([-1]);
+	});
+
+	describe("edge cases", () => {
+		it("handles empty sides", () => {
+			expect([...matchByOffset([], [t("text", "a")])]).toEqual([-1]);
+			expect([...matchByOffset([t("text", "a")], [])]).toEqual([]);
+		});
+	});
+
+	describe("invariants", () => {
+		it("matches old indices in increasing order", () => {
+			const prev = [t("text", "a"), t("tag", "b"), t("text", "c"), t("tag", "d"), t("text", "e")];
+			const next = [t("text", "abc"), t("tag", "d"), t("text", "e")];
+			const matched = [...matchByOffset(prev, next)].filter((k) => k >= 0);
+			expect(matched).toEqual([...matched].sort((a, b) => a - b));
+			expect(matched).toEqual([0, 3, 4]);
 		});
 	});
 });
