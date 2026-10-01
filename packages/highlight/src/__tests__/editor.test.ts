@@ -517,6 +517,16 @@ describe("attachEditor style window", () => {
 		expect(measures).toBeGreaterThan(0);
 	});
 
+	it("regression: keeps visible rows styled while lines are joined one newline at a time", () => {
+		const { input, textarea, lineTypes, expectedTypes } = mountWindowed(LRC_LINES.split("\n").slice(0, 60).join("\n"));
+		for (let step = 0; step < 40; step++) {
+			const value = textarea.value;
+			const at = value.indexOf("\n");
+			input(value.slice(0, at) + value.slice(at + 1));
+			for (const line of [0, 1, 2]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		}
+	});
+
 	it("measures again after an edit large enough to pull unstyled text into view", () => {
 		const { input, textarea, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
 		const value = textarea.value;

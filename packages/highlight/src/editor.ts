@@ -63,7 +63,7 @@ export interface EditorHandle {
 const WINDOW_MARGIN = 1;
 const WINDOW_SLACK = 0.25;
 const SETTLE_MS = 150;
-/** An edit that changes the length by more than this share of the styled range can pull unstyled text into view. */
+/** Edits that change the length by more than this share of the styled range in total can pull unstyled text into view. */
 const REMEASURE_SHARE = 0.125;
 
 const attached = new WeakMap<HTMLTextAreaElement, EditorHandle>();
@@ -110,6 +110,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		layer.scrollTop = scrolledTo;
 		layer.scrollLeft = textarea.scrollLeft;
 	};
+	let editedSinceMeasure = 0;
 	let lines: Token[][] = [];
 	let shown: (readonly Token[])[] = [];
 	let starts: number[] = [];
@@ -214,7 +215,13 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 			else replaceLines(start, prevEnd, nextEnd);
 		}
 		if (full) syncScroll();
-		if (full || boxChanged || Math.abs(text.length - prevLength) > (styled.to - styled.from) * REMEASURE_SHARE)
+		editedSinceMeasure += Math.abs(text.length - prevLength);
+		if (
+			full ||
+			boxChanged ||
+			next.length !== prevLines.length ||
+			editedSinceMeasure > (styled.to - styled.from) * REMEASURE_SHARE
+		)
 			scheduleRestyle();
 	};
 	const lineAt = (offset: number) => Math.max(0, firstIndex(starts.length, (k) => starts[k] > offset) - 1);
@@ -235,6 +242,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		const prev = styled;
 		styled = visibleWindow(rendered(), WINDOW_MARGIN);
 		measuredAt = height ? scrolledTo : Number.NaN;
+		editedSinceMeasure = 0;
 		if (lines.length === 0) return;
 		const [prevFirst, prevLast] = linesIn(prev);
 		const [first, last] = linesIn(styled);
