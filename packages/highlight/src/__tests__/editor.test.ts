@@ -107,6 +107,16 @@ describe("attachEditor lifecycle", () => {
 		expect(textarea.className).toBe("input input--area");
 	});
 
+	it("refresh after destroy does nothing", () => {
+		const { doc, textarea, attach } = mount();
+		const editor = attach();
+		editor.destroy();
+		textarea.value = "[00:09.00]Late";
+		editor.refresh();
+		doc.defaultView.flushFrames();
+		expect(editor.layer.textContent).toBe("[00:01.00]Hi");
+	});
+
 	it("keeps a class the host set itself", () => {
 		const { textarea, attach } = mount();
 		textarea.className = "bh-input";

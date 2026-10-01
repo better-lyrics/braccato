@@ -261,7 +261,10 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 				restyle(true);
 			});
 	};
-	const refresh = () => render(true);
+	let destroyed = false;
+	const refresh = () => {
+		if (!destroyed) render(true);
+	};
 	const update = () => render(false);
 	const onScroll = () => {
 		syncScroll();
@@ -281,7 +284,6 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	if (layer.clientHeight) styled = NOTHING;
 	refresh();
 
-	let destroyed = false;
 	const handle: EditorHandle = {
 		wrap,
 		layer,
