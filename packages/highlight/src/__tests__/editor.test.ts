@@ -1,5 +1,9 @@
+import { detectFormat } from "@braccato/parsers/format";
 import { describe, expect, it } from "vitest";
 import { SYNCED_BOX_PROPERTIES, attachEditor, layerText } from "../editor.js";
+import { mergeTokens } from "../render.js";
+import { tokenize } from "../tokenize.js";
+import { TOKEN_TYPES, type TokenType } from "../types.js";
 import { type FakeNode, createFakeDocument } from "./fakeDom.js";
 
 describe("layerText", () => {
@@ -170,5 +174,155 @@ describe("attachEditor preconditions", () => {
 		expect(() => attachEditor(textarea as unknown as HTMLTextAreaElement)).toThrow(/parent/);
 		expect(textarea.parent).toBeNull();
 		expect(textarea.className).toBe("");
+	});
+});
+
+// -- Incremental rendering --------------------------
+
+const TTML = [
+	'<tt xmlns:ttm="http://www.w3.org/ns/ttml#metadata">',
+	"<head><metadata>",
+	'<ttm:agent xml:id="v1"/>',
+	"</metadata></head>",
+	"<body>",
+	'<p begin="00:01.000" end="00:02.000"><span begin="00:01.000" end="00:01.500">one</span> <span begin="00:01.500" end="00:02.000">two</span></p>',
+	'<p begin="00:02.000" end="00:03.000"><span begin="00:02.000" end="00:03.000">three</span></p>',
+	'<p begin="00:03.000" end="00:04.000"><span begin="00:03.000" end="00:04.000">four</span></p>',
+	"</body>",
+	"</tt>",
+].join("\n");
+
+function mountWith(value: string) {
+	const doc = createFakeDocument();
+	const parent = doc.createElement("div");
+	const textarea = doc.createElement("textarea");
+	textarea.value = value;
+	parent.append(textarea);
+	const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
+	const layer = editor.layer as unknown as FakeNode;
+	const type = (text: FakeNode): TokenType => {
+		for (let at = text.parent; at && at !== layer; at = at.parent) {
+			const type = TOKEN_TYPES.find((t) => at.className === `bh-${t}`);
+			if (type) return type;
+		}
+		return "text";
+	};
+	const leaves = (node: FakeNode): FakeNode[] =>
+		node.nodeName === "#text" ? [node] : node.children.flatMap((child) => leaves(child));
+	const rendered = () => mergeTokens(leaves(layer).map((leaf) => ({ type: type(leaf), text: leaf.textContent })));
+	const input = (next: string) => {
+		textarea.value = next;
+		textarea.dispatch("input");
+	};
+	const expected = () => mergeTokens(tokenize(layerText(textarea.value), detectFormat(textarea.value)));
+	return { textarea, editor, layer, rendered, input, expected, leaves };
+}
+
+describe("attachEditor incremental rendering", () => {
+	it("keeps the nodes of lines an edit did not touch", () => {
+		const { layer, input, leaves } = mountWith(TTML);
+		const before = leaves(layer);
+		input(TTML.replace(">three<", ">thre<"));
+		const after = leaves(layer);
+		const rebuilt = after.filter((leaf) => !before.includes(leaf));
+		expect(rebuilt.map((leaf) => leaf.textContent).join("")).toBe(
+			'<p begin="00:02.000" end="00:03.000"><span begin="00:02.000" end="00:03.000">thre</span></p>\n',
+		);
+	});
+
+	it("renders one bh-line element per line", () => {
+		const { layer } = mountWith("a\nb\n");
+		expect(layer.children.map((c) => `${c.nodeName}.${c.className}:${c.textContent}`)).toEqual([
+			"SPAN.bh-line:a\n",
+			"SPAN.bh-line:b\n",
+			"SPAN.bh-line: ",
+		]);
+	});
+
+	it("re-colours later lines when an edit changes the TTML state", () => {
+		const { input, rendered, expected } = mountWith(TTML);
+		input(TTML.replace("<body>", '<body><span ttm:role="x-bg">'));
+		expect(rendered()).toEqual(expected());
+		expect(rendered().some((t) => t.type === "bgText" && t.text === "four")).toBe(true);
+	});
+
+	it("renders a pasted document of another format", () => {
+		const { input, rendered, expected, layer } = mountWith(TTML);
+		input("[00:01.00]a\n[00:02.00]b\n");
+		expect(layer.textContent).toBe("[00:01.00]a\n[00:02.00]b\n ");
+		expect(rendered()).toEqual(expected());
+	});
+
+	it("refresh rebuilds a layer that drifted", () => {
+		const { editor, layer, rendered, expected } = mountWith(TTML);
+		layer.children[0].remove();
+		editor.refresh();
+		expect(layer.textContent).toBe(TTML);
+		expect(rendered()).toEqual(expected());
+	});
+
+	describe("invariants", () => {
+		const SNIPPETS = [
+			"x",
+			"\n",
+			"\r\n",
+			"\n\n",
+			'<span ttm:role="x-bg">',
+			"</span>",
+			"<head>",
+			"</head>",
+			"<!--",
+			"-->",
+			'<p begin="00:05.000">five\nsix</p>\n',
+			"\uFEFF",
+			'"',
+			"<",
+		];
+
+		it("matches a full render after random edit sequences", () => {
+			let seed = 42;
+			const random = () => {
+				seed = (seed * 1103515245 + 12345) % 2147483648;
+				return seed / 2147483648;
+			};
+			for (let round = 0; round < 20; round++) {
+				const { textarea, layer, input, rendered, expected } = mountWith(TTML);
+				for (let step = 0; step < 40; step++) {
+					const value = textarea.value;
+					const at = Math.floor(random() * (value.length + 1));
+					const roll = random();
+					if (roll < 0.5) {
+						input(value.slice(0, at) + SNIPPETS[Math.floor(random() * SNIPPETS.length)] + value.slice(at));
+					} else if (roll < 0.9) {
+						input(value.slice(0, at) + value.slice(at + Math.floor(random() * 80)));
+					} else if (roll < 0.95) {
+						input(TTML.replace(/\n/g, "\r\n"));
+					} else {
+						input("");
+					}
+					expect(layer.textContent).toBe(layerText(textarea.value));
+					expect(rendered()).toEqual(expected());
+				}
+			}
+		});
+	});
+
+	describe("performance", () => {
+		it("regression: a keystroke in a 1 MB document stays linear", () => {
+			const line = `<p begin="00:01.000" end="00:02.000">${"la ".repeat(100)}</p>\n`;
+			const src = `<tt><body>\n${line.repeat(3_000)}</body></tt>`;
+			const { input, layer } = mountWith(src);
+			const at = src.length / 2;
+			const started = performance.now();
+			input(`${src.slice(0, at)}x${src.slice(at)}`);
+			expect(performance.now() - started).toBeLessThan(1000);
+			expect(layer.textContent.length).toBe(src.length + 1);
+		});
+
+		it("regression: attaches to a document with very many lines without overflowing the call stack", () => {
+			const src = "a\n".repeat(150_000);
+			const { layer } = mountWith(src);
+			expect(layer.children).toHaveLength(150_001);
+		});
 	});
 });

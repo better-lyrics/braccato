@@ -32,6 +32,8 @@ const editor = attachEditor(textarea);
 
 `attachEditor` wraps the textarea in a `div.bh-edit` and lays a highlighted `pre.bh-layer` under it. The textarea becomes transparent and keeps the caret, the selection and all input. The layer copies the textarea's font, padding, border widths and box sizing on every render and on every resize, and follows its scroll position.
 
+Every input re-tokenizes the whole document, so TTML state such as background vocals stays correct on later lines, but only the lines whose tokens changed are rebuilt. The layer holds one `span.bh-line` block per source line, so an edit lays out only the lines it touched.
+
 It returns `{ wrap, layer, refresh, destroy }`:
 
 - Setting `textarea.value` from code does not fire `input`, so call `editor.refresh()` after every programmatic write.
@@ -39,7 +41,7 @@ It returns `{ wrap, layer, refresh, destroy }`:
 - Attaching a textarea that already has a live editor returns that editor's handle.
 - Pass `{ format }` to pin a format. Without it the format is detected on every render, so pasting a different format re-colours.
 
-The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `width: 100%` and `resize: none` on the textarea. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
+The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `box-sizing: border-box`, `width: 100%` and `resize: none` on the textarea. The layer copies that box sizing, so a textarea's padding and borders stay inside the wrapper and both wrap lines at the same width. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
 
 Use a monospace font on highlighted editors. Background vocals render in italics, and italics change glyph widths in proportional fonts, which moves the layer off the caret.
 
@@ -55,7 +57,7 @@ Without `pretty`, the tokens' concatenated text always equals the input.
 
 ## Tokens
 
-Each token renders as `<span class="bh-<type>">`, except `text`, which renders as a plain text node.
+Adjacent tokens of the same type render as one `<span class="bh-<type>">`, except `text`, which renders as a plain text node.
 
 | Token | Meaning |
 |---|---|

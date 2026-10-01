@@ -16,6 +16,28 @@ describe("highlightInto", () => {
 		]);
 	});
 
+	it("merges adjacent tokens of the same type into one node", () => {
+		const el = host();
+		highlightInto(el as unknown as HTMLElement, '<p begin="1">a b</p>\n<p>', { format: "ttml" });
+		expect(el.children.map((c) => `${c.nodeName}.${c.className}:${c.textContent}`)).toEqual([
+			"SPAN.bh-punct:<",
+			"SPAN.bh-tag:p",
+			"#text.: ",
+			"SPAN.bh-attr:begin",
+			'SPAN.bh-punct:="',
+			"SPAN.bh-timestamp:1",
+			'SPAN.bh-punct:">',
+			"#text.:a b",
+			"SPAN.bh-punct:</",
+			"SPAN.bh-tag:p",
+			"SPAN.bh-punct:>",
+			"#text.:\n",
+			"SPAN.bh-punct:<",
+			"SPAN.bh-tag:p",
+			"SPAN.bh-punct:>",
+		]);
+	});
+
 	it("returns the format it used and adds nothing beyond the source", () => {
 		const el = host();
 		expect(highlightInto(el as unknown as HTMLElement, "[00:01.00]Hi")).toBe("lrc");
@@ -48,7 +70,7 @@ describe("highlightInto", () => {
 		const el = host();
 		const src = "[00:01.00]a\n".repeat(40_000);
 		expect(() => highlightInto(el as unknown as HTMLElement, src, { format: "lrc" })).not.toThrow();
-		expect(el.children).toHaveLength(200_000);
+		expect(el.children).toHaveLength(160_000);
 		expect(el.textContent).toBe(src);
 	});
 

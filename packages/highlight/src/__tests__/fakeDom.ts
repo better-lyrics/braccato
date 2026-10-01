@@ -74,17 +74,28 @@ export function createFakeDocument(): FakeDocument {
 	function detach(child: FakeNode): void {
 		if (!child.parent) return;
 		const siblings = child.parent.children;
-		siblings.splice(siblings.indexOf(child), 1);
+		const index = siblings.indexOf(child);
+		if (index >= 0) siblings.splice(index, 1);
 		child.parent = null;
 	}
+	function expand(nodes: FakeNode[]): FakeNode[] {
+		return nodes.flatMap((node) => (node.nodeName === "#document-fragment" ? node.children.splice(0) : [node]));
+	}
 	function node(nodeName: string, text: string): FakeNode {
+		let data = text;
 		const attributes = new Map<string, string>();
 		const style = new Map<string, string>();
 		const classes = () => n.className.split(/\s+/).filter(Boolean);
 		const n: FakeNode = {
 			nodeName,
 			className: "",
-			textContent: text,
+			get textContent() {
+				return nodeName === "#text" ? data : n.children.map((c) => c.textContent).join("");
+			},
+			set textContent(value: string) {
+				if (nodeName === "#text") data = value;
+				else n.replaceChildren(...(value ? [doc.createTextNode(value)] : []));
+			},
 			children: [],
 			parent: null,
 			get parentNode() {
@@ -115,22 +126,18 @@ export function createFakeDocument(): FakeDocument {
 				for (const child of n.children) child.parent = null;
 				n.children = [];
 				n.append(...nodes);
-				n.textContent = n.children.map((c) => c.textContent).join("");
 			},
 			append(...nodes) {
-				for (const node of nodes) {
-					const incoming = node.nodeName === "#document-fragment" ? node.children.splice(0) : [node];
-					for (const child of incoming) {
-						detach(child);
-						child.parent = n;
-						n.children.push(child);
-					}
+				for (const child of expand(nodes)) {
+					detach(child);
+					child.parent = n;
+					n.children.push(child);
 				}
 			},
 			before(...nodes) {
 				const parent = n.parent;
 				if (!parent) return;
-				for (const child of nodes) {
+				for (const child of expand(nodes)) {
 					detach(child);
 					child.parent = parent;
 					parent.children.splice(parent.children.indexOf(n), 0, child);
