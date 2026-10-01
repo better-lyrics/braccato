@@ -20,6 +20,10 @@ describe("highlight.css", () => {
 		expect(css).toMatch(/\.bh-edit > \.bh-layer > \.bh-line \{\s*display: block;/);
 	});
 
+	it("regression: editor lines inherit unicode-bidi so dir=auto resolves each line on its own", () => {
+		expect(css).toMatch(/\.bh-edit > \.bh-layer > \.bh-line \{[^}]*unicode-bidi: inherit;/);
+	});
+
 	it("indents only the first editor line, as the textarea does", () => {
 		expect(css).toMatch(/\.bh-edit > \.bh-layer > \.bh-line \+ \.bh-line \{\s*text-indent: 0;/);
 	});

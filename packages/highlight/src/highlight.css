@@ -67,6 +67,7 @@
 
 .bh-edit > .bh-layer > .bh-line {
 	display: block;
+	unicode-bidi: inherit;
 }
 
 .bh-edit > .bh-layer > .bh-line + .bh-line {
