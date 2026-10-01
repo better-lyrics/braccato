@@ -47,14 +47,16 @@ Keystroke cost in Chrome 153 on an Apple M4 Pro, as the median script plus force
 
 Scrolling restyles once per editor height scrolled. On the 98k-character line that restyle costs about one and a half keystrokes, and on the multi-line documents less than one; scroll steps in between cost under 0.2 ms.
 
-The package is 11.0 KB minified and 4.7 KB gzipped (`esbuild --minify`), plus `@braccato/parsers/format`.
+The package is 10.9 KB minified and 4.7 KB gzipped (`esbuild --minify`), plus `@braccato/parsers/format`.
 
-It returns `{ wrap, layer, refresh, destroy }`:
+It returns `{ wrap, layer, refresh, setFormat, destroy }`:
 
 - Setting `textarea.value` from code does not fire `input`, so call `editor.refresh()` after every programmatic write.
 - `editor.destroy()` puts the textarea back where it was, removes the wrapper and drops the `bh-input` class. Calling it twice is safe.
-- Attaching a textarea that already has a live editor returns that editor's handle.
 - Pass `{ format }` to pin a format. Without it the format is detected on every render, so pasting a different format re-colours.
+- The editor copies the options when it attaches and owns its format from then on. Changing the options object later does nothing.
+- `editor.setFormat(format)` changes the format of the live editor and re-renders at once. The textarea is not re-attached, so its native undo history survives. `editor.setFormat(undefined)` goes back to detecting the format on every render. Passing the format the editor already has does nothing.
+- Attaching a textarea that already has a live editor returns that editor's handle and ignores the new options. Use `setFormat` on the handle to change the format.
 
 The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `box-sizing: border-box`, `width: 100%` and `resize: none` on the textarea. The layer copies that box sizing, so a textarea's padding and borders stay inside the wrapper and both wrap lines at the same width. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
 
@@ -68,11 +70,17 @@ import { tokenize } from "@braccato/highlight";
 const tokens = tokenize(source); // [{ type: "punct", text: "[" }, { type: "timestamp", text: "00:14.21" }, ...]
 ```
 
-Without `pretty`, the tokens' concatenated text always equals the input.
+The tokens' concatenated text always equals the input, and no two adjacent tokens share a type. They are exactly what `highlightInto` draws, so a renderer of your own (a React component that renders on the server, for example) reproduces it by drawing each token as below, with no merging step:
+
+```tsx
+tokens.map(({ type, text }, i) => (type === "text" ? text : <span key={i} className={`bh-${type}`}>{text}</span>));
+```
+
+Wrap the result in an element with the `bh` class so the token colours apply. `highlightInto` with `pretty: true` tokenizes `prettyTtml(source)` instead of the source.
 
 ## Tokens
 
-Adjacent tokens of the same type render as one `<span class="bh-<type>">`, except `text`, which renders as a plain text node.
+Each token renders as one `<span class="bh-<type>">`, except `text`, which renders as a plain text node. `tokenize` already joins adjacent text of the same type into one token.
 
 | Token | Meaning |
 |---|---|
