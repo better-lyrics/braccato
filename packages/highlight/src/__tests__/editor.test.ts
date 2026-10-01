@@ -292,6 +292,151 @@ describe("attachEditor box sync", () => {
 	});
 });
 
+describe("attachEditor line height", () => {
+	const typedLineHeight = (textarea: FakeNode, written: string) => {
+		const live = { written };
+		textarea.computedStyleMap = () => ({
+			get: (prop) => (prop === "line-height" ? { toString: () => live.written } : undefined),
+		});
+		return live;
+	};
+
+	it("regression: copies a unitless line-height as written, because Blink rounds its resolved px differently", () => {
+		const { textarea, attach } = mount();
+		textarea.computed = { "font-size": "12px", "line-height": "20.4px" };
+		typedLineHeight(textarea, "1.7");
+		const layer = attach().layer as unknown as FakeNode;
+		expect(layer.style.getPropertyValue("line-height")).toBe("1.7");
+		expect(layer.style.getPropertyValue("font-size")).toBe("12px");
+	});
+
+	it("follows the textarea when its line-height changes form", () => {
+		const { textarea, attach } = mount();
+		textarea.computed = { "line-height": "20.4px" };
+		const lineHeight = typedLineHeight(textarea, "1.7");
+		const layer = attach().layer as unknown as FakeNode;
+		lineHeight.written = "20.4px";
+		textarea.dispatch("input");
+		expect(layer.style.getPropertyValue("line-height")).toBe("20.4px");
+		lineHeight.written = "normal";
+		textarea.dispatch("input");
+		expect(layer.style.getPropertyValue("line-height")).toBe("normal");
+	});
+
+	it("falls back to the computed line-height in an engine without CSS Typed OM", () => {
+		const { textarea, attach } = mount();
+		textarea.computed = { "line-height": "20.4px" };
+		const layer = attach().layer as unknown as FakeNode;
+		expect(layer.style.getPropertyValue("line-height")).toBe("20.4px");
+	});
+});
+
+describe("attachEditor scrollbar gutters", () => {
+	const FRAME = {
+		"padding-top": "12px",
+		"padding-right": "14px",
+		"padding-bottom": "12px",
+		"padding-left": "14px",
+		"border-top-width": "2px",
+		"border-right-width": "2px",
+		"border-bottom-width": "2px",
+		"border-left-width": "2px",
+	};
+	const mountBox = (scrollbar: Partial<FakeNode["scrollbar"]> = {}) => {
+		const { doc, textarea, attach } = mount();
+		textarea.computed = { ...FRAME };
+		textarea.box = { width: 560, height: 360 };
+		textarea.scrollbar = { vertical: 0, horizontal: 0, side: "right", ...scrollbar };
+		const layer = attach().layer as unknown as FakeNode;
+		const resize = () => {
+			for (const observer of doc.defaultView.observers) if (observer.connected) observer.callback();
+			doc.defaultView.flushFrames();
+		};
+		const px = (el: FakeNode, prop: string) => Number.parseFloat(el.style.getPropertyValue(prop)) || 0;
+		const css = (prop: string) => Number.parseFloat(textarea.computed[prop] ?? "") || 0;
+		const box = () => textarea.box ?? { width: 0, height: 0 };
+		const layerContent = () => ({
+			left: px(layer, "left") + px(layer, "border-left-width") + px(layer, "padding-left"),
+			right: box().width - px(layer, "right") - px(layer, "border-right-width") - px(layer, "padding-right"),
+		});
+		const textareaContent = () => {
+			const { vertical, side } = textarea.scrollbar;
+			return {
+				left: css("border-left-width") + (side === "left" ? vertical : 0) + css("padding-left"),
+				right: box().width - css("border-right-width") - (side === "right" ? vertical : 0) - css("padding-right"),
+			};
+		};
+		const layerClientHeight = () =>
+			box().height -
+			px(layer, "top") -
+			px(layer, "bottom") -
+			px(layer, "border-top-width") -
+			px(layer, "border-bottom-width");
+		const textareaClientHeight = () =>
+			box().height - css("border-top-width") - css("border-bottom-width") - textarea.scrollbar.horizontal;
+		return { textarea, layer, resize, layerContent, textareaContent, layerClientHeight, textareaClientHeight };
+	};
+
+	it("lays the layer's text out in the textarea's content box when a classic scrollbar takes width from it", () => {
+		const { resize, layerContent, textareaContent } = mountBox({ vertical: 15 });
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("regression: narrows the layer again when a scrollbar appears after the content grows", () => {
+		const { textarea, resize, layerContent, textareaContent } = mountBox();
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+		textarea.scrollbar = { ...textarea.scrollbar, vertical: 11 };
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+		textarea.scrollbar = { ...textarea.scrollbar, vertical: 0 };
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("reserves a scrollbar on the left, where Blink puts it for right-to-left text", () => {
+		const { textarea, resize, layerContent, textareaContent } = mountBox({ vertical: 15, side: "left" });
+		textarea.computed = { ...FRAME, direction: "rtl" };
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("matches the textarea's client height when a horizontal scrollbar takes height from it", () => {
+		const { resize, layerClientHeight, textareaClientHeight, layerContent, textareaContent } = mountBox({
+			vertical: 15,
+			horizontal: 15,
+		});
+		resize();
+		expect(layerClientHeight()).toBe(textareaClientHeight());
+		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("keeps the layer at the full box with overlay scrollbars", () => {
+		const { layer, resize, layerContent, textareaContent } = mountBox();
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+		for (const side of ["left", "right", "bottom"])
+			expect(Number.parseFloat(layer.style.getPropertyValue(side)) || 0).toBe(0);
+	});
+
+	it("measures scrollbars only on resize, never while handling input", () => {
+		const { textarea, resize } = mountBox({ vertical: 15 });
+		resize();
+		let reads = 0;
+		Object.defineProperty(textarea, "clientLeft", {
+			get: () => {
+				reads++;
+				return 2;
+			},
+			configurable: true,
+		});
+		textarea.value = "[00:02.00]Bye";
+		textarea.dispatch("input");
+		expect(reads).toBe(0);
+	});
+});
+
 describe("attachEditor layout reads", () => {
 	it("does not read scroll offsets while handling input", () => {
 		const { textarea, attach } = mount();
