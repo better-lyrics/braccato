@@ -558,14 +558,25 @@ describe("attachEditor style window", () => {
 		expect(layer.textContent).toBe(layerText(textarea.value));
 	});
 
-	it("restyles everything on refresh when the layer has no size", () => {
-		const { isPlain, textarea, doc } = mountWindowed(LRC_LINES);
+	it("keeps its window while hidden and measures again when shown", () => {
+		const { isPlain, textarea, doc, lineTypes, expectedTypes, layer } = mountWindowed(LRC_LINES);
+		const resize = () => {
+			for (const observer of doc.defaultView.observers) if (observer.connected) observer.callback();
+			doc.defaultView.flushFrames();
+		};
 		doc.layerHeight = 0;
+		resize();
+		expect(isPlain(150)).toBe(true);
 		textarea.value = `${LRC_LINES}\n`;
 		const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
 		editor.refresh();
 		doc.defaultView.flushFrames();
-		expect(isPlain(150)).toBe(false);
+		expect(isPlain(150)).toBe(true);
+		doc.layerHeight = 30;
+		layer.scrollTop = 0;
+		resize();
+		for (const line of [0, 1, 2]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		expect(isPlain(150)).toBe(true);
 	});
 
 	describe("invariants", () => {

@@ -233,6 +233,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	// Restyling relays out the rest of a long line, so while the visible text is still styled it waits for scrolling to stop.
 	const restyle = (urgentOnly: boolean) => {
 		const height = layer.clientHeight;
+		if (!height) return;
 		const drift = Number.isNaN(measuredAt) ? Number.POSITIVE_INFINITY : Math.abs(scrolledTo - measuredAt);
 		if (drift <= height * WINDOW_SLACK) return;
 		if (urgentOnly && drift < height * WINDOW_MARGIN) {
