@@ -17,8 +17,8 @@ export interface FakeNode {
 	readonly clientLeft: number;
 	/** Opt-in border box for resize entries; null means the node reports no size. */
 	box: { width: number; height: number } | null;
-	/** Classic scrollbars take this much from the content box; overlay scrollbars are 0. */
-	scrollbar: { vertical: number; horizontal: number; side: "left" | "right" };
+	/** Classic scrollbars take this much from the content box; overlay scrollbars are 0. `both` is `scrollbar-gutter: stable both-edges`. */
+	scrollbar: { vertical: number; horizontal: number; side: "left" | "right" | "both" };
 	/** Absent unless a test installs it, like an engine without CSS Typed OM. */
 	computedStyleMap?: () => { get(prop: string): { toString(): string } | undefined };
 	getBoundingClientRect(): FakeRect;
@@ -203,7 +203,8 @@ export function createFakeDocument(): FakeDocument {
 			borderBoxSize: [{ inlineSize: width, blockSize: height }],
 			contentBoxSize: [
 				{
-					inlineSize: width - frame("left", "right") - target.scrollbar.vertical,
+					inlineSize:
+						width - frame("left", "right") - target.scrollbar.vertical * (target.scrollbar.side === "both" ? 2 : 1),
 					blockSize: height - frame("top", "bottom") - target.scrollbar.horizontal,
 				},
 			],
@@ -289,7 +290,7 @@ export function createFakeDocument(): FakeDocument {
 			},
 			clientTop: 0,
 			get clientLeft() {
-				return px(n, "border-left-width") + (n.scrollbar.side === "left" ? n.scrollbar.vertical : 0);
+				return Math.round(px(n, "border-left-width") + (n.scrollbar.side === "right" ? 0 : n.scrollbar.vertical));
 			},
 			box: null,
 			scrollbar: { vertical: 0, horizontal: 0, side: "right" },

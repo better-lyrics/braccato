@@ -139,9 +139,11 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		const snap = (px: number) => Math.max(0, Math.round(px * 64) / 64);
 		const inline = snap(border.inlineSize - content.inlineSize - frame("left", "right"));
 		const block = snap(border.blockSize - content.blockSize - frame("top", "bottom"));
-		const onLeft = inline > 0 && textarea.clientLeft > boxPx("border-left-width");
-		setInset("left", onLeft ? inline : 0);
-		setInset("right", onLeft ? 0 : inline);
+		// clientLeft is a rounded integer while borders can be fractional, so a sub-pixel remainder is rounding, not gutter.
+		const leftRaw = inline > 0 ? snap(Math.min(inline, textarea.clientLeft - boxPx("border-left-width"))) : 0;
+		const left = leftRaw < 1 ? 0 : inline - leftRaw < 1 ? inline : leftRaw;
+		setInset("left", left);
+		setInset("right", inline - left);
 		setInset("bottom", block);
 	};
 	let scrolledTo = 0;

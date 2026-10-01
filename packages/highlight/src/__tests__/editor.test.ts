@@ -355,15 +355,18 @@ describe("attachEditor scrollbar gutters", () => {
 		const px = (el: FakeNode, prop: string) => Number.parseFloat(el.style.getPropertyValue(prop)) || 0;
 		const css = (prop: string) => Number.parseFloat(textarea.computed[prop] ?? "") || 0;
 		const box = () => textarea.box ?? { width: 0, height: 0 };
+		const exact = (value: number) => Math.round(value * 1e6) / 1e6;
 		const layerContent = () => ({
-			left: px(layer, "left") + px(layer, "border-left-width") + px(layer, "padding-left"),
-			right: box().width - px(layer, "right") - px(layer, "border-right-width") - px(layer, "padding-right"),
+			left: exact(px(layer, "left") + px(layer, "border-left-width") + px(layer, "padding-left")),
+			right: exact(box().width - px(layer, "right") - px(layer, "border-right-width") - px(layer, "padding-right")),
 		});
 		const textareaContent = () => {
 			const { vertical, side } = textarea.scrollbar;
+			const leftGutter = side === "right" ? 0 : vertical;
+			const rightGutter = side === "left" ? 0 : vertical;
 			return {
-				left: css("border-left-width") + (side === "left" ? vertical : 0) + css("padding-left"),
-				right: box().width - css("border-right-width") - (side === "right" ? vertical : 0) - css("padding-right"),
+				left: exact(css("border-left-width") + leftGutter + css("padding-left")),
+				right: exact(box().width - css("border-right-width") - rightGutter - css("padding-right")),
 			};
 		};
 		const layerClientHeight = () =>
@@ -398,6 +401,28 @@ describe("attachEditor scrollbar gutters", () => {
 	it("reserves a scrollbar on the left, where Blink puts it for right-to-left text", () => {
 		const { textarea, resize, layerContent, textareaContent } = mountBox({ vertical: 15, side: "left" });
 		textarea.computed = { ...FRAME, direction: "rtl" };
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("regression: keeps a right scrollbar on the right when a fractional border makes clientLeft round up", () => {
+		const { textarea, resize, layer, layerContent, textareaContent } = mountBox({ vertical: 15 });
+		textarea.computed = { ...FRAME, "border-left-width": "0.666667px", "border-right-width": "0.666667px" };
+		resize();
+		expect(textarea.clientLeft).toBe(1);
+		expect(layerContent()).toEqual(textareaContent());
+		expect(Number.parseFloat(layer.style.getPropertyValue("left")) || 0).toBe(0);
+	});
+
+	it("reserves a left scrollbar in full when a fractional border makes clientLeft round", () => {
+		const { textarea, resize, layerContent, textareaContent } = mountBox({ vertical: 15, side: "left" });
+		textarea.computed = { ...FRAME, "border-left-width": "0.666667px", "border-right-width": "0.666667px" };
+		resize();
+		expect(layerContent()).toEqual(textareaContent());
+	});
+
+	it("splits a both-edges gutter between the two sides", () => {
+		const { resize, layerContent, textareaContent } = mountBox({ vertical: 15, side: "both" });
 		resize();
 		expect(layerContent()).toEqual(textareaContent());
 	});
