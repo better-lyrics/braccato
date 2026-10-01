@@ -104,11 +104,13 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	textarea.classList.add("bh-input");
 
 	const boxValues = new Map<string, string>();
+	const typedStyle = typeof textarea.computedStyleMap === "function" ? textarea.computedStyleMap() : null;
 	const syncBox = (): boolean => {
 		const computed = view.getComputedStyle(textarea);
 		let changed = false;
 		for (const prop of SYNCED_BOX_PROPERTIES) {
-			const value = computed.getPropertyValue(prop);
+			// Blink floors a unitless line-height to 1/64px but rounds a px one, so copying the px drifts every row.
+			const value = (prop === "line-height" && typedStyle?.get(prop)?.toString()) || computed.getPropertyValue(prop);
 			if (boxValues.get(prop) === value) continue;
 			boxValues.set(prop, value);
 			layer.style.setProperty(prop, value);
@@ -119,6 +121,34 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		if (dir === null) layer.removeAttribute("dir");
 		else layer.setAttribute("dir", dir);
 		return true;
+	};
+	const boxPx = (prop: string) => Number.parseFloat(boxValues.get(prop) ?? "") || 0;
+	const insets = new Map<string, number>();
+	const setInset = (side: "left" | "right" | "bottom", value: number) => {
+		if ((insets.get(side) ?? 0) === value) return;
+		insets.set(side, value);
+		layer.style.setProperty(side, `${value}px`);
+	};
+	// A classic scrollbar comes out of the textarea's content box; the layer has none, so it gives up the same strip.
+	const syncGutters = (entry: ResizeObserverEntry | undefined) => {
+		const border = entry?.borderBoxSize?.[0];
+		const content = entry?.contentBoxSize?.[0];
+		if (!border || !content) return;
+		if (view.getComputedStyle(textarea).getPropertyValue("writing-mode") !== "horizontal-tb") {
+			for (const side of ["left", "right", "bottom"] as const) setInset(side, 0);
+			return;
+		}
+		const frame = (a: string, b: string) =>
+			boxPx(`padding-${a}`) + boxPx(`padding-${b}`) + boxPx(`border-${a}-width`) + boxPx(`border-${b}-width`);
+		const snap = (px: number) => Math.max(0, Math.round(px * 64) / 64);
+		const inline = snap(border.inlineSize - content.inlineSize - frame("left", "right"));
+		const block = snap(border.blockSize - content.blockSize - frame("top", "bottom"));
+		// clientLeft is a rounded integer while borders can be fractional, so a sub-pixel remainder is rounding, not gutter.
+		const leftRaw = inline > 0 ? snap(Math.min(inline, textarea.clientLeft - boxPx("border-left-width"))) : 0;
+		const left = leftRaw < 1 ? 0 : inline - leftRaw < 1 ? inline : leftRaw;
+		setInset("left", left);
+		setInset("right", inline - left);
+		setInset("bottom", block);
 	};
 	let scrolledTo = 0;
 	const syncScroll = () => {
@@ -286,8 +316,9 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		syncScroll();
 		restyle(true);
 	};
-	const onResize = () => {
+	const onResize = (entries: ResizeObserverEntry[]) => {
 		syncBox();
+		syncGutters(entries[entries.length - 1]);
 		measuredAt = Number.NaN;
 		restyle(false);
 	};

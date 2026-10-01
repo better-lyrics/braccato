@@ -14,6 +14,13 @@ export interface FakeNode {
 	scrollLeft: number;
 	clientHeight: number;
 	clientTop: number;
+	readonly clientLeft: number;
+	/** Opt-in border box for resize entries; null means the node reports no size. */
+	box: { width: number; height: number } | null;
+	/** Classic scrollbars take this much from the content box; overlay scrollbars are 0. `both` is `scrollbar-gutter: stable both-edges`. */
+	scrollbar: { vertical: number; horizontal: number; side: "left" | "right" | "both" };
+	/** Absent unless a test installs it, like an engine without CSS Typed OM. */
+	computedStyleMap?: () => { get(prop: string): { toString(): string } | undefined };
 	getBoundingClientRect(): FakeRect;
 	computed: Record<string, string>;
 	listeners: Map<string, Set<Listener>>;
@@ -49,16 +56,27 @@ export interface FakeRange {
 	getBoundingClientRect(): FakeRect;
 }
 
+export interface FakeResizeEntry {
+	target: FakeNode;
+	borderBoxSize: { inlineSize: number; blockSize: number }[];
+	contentBoxSize: { inlineSize: number; blockSize: number }[];
+}
+
 export interface FakeResizeObserver {
 	observed: FakeNode[];
 	connected: boolean;
+	/** Delivers a resize entry for every observed node, the way the browser does after layout. */
 	callback: Listener;
+	/** Delivers exactly these entries, for engines that report less than a full entry. */
+	deliver(entries: Partial<FakeResizeEntry>[]): void;
 }
 
 export interface FakeWindow {
 	observers: FakeResizeObserver[];
 	getComputedStyle(el: FakeNode): { getPropertyValue(prop: string): string };
-	ResizeObserver: new (callback: Listener) => { observe(el: FakeNode): void; disconnect(): void };
+	ResizeObserver: new (
+		callback: (entries: FakeResizeEntry[]) => void,
+	) => { observe(el: FakeNode): void; disconnect(): void };
 	requestAnimationFrame(callback: Listener): number;
 	cancelAnimationFrame(id: number): void;
 	setTimeout(callback: Listener, delay: number): number;
@@ -117,9 +135,15 @@ export function createFakeDocument(): FakeDocument {
 		getComputedStyle: (el) => ({ getPropertyValue: (prop) => el.computed[prop] ?? "" }),
 		ResizeObserver: class {
 			private record: FakeResizeObserver;
-			constructor(callback: Listener) {
-				this.record = { observed: [], connected: true, callback };
-				observers.push(this.record);
+			constructor(callback: (entries: FakeResizeEntry[]) => void) {
+				const record: FakeResizeObserver = {
+					observed: [],
+					connected: true,
+					callback: () => callback(record.observed.map(resizeEntry)),
+					deliver: (entries) => callback(entries as FakeResizeEntry[]),
+				};
+				this.record = record;
+				observers.push(record);
 			}
 			observe(el: FakeNode) {
 				this.record.observed.push(el);
@@ -168,6 +192,26 @@ export function createFakeDocument(): FakeDocument {
 		rowHeight: 0,
 		charsPerRow: 0,
 		layerHeight: 0,
+	};
+	const px = (el: FakeNode, prop: string) => Number.parseFloat(el.computed[prop] ?? "") || 0;
+	const resizeEntry = (target: FakeNode): FakeResizeEntry => {
+		const { width, height } = target.box ?? { width: 0, height: 0 };
+		const frame = (a: string, b: string) =>
+			px(target, `padding-${a}`) +
+			px(target, `padding-${b}`) +
+			px(target, `border-${a}-width`) +
+			px(target, `border-${b}-width`);
+		return {
+			target,
+			borderBoxSize: [{ inlineSize: width, blockSize: height }],
+			contentBoxSize: [
+				{
+					inlineSize:
+						width - frame("left", "right") - target.scrollbar.vertical * (target.scrollbar.side === "both" ? 2 : 1),
+					blockSize: height - frame("top", "bottom") - target.scrollbar.horizontal,
+				},
+			],
+		};
 	};
 	const rect = (top: number, height: number): FakeRect => ({
 		top,
@@ -248,6 +292,11 @@ export function createFakeDocument(): FakeDocument {
 				height = value;
 			},
 			clientTop: 0,
+			get clientLeft() {
+				return Math.round(px(n, "border-left-width") + (n.scrollbar.side === "right" ? 0 : n.scrollbar.vertical));
+			},
+			box: null,
+			scrollbar: { vertical: 0, horizontal: 0, side: "right" },
 			getBoundingClientRect: () => layout(n),
 			computed: {},
 			listeners: new Map(),
