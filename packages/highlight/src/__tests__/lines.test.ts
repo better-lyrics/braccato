@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedRange, splitLines } from "../lines.js";
+import { changedRange, changedTokens, splitLines } from "../lines.js";
 import { tokenize } from "../tokenize.js";
 import type { Token } from "../types.js";
 
@@ -104,6 +104,42 @@ describe("changedRange", () => {
 			const range = changedRange(prev, splitLines(tokenize(edited, "ttml")));
 			expect(performance.now() - started).toBeLessThan(1000);
 			expect(range.nextEnd - range.start).toBe(1);
+		});
+	});
+});
+
+describe("changedTokens", () => {
+	const tokens = (...texts: string[]) => texts.map((text) => ({ type: "text" as const, text }));
+
+	it("finds the one token a keystroke changed", () => {
+		expect(changedTokens(tokens("a", "b", "c"), tokens("a", "bx", "c"))).toEqual({ start: 1, prevEnd: 2, nextEnd: 2 });
+	});
+
+	it("finds inserted and removed tokens", () => {
+		expect(changedTokens(tokens("a", "c"), tokens("a", "b", "c"))).toEqual({ start: 1, prevEnd: 1, nextEnd: 2 });
+		expect(changedTokens(tokens("a", "b", "c"), tokens("a", "c"))).toEqual({ start: 1, prevEnd: 2, nextEnd: 1 });
+	});
+
+	it("compares types as well as text", () => {
+		expect(changedTokens([{ type: "text", text: "a" }], [{ type: "bgText", text: "a" }])).toEqual({
+			start: 0,
+			prevEnd: 1,
+			nextEnd: 1,
+		});
+	});
+
+	describe("edge cases", () => {
+		it("reports nothing changed for equal tokens", () => {
+			expect(changedTokens(tokens("a", "b"), tokens("a", "b"))).toEqual({ start: 2, prevEnd: 2, nextEnd: 2 });
+		});
+
+		it("never lets prefix and suffix overlap on repeated tokens", () => {
+			expect(changedTokens(tokens("a", "a"), tokens("a", "a", "a"))).toEqual({ start: 2, prevEnd: 2, nextEnd: 3 });
+		});
+
+		it("handles empty sides", () => {
+			expect(changedTokens([], tokens("a"))).toEqual({ start: 0, prevEnd: 0, nextEnd: 1 });
+			expect(changedTokens(tokens("a"), [])).toEqual({ start: 0, prevEnd: 1, nextEnd: 0 });
 		});
 	});
 });

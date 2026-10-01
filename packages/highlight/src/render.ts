@@ -23,18 +23,17 @@ export function mergeTokens(tokens: readonly Token[]): Token[] {
 	return out;
 }
 
+export function tokenNode(doc: Document, { type, text }: Token): ChildNode {
+	if (type === "text") return doc.createTextNode(text);
+	const span = doc.createElement("span");
+	span.className = `bh-${type}`;
+	span.textContent = text;
+	return span;
+}
+
 export function appendTokens(parent: DocumentFragment | HTMLElement, tokens: readonly Token[]): void {
 	const doc = parent.ownerDocument as Document;
-	for (const { type, text } of tokens) {
-		if (type === "text") {
-			parent.append(doc.createTextNode(text));
-			continue;
-		}
-		const span = doc.createElement("span");
-		span.className = `bh-${type}`;
-		span.textContent = text;
-		parent.append(span);
-	}
+	for (const token of tokens) parent.append(tokenNode(doc, token));
 }
 
 export function highlightInto(el: HTMLElement, src: string, options: HighlightOptions = {}): LyricFormat {

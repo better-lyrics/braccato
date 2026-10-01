@@ -5,6 +5,7 @@ export interface FakeNode {
 	className: string;
 	textContent: string;
 	children: FakeNode[];
+	readonly firstChild: FakeNode | null;
 	parent: FakeNode | null;
 	readonly parentNode: FakeNode | null;
 	ownerDocument: FakeDocument;
@@ -18,7 +19,9 @@ export interface FakeNode {
 	replaceChildren(...nodes: FakeNode[]): void;
 	append(...nodes: FakeNode[]): void;
 	before(...nodes: FakeNode[]): void;
+	insertBefore(node: FakeNode, reference: FakeNode | null): FakeNode;
 	remove(): void;
+	data: string;
 	setAttribute(name: string, value: string): void;
 	getAttribute(name: string): string | null;
 	removeAttribute(name: string): void;
@@ -97,6 +100,9 @@ export function createFakeDocument(): FakeDocument {
 				else n.replaceChildren(...(value ? [doc.createTextNode(value)] : []));
 			},
 			children: [],
+			get firstChild() {
+				return n.children[0] ?? null;
+			},
 			parent: null,
 			get parentNode() {
 				return n.parent;
@@ -134,6 +140,11 @@ export function createFakeDocument(): FakeDocument {
 					n.children.push(child);
 				}
 			},
+			insertBefore(child, reference) {
+				if (reference === null) n.append(child);
+				else reference.before(child);
+				return child;
+			},
 			before(...nodes) {
 				const parent = n.parent;
 				if (!parent) return;
@@ -145,6 +156,13 @@ export function createFakeDocument(): FakeDocument {
 			},
 			remove() {
 				detach(n);
+			},
+			get data() {
+				return nodeName === "#text" ? data : "";
+			},
+			set data(value: string) {
+				if (nodeName !== "#text") throw new Error("data needs a text node");
+				data = value;
 			},
 			setAttribute: (name, value) => attributes.set(name, value),
 			getAttribute: (name) => attributes.get(name) ?? null,

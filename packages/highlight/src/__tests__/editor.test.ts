@@ -168,6 +168,57 @@ describe("attachEditor box sync", () => {
 	});
 });
 
+describe("attachEditor layout reads", () => {
+	it("does not read scroll offsets while handling input", () => {
+		const { textarea, attach } = mount();
+		attach();
+		let reads = 0;
+		let top = 0;
+		Object.defineProperty(textarea, "scrollTop", {
+			get: () => {
+				reads++;
+				return top;
+			},
+			set: (value: number) => {
+				top = value;
+			},
+			configurable: true,
+		});
+		textarea.value = "[00:02.00]Bye";
+		textarea.dispatch("input");
+		expect(reads).toBe(0);
+	});
+
+	it("follows the textarea's scroll position on scroll", () => {
+		const { textarea, attach } = mount();
+		const layer = attach().layer as unknown as FakeNode;
+		textarea.scrollTop = 40;
+		textarea.scrollLeft = 7;
+		textarea.dispatch("scroll");
+		expect(layer.scrollTop).toBe(40);
+		expect(layer.scrollLeft).toBe(7);
+	});
+
+	it("writes only the box properties that changed", () => {
+		const { textarea, attach } = mount();
+		textarea.computed = { "font-size": "13px", "padding-top": "4px" };
+		const layer = attach().layer as unknown as FakeNode;
+		const writes: string[] = [];
+		const setProperty = layer.style.setProperty;
+		layer.style.setProperty = (prop, value) => {
+			writes.push(prop);
+			setProperty(prop, value);
+		};
+		textarea.value = "[00:02.00]Bye";
+		textarea.dispatch("input");
+		expect(writes).toEqual([]);
+		textarea.computed = { "font-size": "20px", "padding-top": "4px" };
+		textarea.dispatch("input");
+		expect(writes).toEqual(["font-size"]);
+		expect(layer.style.getPropertyValue("font-size")).toBe("20px");
+	});
+});
+
 describe("attachEditor preconditions", () => {
 	it("throws a clear error for a textarea that is not in the DOM", () => {
 		const textarea = createFakeDocument().createElement("textarea");
@@ -191,6 +242,8 @@ const TTML = [
 	"</body>",
 	"</tt>",
 ].join("\n");
+
+const ONE_LINE = TTML.replace(/\n/g, "");
 
 function mountWith(value: string) {
 	const doc = createFakeDocument();
@@ -221,13 +274,34 @@ function mountWith(value: string) {
 describe("attachEditor incremental rendering", () => {
 	it("keeps the nodes of lines an edit did not touch", () => {
 		const { layer, input, leaves } = mountWith(TTML);
+		const lineEls = [...layer.children];
 		const before = leaves(layer);
-		input(TTML.replace(">three<", ">thre<"));
+		input(TTML.replace(">three<", '><span ttm:role="x-bg">three</span><'));
+		expect(layer.children).toEqual(lineEls);
+		const edited = layer.children[6];
+		const rebuilt = leaves(layer).filter((leaf) => !before.includes(leaf));
+		expect(rebuilt.length).toBeGreaterThan(0);
+		expect(rebuilt.every((leaf) => leaves(edited).includes(leaf))).toBe(true);
+	});
+
+	it("edits a token's text in place when a keystroke stays inside it", () => {
+		const { layer, input, leaves, rendered, expected } = mountWith(ONE_LINE);
+		const before = leaves(layer);
+		input(ONE_LINE.replace(">three<", ">thrxee<"));
 		const after = leaves(layer);
-		const rebuilt = after.filter((leaf) => !before.includes(leaf));
-		expect(rebuilt.map((leaf) => leaf.textContent).join("")).toBe(
-			'<p begin="00:02.000" end="00:03.000"><span begin="00:02.000" end="00:03.000">thre</span></p>\n',
-		);
+		expect(after).toHaveLength(before.length);
+		expect(after.every((leaf, k) => leaf === before[k])).toBe(true);
+		expect(rendered()).toEqual(expected());
+	});
+
+	it("rebuilds only the tokens a structural edit changed inside one long line", () => {
+		const { layer, input, leaves, rendered, expected } = mountWith(ONE_LINE);
+		const before = leaves(layer);
+		input(ONE_LINE.replace("</p><p", '</p><p begin="00:09.000">new</p><p'));
+		const after = leaves(layer);
+		expect(before.filter((leaf) => !after.includes(leaf)).length).toBeLessThanOrEqual(2);
+		expect(after.filter((leaf) => !before.includes(leaf)).length).toBeLessThanOrEqual(12);
+		expect(rendered()).toEqual(expected());
 	});
 
 	it("renders one bh-line element per line", () => {

@@ -1,6 +1,6 @@
 import { detectFormat } from "@braccato/parsers/format";
-import { changedRange, splitLines } from "./lines.js";
-import { appendTokens, mergeTokens } from "./render.js";
+import { changedRange, changedTokens, splitLines } from "./lines.js";
+import { mergeTokens, tokenNode } from "./render.js";
 import { tokenize } from "./tokenize.js";
 import type { LyricFormat, Token } from "./types.js";
 
@@ -71,10 +71,17 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	const addedInputClass = !textarea.classList.contains("bh-input");
 	textarea.classList.add("bh-input");
 
+	const boxValues = new Map<string, string>();
 	const syncBox = () => {
 		const computed = view.getComputedStyle(textarea);
-		for (const prop of SYNCED_BOX_PROPERTIES) layer.style.setProperty(prop, computed.getPropertyValue(prop));
+		for (const prop of SYNCED_BOX_PROPERTIES) {
+			const value = computed.getPropertyValue(prop);
+			if (boxValues.get(prop) === value) continue;
+			boxValues.set(prop, value);
+			layer.style.setProperty(prop, value);
+		}
 		const dir = textarea.getAttribute("dir");
+		if (dir === layer.getAttribute("dir")) return;
 		if (dir === null) layer.removeAttribute("dir");
 		else layer.setAttribute("dir", dir);
 	};
@@ -84,32 +91,56 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	};
 	let lines: Token[][] = [];
 	let lineEls: HTMLElement[] = [];
-	const lineElement = (tokens: Token[]) => {
-		const el = doc.createElement("span");
-		el.className = "bh-line";
-		appendTokens(el, tokens);
-		return el;
+	let lineNodes: ChildNode[][] = [];
+	const splice = <T extends ChildNode>(parent: Node, nodes: T[], start: number, end: number, fresh: T[]): T[] => {
+		const fragment = doc.createDocumentFragment();
+		for (const node of fresh) fragment.append(node);
+		for (const node of nodes.slice(start, end)) node.remove();
+		parent.insertBefore(fragment, nodes[end] ?? null);
+		return nodes.slice(0, start).concat(fresh, nodes.slice(end));
+	};
+	const replaceLines = (start: number, prevEnd: number, tokens: Token[][]) => {
+		const nodes = tokens.map((line) => line.map((token) => tokenNode(doc, token)));
+		const els = nodes.map((line) => {
+			const el = doc.createElement("span");
+			el.className = "bh-line";
+			for (const node of line) el.append(node);
+			return el;
+		});
+		lineEls = splice(layer, lineEls, start, prevEnd, els);
+		lineNodes = lineNodes.slice(0, start).concat(nodes, lineNodes.slice(prevEnd));
+	};
+	// Unchanged nodes keep their shaping in Blink; a whole-string data write measured faster than replaceData.
+	const patchLine = (index: number, tokens: Token[]) => {
+		const prev = lines[index];
+		const nodes = lineNodes[index];
+		const { start, prevEnd, nextEnd } = changedTokens(prev, tokens);
+		if (prevEnd - start === 1 && nextEnd - start === 1 && prev[start].type === tokens[start].type) {
+			const node = nodes[start];
+			const text = (prev[start].type === "text" ? node : node.firstChild) as Text;
+			text.data = tokens[start].text;
+			return;
+		}
+		const fresh = tokens.slice(start, nextEnd).map((token) => tokenNode(doc, token));
+		lineNodes[index] = splice(lineEls[index], nodes, start, prevEnd, fresh);
 	};
 	const render = (full: boolean) => {
+		if (full) boxValues.clear();
 		syncBox();
 		const src = textarea.value;
 		const next = splitLines(mergeTokens(tokenize(layerText(src), options.format ?? detectFormat(src))));
-		const { start, prevEnd, nextEnd } = full
-			? { start: 0, prevEnd: lines.length, nextEnd: next.length }
-			: changedRange(lines, next);
-		const fresh = next.slice(start, nextEnd).map(lineElement);
-		const fragment = doc.createDocumentFragment();
-		for (const el of fresh) fragment.append(el);
-		if (full) layer.replaceChildren(fragment);
-		else {
-			for (const el of lineEls.slice(start, prevEnd)) el.remove();
-			const anchor = lineEls[prevEnd];
-			if (anchor) anchor.before(fragment);
-			else layer.append(fragment);
+		if (full) {
+			lineEls = [];
+			lineNodes = [];
+			layer.replaceChildren();
+			replaceLines(0, 0, next);
+		} else {
+			const { start, prevEnd, nextEnd } = changedRange(lines, next);
+			if (prevEnd - start === nextEnd - start) for (let k = start; k < prevEnd; k++) patchLine(k, next[k]);
+			else replaceLines(start, prevEnd, next.slice(start, nextEnd));
 		}
-		lineEls = [...lineEls.slice(0, start), ...fresh, ...lineEls.slice(prevEnd)];
 		lines = next;
-		syncScroll();
+		if (full) syncScroll();
 	};
 	const refresh = () => render(true);
 	const update = () => render(false);
