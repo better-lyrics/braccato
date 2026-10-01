@@ -527,6 +527,21 @@ describe("attachEditor style window", () => {
 		}
 	});
 
+	it("regression: windows a document typed into an editor attached empty", () => {
+		const { input, isPlain, lineTypes, expectedTypes } = mountWindowed("");
+		input(LRC_LINES);
+		expect(isPlain(150)).toBe(true);
+		expect(lineTypes(1)).toEqual(expectedTypes(1));
+	});
+
+	it("regression: windows a document pasted after deleting everything", () => {
+		const { input, isPlain, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
+		input("");
+		input(LRC_LINES);
+		expect(isPlain(150)).toBe(true);
+		expect(lineTypes(1)).toEqual(expectedTypes(1));
+	});
+
 	it("measures again after an edit large enough to pull unstyled text into view", () => {
 		const { input, textarea, lineTypes, expectedTypes } = mountWindowed(LRC_LINES);
 		const value = textarea.value;

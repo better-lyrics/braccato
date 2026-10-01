@@ -219,6 +219,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		if (
 			full ||
 			boxChanged ||
+			!Number.isFinite(styled.to) ||
 			next.length !== prevLines.length ||
 			editedSinceMeasure > (styled.to - styled.from) * REMEASURE_SHARE
 		)
@@ -241,7 +242,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		}
 		const prev = styled;
 		styled = visibleWindow(rendered(), WINDOW_MARGIN);
-		measuredAt = height ? scrolledTo : Number.NaN;
+		measuredAt = Number.isFinite(styled.to) ? scrolledTo : Number.NaN;
 		editedSinceMeasure = 0;
 		if (lines.length === 0) return;
 		const [prevFirst, prevLast] = linesIn(prev);
