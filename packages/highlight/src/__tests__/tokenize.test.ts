@@ -53,7 +53,7 @@ describe("tokenize lrc", () => {
 		]);
 	});
 
-	it("keeps newlines as text tokens, CRLF included", () => {
+	it("keeps CRLF inside the text token of its line", () => {
 		const src = "[00:01.00]a\r\n[00:02.00]b";
 		expect(joined(tokenize(src, "lrc"))).toBe(src);
 		expect(pairs(tokenize(src, "lrc"))).toContain("text:a\r\n");
@@ -61,14 +61,32 @@ describe("tokenize lrc", () => {
 });
 
 describe("tokenize merging", () => {
-	it("merges punctuation that meets across stamps", () => {
-		expect(pairs(tokenize("[00:01.00]<00:01.00>Hi", "lrc"))).toEqual([
-			"punct:[",
-			"timestamp:00:01.00",
-			"punct:]<",
-			"wordTime:00:01.00",
+	it("merges TTML attribute punctuation with the quotes and tag end around it", () => {
+		expect(pairs(tokenize(`<p begin="1">x</p>`, "ttml"))).toEqual([
+			"punct:<",
+			"tag:p",
+			"text: ",
+			"attr:begin",
+			'punct:="',
+			"timestamp:1",
+			'punct:">',
+			"text:x",
+			"punct:</",
+			"tag:p",
 			"punct:>",
-			"text:Hi",
+		]);
+	});
+
+	it("merges QRC word stamp brackets that meet", () => {
+		expect(pairs(tokenize("[0,500](0,200)(200,300)a", "qrc"))).toEqual([
+			"punct:[",
+			"timestamp:0,500",
+			"punct:](",
+			"wordTime:0,200",
+			"punct:)(",
+			"wordTime:200,300",
+			"punct:)",
+			"text:a",
 		]);
 	});
 

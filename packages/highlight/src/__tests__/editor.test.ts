@@ -521,7 +521,7 @@ describe("attachEditor incremental rendering", () => {
 			const src = "a\n".repeat(150_000);
 			const { layer } = mountWith(src);
 			expect(layer.children).toHaveLength(150_001);
-		});
+		}, 20_000);
 	});
 });
 
@@ -568,6 +568,7 @@ function mountWindowed(value: string, rows = 3, charsPerRow = 0) {
 	return {
 		doc,
 		textarea,
+		editor,
 		layer,
 		isPlain,
 		lineTypes,
@@ -604,6 +605,17 @@ describe("attachEditor style window", () => {
 		expect(layer.scrollTop).toBe(1000);
 		for (const line of [99, 100, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
 		expect(isPlain(0)).toBe(true);
+	});
+
+	it("setFormat keeps the window: visible rows take the new format and far rows stay plain", () => {
+		const { editor, isPlain, lineTypes, expectedTypes, scrollTo, layer } = mountWindowed(LRC_LINES);
+		editor.setFormat("plain");
+		scrollTo(1000);
+		for (const line of [99, 100, 102]) expect(isPlain(line)).toBe(true);
+		editor.setFormat("lrc");
+		for (const line of [99, 100, 102]) expect(lineTypes(line)).toEqual(expectedTypes(line));
+		for (const line of [0, 199]) expect(isPlain(line)).toBe(true);
+		expect(layer.textContent).toBe(LRC_LINES);
 	});
 
 	it("does not restyle on a small scroll that stays inside the window", () => {

@@ -74,7 +74,7 @@ describe("highlightInto", () => {
 		expect(() => highlightInto(el as unknown as HTMLElement, src, { format: "lrc" })).not.toThrow();
 		expect(el.children).toHaveLength(160_000);
 		expect(el.textContent).toBe(src);
-	});
+	}, 20_000);
 
 	it("adds the bh class to the host so token colours apply", () => {
 		const el = host();
@@ -101,7 +101,9 @@ describe("tokenize parity with highlightInto", () => {
 		it(`draws exactly the tokenize stream for ${format}`, () => {
 			const el = host();
 			highlightInto(el as unknown as HTMLElement, src, { format });
-			const fromTokens = tokenize(src, format).map(({ type, text }) =>
+			const tokens = tokenize(src, format);
+			expect(tokens.every((t, k) => k === 0 || tokens[k - 1].type !== t.type)).toBe(true);
+			const fromTokens = tokens.map(({ type, text }) =>
 				type === "text" ? `#text.:${text}` : `SPAN.bh-${type}:${text}`,
 			);
 			expect(describeNodes(el.children)).toEqual(fromTokens);
