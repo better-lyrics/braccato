@@ -42,6 +42,38 @@
 	font-style: italic;
 }
 
+/* One text node per editor line keeps its wrapping identical to the textarea, so the layer colours through CSS.highlights. */
+.bh-edit > .bh-layer > .bh-line::highlight(bh-bgText) {
+	color: var(--bh-bgText, rgba(255, 255, 255, 0.82));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-timestamp) {
+	color: var(--bh-timestamp, rgba(165, 180, 252, 0.7));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-wordTime) {
+	color: var(--bh-wordTime, rgba(165, 180, 252, 0.52));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-agent) {
+	color: var(--bh-agent, rgba(252, 211, 77, 0.45));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-meta) {
+	color: var(--bh-meta, rgba(249, 168, 212, 0.38));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-tag) {
+	color: var(--bh-tag, rgba(255, 255, 255, 0.26));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-attr) {
+	color: var(--bh-attr, rgba(255, 255, 255, 0.22));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-value) {
+	color: var(--bh-value, rgba(134, 239, 172, 0.3));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-punct) {
+	color: var(--bh-punct, rgba(255, 255, 255, 0.16));
+}
+.bh-edit > .bh-layer > .bh-line::highlight(bh-comment) {
+	color: var(--bh-comment, rgba(255, 255, 255, 0.2));
+}
+
 /* -- Editor overlay -------------------------- */
 
 .bh-edit {

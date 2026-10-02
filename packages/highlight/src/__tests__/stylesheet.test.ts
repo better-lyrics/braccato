@@ -12,6 +12,20 @@ describe("highlight.css", () => {
 		}
 	});
 
+	it("colours every token type in the editor layer through a highlight with the same colour as its span", () => {
+		for (const type of TOKEN_TYPES.filter((t) => t !== "text")) {
+			const span = css.match(new RegExp(`^\\.bh \\.bh-${type} \\{[^}]*?(color: [^;]+;)`, "m"))?.[1];
+			const highlight = css.match(
+				new RegExp(
+					`^\\.bh-edit > \\.bh-layer > \\.bh-line::highlight\\(bh-${type}\\) \\{\\s*(color: [^;]+;)\\s*\\}`,
+					"m",
+				),
+			)?.[1];
+			expect(span, type).toBeDefined();
+			expect(highlight, type).toBe(span);
+		}
+	});
+
 	it("reads the background vocal style from a custom property", () => {
 		expect(css).toMatch(/font-style: var\(--bh-bgText-style, italic\)/);
 	});

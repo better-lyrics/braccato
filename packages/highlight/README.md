@@ -32,18 +32,22 @@ const editor = attachEditor(textarea);
 
 `attachEditor` wraps the textarea in a `div.bh-edit` and lays a highlighted `pre.bh-layer` under it. The textarea becomes transparent and keeps the caret, the selection and all input. The layer copies the textarea's font, padding, border widths and box sizing on every input and on every resize, and follows its scroll position.
 
-Every input re-tokenizes the whole document, so TTML state such as background vocals stays correct on later lines, but only the tokens that changed are patched. A keystroke inside one token rewrites that token's text node and leaves every other node in place, so the browser keeps their layout. The layer holds one `span.bh-line` block per source line.
+The layer holds one `span.bh-line` block per source line, and each block holds a single text node. The colours come from the [CSS Custom Highlight API](https://developer.mozilla.org/docs/Web/API/CSS_Custom_Highlight_API): one highlight per token type, registered in `CSS.highlights` as `bh-<type>` and shared by every editor on the page. Splitting a line into elements would make the browser round each piece's width separately, and a row that only just fits in the textarea would then wrap one word early in the layer and push every later line down a row. A single text node is laid out exactly as the textarea lays out its value. Where the API is missing, the layer shows plain text in the same position.
 
-Only the text within one editor height above and below the visible part is coloured. The rest renders as plain text in the same font, so the layer's text always equals the textarea's value and wraps the same way. A scroll that stays inside that margin restyles once scrolling settles, and a scroll past it restyles before the next paint. This keeps typing cheap even when the whole document is one long line, as minified TTML is.
+Every input re-tokenizes the whole document, so TTML state such as background vocals stays correct on later lines, but only the lines that changed are rewritten and recoloured.
 
-Keystroke cost in Chrome 153 on an Apple M4 Pro, as the median script plus forced style and layout time of a keystroke typed mid-document:
+Only the text within one editor height above and below the visible part is coloured. The rest has no highlight ranges. A scroll that stays inside that margin restyles once scrolling settles, and a scroll past it restyles before the next paint.
 
-| Document | Keystroke |
-|---|---|
-| 21.4k-character one-line TTML | 2.7 ms |
-| 98k-character one-line TTML | 6.6 ms |
-| 320-line TTML | 3.6 ms |
-| 2,000-line LRC | 3.9 ms |
+Keystroke cost in Chrome 152 on an Apple M4 Pro, for a keystroke typed mid-document in a 900 by 600 pixel editor. Script and layout is the median script plus forced style and layout time; paint is the paint phase of the frame that follows:
+
+| Document | Script and layout | Paint |
+|---|---|---|
+| 21.4k-character one-line TTML | 2.8 ms | 17 ms |
+| 98k-character one-line TTML | 7.1 ms | 26 ms |
+| 320-line TTML | 3.2 ms | 1.6 ms |
+| 2,000-line LRC | 3.6 ms | 1.3 ms |
+
+A keystroke repaints the whole text node it lands in, with every highlight on it, so one long line is the slow case: the visible text repaints in one piece per token.
 
 Scrolling restyles once per editor height scrolled. On the 98k-character line that restyle costs about one and a half keystrokes, and on the multi-line documents less than one; scroll steps in between cost under 0.2 ms.
 
@@ -60,7 +64,7 @@ It returns `{ wrap, layer, refresh, setFormat, destroy }`:
 
 The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `box-sizing: border-box`, `width: 100%` and `resize: none` on the textarea. The layer copies that box sizing, so a textarea's padding and borders stay inside the wrapper and both wrap lines at the same width. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
 
-Use a monospace font on highlighted editors. Background vocals render in italics, and italics change glyph widths in proportional fonts, which moves the layer off the caret.
+Highlights can only change colours, so background vocals and comments are not italic in the editor, and `--bh-bgText-style` only applies to read-only panes. Any font works: the layer never changes the font of any part of the text.
 
 ### Tokens only
 
@@ -80,7 +84,7 @@ Wrap the result in an element with the `bh` class so the token colours apply. `h
 
 ## Tokens
 
-Each token renders as one `<span class="bh-<type>">`, except `text`, which renders as a plain text node. `tokenize` already joins adjacent text of the same type into one token.
+In read-only panes each token renders as one `<span class="bh-<type>">`, except `text`, which renders as a plain text node. In the editor each token is a range in the `bh-<type>` highlight. `tokenize` already joins adjacent text of the same type into one token.
 
 | Token | Meaning |
 |---|---|

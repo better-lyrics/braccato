@@ -3,13 +3,32 @@ import { describe, expect, it } from "vitest";
 import { SYNCED_BOX_PROPERTIES, attachEditor, layerText } from "../editor.js";
 import { splitLines } from "../lines.js";
 import { pushToken, tokenize } from "../tokenize.js";
-import { type LyricFormat, TOKEN_TYPES, type Token, type TokenType } from "../types.js";
-import { type FakeNode, createFakeDocument } from "./fakeDom.js";
+import type { LyricFormat, Token, TokenType } from "../types.js";
+import { type FakeNode, type FakeStaticRange, createFakeDocument } from "./fakeDom.js";
 
 const merged = (tokens: readonly Token[]) => {
 	const out: Token[] = [];
 	for (const { type, text } of tokens) pushToken(out, type, text);
 	return out;
+};
+
+const expected0 = (value: string) => splitLines(tokenize(layerText(value), detectFormat(value)))[0];
+
+const rangesOf = (line: FakeNode) => {
+	const out: FakeStaticRange[] = [];
+	for (const ranges of line.ownerDocument.defaultView.CSS?.highlights.values() ?? [])
+		for (const range of ranges) if (range.startContainer === line.firstChild) out.push(range);
+	return out;
+};
+
+/** The tokens the editor paints on one layer line, read back from the highlight registry. */
+const paintedTokens = (line: FakeNode): Token[] => {
+	const types: TokenType[] = new Array(line.textContent.length).fill("text");
+	for (const [name, ranges] of line.ownerDocument.defaultView.CSS?.highlights ?? [])
+		for (const range of ranges)
+			if (range.startContainer === line.firstChild)
+				for (let k = range.startOffset; k < range.endOffset; k++) types[k] = name.slice("bh-".length) as TokenType;
+	return merged(types.map((type, k) => ({ type, text: line.textContent[k] })));
 };
 
 describe("layerText", () => {
@@ -150,7 +169,8 @@ describe("attachEditor double attach", () => {
 
 describe("attachEditor setFormat", () => {
 	const LRC_LOOKING = "[00:01.00]Hi\n[00:02.00]there";
-	const classes = (layer: FakeNode) => layer.children.flatMap((line) => line.children.map((c) => c.className));
+	const classes = (layer: FakeNode) =>
+		layer.children.flatMap((line) => paintedTokens(line).map(({ type }) => (type === "text" ? "" : `bh-${type}`)));
 	const mountFixed = (format?: LyricFormat) => {
 		const { doc, parent, textarea } = mount();
 		textarea.value = LRC_LOOKING;
@@ -191,7 +211,7 @@ describe("attachEditor setFormat", () => {
 		const { editor, layer, textarea } = mountFixed();
 		textarea.value = `<tt><p begin="1">[00:01.00]a</p>\n<p>(1000,20)b</p></tt>`;
 		editor.refresh();
-		const snapshot = () => layer.children.map((line) => line.children.map((c) => `${c.className}:${c.textContent}`));
+		const snapshot = () => layer.children.map((line) => paintedTokens(line).map((t) => `${t.type}:${t.text}`));
 		for (const format of ["lrc", "qrc", "srt", "plain", "ttml", undefined] as const) {
 			editor.setFormat(format);
 			const switched = snapshot();
@@ -231,10 +251,11 @@ describe("attachEditor setFormat", () => {
 	});
 
 	it("does nothing after destroy", () => {
-		const { editor, layer } = mountFixed();
+		const { editor, layer, doc } = mountFixed();
 		editor.destroy();
-		editor.setFormat("plain");
-		expect(classes(layer)).toContain("bh-timestamp");
+		editor.setFormat("lrc");
+		expect(classes(layer)).not.toContain("bh-timestamp");
+		expect(doc.defaultView.CSS?.highlights.size).toBe(0);
 	});
 
 	it("is owned by the editor: mutating the options object after attach changes nothing", () => {
@@ -565,35 +586,90 @@ function mountWith(value: string) {
 	parent.append(textarea);
 	const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
 	const layer = editor.layer as unknown as FakeNode;
-	const type = (text: FakeNode): TokenType => {
-		for (let at = text.parent; at && at !== layer; at = at.parent) {
-			const type = TOKEN_TYPES.find((t) => at.className === `bh-${t}`);
-			if (type) return type;
-		}
-		return "text";
-	};
 	const leaves = (node: FakeNode): FakeNode[] =>
 		node.nodeName === "#text" ? [node] : node.children.flatMap((child) => leaves(child));
-	const rendered = () => merged(leaves(layer).map((leaf) => ({ type: type(leaf), text: leaf.textContent })));
+	const rendered = () => merged(layer.children.flatMap(paintedTokens));
 	const input = (next: string) => {
 		textarea.value = next;
 		textarea.dispatch("input");
 	};
 	const expected = () => tokenize(layerText(textarea.value), detectFormat(textarea.value));
-	return { textarea, editor, layer, rendered, input, expected, leaves };
+	return { doc, textarea, editor, layer, rendered, input, expected, leaves };
 }
 
+describe("attachEditor highlights", () => {
+	it("colours each token type through one shared highlight named after it", () => {
+		const { doc, layer } = mountWith("[00:01.00]Hi");
+		const highlights = doc.defaultView.CSS?.highlights;
+		expect([...(highlights?.keys() ?? [])].sort()).toEqual(["bh-punct", "bh-timestamp"]);
+		expect(paintedTokens(layer.children[0])).toEqual(expected0("[00:01.00]Hi"));
+	});
+
+	it("shares the highlights between editors and destroy removes only its own colours", () => {
+		const doc = createFakeDocument();
+		const editors = ["[00:01.00]a", "[00:02.00]b"].map((value) => {
+			const parent = doc.createElement("div");
+			const textarea = doc.createElement("textarea");
+			textarea.value = value;
+			parent.append(textarea);
+			return attachEditor(textarea as unknown as HTMLTextAreaElement);
+		});
+		const timestamps = doc.defaultView.CSS?.highlights.get("bh-timestamp");
+		expect(timestamps?.size).toBe(2);
+		editors[0].destroy();
+		expect(doc.defaultView.CSS?.highlights.get("bh-timestamp")).toBe(timestamps);
+		expect(timestamps?.size).toBe(1);
+		expect(paintedTokens((editors[1].layer as unknown as FakeNode).children[0])).toEqual(expected0("[00:02.00]b"));
+		editors[1].destroy();
+		expect(doc.defaultView.CSS?.highlights.size).toBe(0);
+	});
+
+	it("drops the colours of lines an edit removes", () => {
+		const { doc, input } = mountWith("[00:01.00]a\n[00:02.00]b");
+		input("plain");
+		expect(doc.defaultView.CSS?.highlights.size).toBe(0);
+	});
+
+	describe("edge cases", () => {
+		it("renders plain text with the same lines where the Highlight API is missing", () => {
+			const doc = createFakeDocument();
+			doc.defaultView.CSS = undefined;
+			const parent = doc.createElement("div");
+			const textarea = doc.createElement("textarea");
+			textarea.value = "[00:01.00]a\n[00:02.00]b";
+			parent.append(textarea);
+			const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
+			const layer = editor.layer as unknown as FakeNode;
+			textarea.value = "[00:01.00]a\n[00:03.00]c";
+			textarea.dispatch("input");
+			expect(layer.children.map((line) => line.textContent)).toEqual(["[00:01.00]a\n", "[00:03.00]c"]);
+			expect(() => editor.destroy()).not.toThrow();
+		});
+	});
+});
+
 describe("attachEditor incremental rendering", () => {
-	it("keeps the nodes of lines an edit did not touch", () => {
+	it("keeps the nodes and colours of lines an edit did not touch", () => {
 		const { layer, input, leaves } = mountWith(TTML);
 		const lineEls = [...layer.children];
 		const before = leaves(layer);
+		const ranges = layer.children.map(rangesOf);
 		input(TTML.replace(">three<", '><span ttm:role="x-bg">three</span><'));
 		expect(layer.children).toEqual(lineEls);
-		const edited = layer.children[6];
-		const rebuilt = leaves(layer).filter((leaf) => !before.includes(leaf));
-		expect(rebuilt.length).toBeGreaterThan(0);
-		expect(rebuilt.every((leaf) => leaves(edited).includes(leaf))).toBe(true);
+		expect(leaves(layer)).toEqual(before);
+		layer.children.forEach((line, k) => {
+			if (k === 6) expect(rangesOf(line)).not.toEqual(ranges[k]);
+			else expect(rangesOf(line)).toEqual(ranges[k]);
+		});
+	});
+
+	it("regression: lays each line out as one text node, so it wraps exactly like the textarea", () => {
+		const { layer, input } = mountWith(TTML);
+		input(TTML.replace(">three<", '><span ttm:role="x-bg">three</span><'));
+		for (const line of layer.children) {
+			expect(line.children).toHaveLength(1);
+			expect(line.firstChild?.nodeName).toBe("#text");
+		}
 	});
 
 	it("edits a token's text in place when a keystroke stays inside it", () => {
@@ -606,13 +682,11 @@ describe("attachEditor incremental rendering", () => {
 		expect(rendered()).toEqual(expected());
 	});
 
-	it("rebuilds only the tokens a structural edit changed inside one long line", () => {
+	it("keeps the text node of one long line through a structural edit", () => {
 		const { layer, input, leaves, rendered, expected } = mountWith(ONE_LINE);
 		const before = leaves(layer);
 		input(ONE_LINE.replace("</p><p", '</p><p begin="00:09.000">new</p><p'));
-		const after = leaves(layer);
-		expect(before.filter((leaf) => !after.includes(leaf)).length).toBeLessThanOrEqual(2);
-		expect(after.filter((leaf) => !before.includes(leaf)).length).toBeLessThanOrEqual(12);
+		expect(leaves(layer)).toEqual(before);
 		expect(rendered()).toEqual(expected());
 	});
 
@@ -726,18 +800,10 @@ function mountWindowed(value: string, rows = 3, charsPerRow = 0) {
 	parent.append(textarea);
 	const editor = attachEditor(textarea as unknown as HTMLTextAreaElement);
 	const layer = editor.layer as unknown as FakeNode;
-	const attachedPlain = layer.children.every((line) => line.children.every((c) => c.nodeName === "#text"));
+	const attachedPlain = layer.children.every((line) => rangesOf(line).length === 0);
 	doc.defaultView.flushFrames();
-	const isPlain = (line: number) => layer.children[line].children.every((c) => c.nodeName === "#text");
-	const type = (text: FakeNode): TokenType => {
-		for (let at = text.parent; at && at !== layer; at = at.parent) {
-			const found = TOKEN_TYPES.find((t) => at.className === `bh-${t}`);
-			if (found) return found;
-		}
-		return "text";
-	};
-	const lineTypes = (line: number) =>
-		merged(layer.children[line].children.map((c) => ({ type: type(c.firstChild ?? c), text: c.textContent })));
+	const isPlain = (line: number) => rangesOf(layer.children[line]).length === 0;
+	const lineTypes = (line: number) => paintedTokens(layer.children[line]);
 	const expectedTypes = (line: number) =>
 		splitLines(tokenize(layerText(textarea.value), detectFormat(textarea.value)))[line];
 	const input = (next: string) => {
@@ -808,9 +874,9 @@ describe("attachEditor style window", () => {
 
 	it("does not restyle on a small scroll that stays inside the window", () => {
 		const { layer, scrollTo } = mountWindowed(LRC_LINES);
-		const before = [...layer.children[4].children];
+		const before = rangesOf(layer.children[4]);
 		scrollTo(10);
-		expect(layer.children[4].children).toEqual(before);
+		expect(rangesOf(layer.children[4])).toEqual(before);
 	});
 
 	it("waits for scrolling to settle before recentring a window that still covers the visible rows", () => {

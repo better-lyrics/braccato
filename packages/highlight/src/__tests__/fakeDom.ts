@@ -56,6 +56,13 @@ export interface FakeRange {
 	getBoundingClientRect(): FakeRect;
 }
 
+export interface FakeStaticRange {
+	startContainer: FakeNode;
+	startOffset: number;
+	endContainer: FakeNode;
+	endOffset: number;
+}
+
 export interface FakeResizeEntry {
 	target: FakeNode;
 	borderBoxSize: { inlineSize: number; blockSize: number }[];
@@ -83,6 +90,10 @@ export interface FakeWindow {
 	clearTimeout(id: number): void;
 	/** Runs every pending animation frame and timer. */
 	flushFrames(): void;
+	/** The CSS Custom Highlight API. A test deletes these to model an engine without it. */
+	Highlight?: new () => Set<FakeStaticRange>;
+	StaticRange?: new (init: FakeStaticRange) => FakeStaticRange;
+	CSS?: { highlights: Map<string, Set<FakeStaticRange>> };
 }
 
 export interface FakeDocument {
@@ -133,6 +144,20 @@ export function createFakeDocument(): FakeDocument {
 			}
 		},
 		getComputedStyle: (el) => ({ getPropertyValue: (prop) => el.computed[prop] ?? "" }),
+		Highlight: class extends Set<FakeStaticRange> {},
+		StaticRange: class {
+			startContainer: FakeNode;
+			startOffset: number;
+			endContainer: FakeNode;
+			endOffset: number;
+			constructor(init: FakeStaticRange) {
+				this.startContainer = init.startContainer;
+				this.startOffset = init.startOffset;
+				this.endContainer = init.endContainer;
+				this.endOffset = init.endOffset;
+			}
+		},
+		CSS: { highlights: new Map() },
 		ResizeObserver: class {
 			private record: FakeResizeObserver;
 			constructor(callback: (entries: FakeResizeEntry[]) => void) {

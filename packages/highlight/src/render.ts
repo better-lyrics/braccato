@@ -9,7 +9,7 @@ export interface HighlightOptions {
 	pretty?: boolean;
 }
 
-export function tokenNode(doc: Document, { type, text }: Token): ChildNode {
+function tokenNode(doc: Document, { type, text }: Token): ChildNode {
 	if (type === "text") return doc.createTextNode(text);
 	const span = doc.createElement("span");
 	span.className = `bh-${type}`;

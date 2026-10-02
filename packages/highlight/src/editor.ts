@@ -1,6 +1,5 @@
 import { detectFormat } from "@braccato/parsers/format";
-import { changedRange, changedTokens, matchByOffset, splitLines } from "./lines.js";
-import { tokenNode } from "./render.js";
+import { changedRange, lineText, sameTokens, splitLines } from "./lines.js";
 import {
 	EVERYTHING,
 	NOTHING,
@@ -10,6 +9,7 @@ import {
 	shiftWindow,
 	visibleWindow,
 } from "./styleWindow.js";
+import { type PaintedToken, tokenPainter } from "./tokenHighlights.js";
 import { tokenize } from "./tokenize.js";
 import type { LyricFormat, Token } from "./types.js";
 
@@ -161,72 +161,55 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	let shown: (readonly Token[])[] = [];
 	let starts: number[] = [];
 	let lineEls: HTMLElement[] = [];
-	let lineNodes: ChildNode[][] = [];
+	let lineTexts: Text[] = [];
+	let painted: PaintedToken[][] = [];
 	let source = "";
 	let styled = EVERYTHING;
-	const splice = <T extends ChildNode>(parent: Node, nodes: T[], start: number, end: number, fresh: T[]): T[] => {
-		const fragment = doc.createDocumentFragment();
-		for (const node of fresh) fragment.append(node);
-		for (const node of nodes.slice(start, end)) node.remove();
-		parent.insertBefore(fragment, nodes[end] ?? null);
-		return nodes.slice(0, start).concat(fresh, nodes.slice(end));
+	const painter = tokenPainter(view);
+	const paintLine = (index: number) => {
+		if (!painter) return;
+		painter.clear(painted[index]);
+		painted[index] = painter.paint(lineTexts[index], shown[index]);
 	};
 	const replaceLines = (start: number, prevEnd: number, nextEnd: number) => {
+		for (let k = start; k < prevEnd; k++) painter?.clear(painted[k]);
 		const tokens = lines.slice(start, nextEnd).map((line, k) => projectLine(line, starts[start + k], styled));
-		const nodes = tokens.map((line) => line.map((token) => tokenNode(doc, token)));
-		const els = nodes.map((line) => {
+		const texts = lines.slice(start, nextEnd).map((line) => doc.createTextNode(lineText(line)));
+		const els = texts.map((text) => {
 			const el = doc.createElement("span");
 			el.className = "bh-line";
-			for (const node of line) el.append(node);
+			el.append(text);
 			return el;
 		});
-		lineEls = splice(layer, lineEls, start, prevEnd, els);
-		lineNodes = lineNodes.slice(0, start).concat(nodes, lineNodes.slice(prevEnd));
+		const fragment = doc.createDocumentFragment();
+		for (const el of els) fragment.append(el);
+		for (const el of lineEls.slice(start, prevEnd)) el.remove();
+		layer.insertBefore(fragment, lineEls[prevEnd] ?? null);
+		lineEls = lineEls.slice(0, start).concat(els, lineEls.slice(prevEnd));
+		lineTexts = lineTexts.slice(0, start).concat(texts, lineTexts.slice(prevEnd));
 		shown = shown.slice(0, start).concat(tokens, shown.slice(prevEnd));
+		painted = painted.slice(0, start).concat(
+			texts.map((text, k) => painter?.paint(text, tokens[k]) ?? []),
+			painted.slice(prevEnd),
+		);
 	};
-	// Unchanged nodes keep their shaping in Blink; a whole-string data write measured faster than replaceData.
+	const clearPaint = () => {
+		for (const line of painted) painter?.clear(line);
+		painted = [];
+	};
+	// A whole-string data write measured faster than replaceData in Blink.
 	const patchLine = (index: number) => {
-		const prev = shown[index];
-		const tokens = projectLine(lines[index], starts[index], styled);
-		shown[index] = tokens;
-		if (tokens === prev) return;
-		const nodes = lineNodes[index];
-		const { start, prevEnd, nextEnd } = changedTokens(prev, tokens);
-		if (start === prevEnd && start === nextEnd) return;
-		if (prevEnd - start === 1 && nextEnd - start === 1 && prev[start].type === tokens[start].type) {
-			const node = nodes[start];
-			const text = (prev[start].type === "text" ? node : node.firstChild) as Text;
-			text.data = tokens[start].text;
-			return;
-		}
-		const fresh = tokens.slice(start, nextEnd).map((token) => tokenNode(doc, token));
-		lineNodes[index] = splice(lineEls[index], nodes, start, prevEnd, fresh);
+		const text = lineText(lines[index]);
+		const textChanged = lineTexts[index].data !== text;
+		if (textChanged) lineTexts[index].data = text;
+		restyleLine(index, textChanged);
 	};
-	// Restyling never changes the text, so nodes are matched by offset and only the tokens entering or leaving the window change.
-	const restyleLine = (index: number) => {
+	const restyleLine = (index: number, textChanged = false) => {
 		const prev = shown[index];
 		const tokens = projectLine(lines[index], starts[index], styled);
-		if (tokens === prev) return;
 		shown[index] = tokens;
-		const nodes = lineNodes[index];
-		const matched = matchByOffset(prev, tokens);
-		const kept = new Uint8Array(prev.length);
-		for (const i of matched) if (i >= 0) kept[i] = 1;
-		for (let i = 0; i < prev.length; i++) if (!kept[i]) nodes[i].remove();
-		const next: ChildNode[] = new Array(tokens.length);
-		let after: ChildNode | null = null;
-		for (let j = tokens.length - 1; j >= 0; j--) {
-			const i = matched[j];
-			if (i < 0) {
-				next[j] = lineEls[index].insertBefore(tokenNode(doc, tokens[j]), after);
-			} else {
-				next[j] = nodes[i];
-				if (prev[i].text !== tokens[j].text)
-					((tokens[j].type === "text" ? nodes[i] : nodes[i].firstChild) as Text).data = tokens[j].text;
-			}
-			after = next[j];
-		}
-		lineNodes[index] = next;
+		if (!textChanged && (tokens === prev || sameTokens(prev, tokens))) return;
+		paintLine(index);
 	};
 	const lineStarts = (next: Token[][]) => {
 		const out: number[] = [];
@@ -250,8 +233,9 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 		starts = lineStarts(next);
 		source = text;
 		if (full) {
+			clearPaint();
 			lineEls = [];
-			lineNodes = [];
+			lineTexts = [];
 			shown = [];
 			layer.replaceChildren();
 			replaceLines(0, 0, next.length);
@@ -273,7 +257,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 	};
 	const lineAt = (offset: number) => Math.max(0, firstIndex(starts.length, (k) => starts[k] > offset) - 1);
 	const linesIn = ({ from, to }: StyleWindow) => [lineAt(from), lineAt(Math.max(from, to - 1))];
-	const rendered = () => ({ layer, lineEls, lineNodes, shown, starts, length: source.length });
+	const rendered = () => ({ layer, lineEls, lineTexts, starts, length: source.length });
 	let measuredAt = Number.NaN;
 	let settle = 0;
 	// Restyling relays out the rest of a long line, so while the visible text is still styled it waits for scrolling to stop.
@@ -347,6 +331,7 @@ export function attachEditor(textarea: HTMLTextAreaElement, options: EditorOptio
 			resize.disconnect();
 			view.cancelAnimationFrame(frame);
 			view.clearTimeout(settle);
+			clearPaint();
 			textarea.removeEventListener("input", update);
 			textarea.removeEventListener("scroll", onScroll);
 			doc.fonts?.removeEventListener("loadingdone", scheduleRestyle);
