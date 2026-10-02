@@ -28,6 +28,10 @@ describe("highlight.css", () => {
 		expect(css).toMatch(/\.bh-edit > \.bh-layer > \.bh-line \+ \.bh-line \{\s*text-indent: 0;/);
 	});
 
+	it("regression: turns off scroll anchoring on the layer, which the textarea lacks, so an edit cannot shift its rows", () => {
+		expect(css).toMatch(/\.bh-edit > \.bh-layer \{[^}]*overflow-anchor: none;/);
+	});
+
 	it("regression: forces border-box on the textarea so padding and borders stay inside the wrapper", () => {
 		const rule = [...css.matchAll(/^\.bh-edit > \.bh-input \{([^}]*)\}/gm)].map((m) => m[1]).join("");
 		expect(rule).toMatch(/box-sizing: border-box;/);

@@ -60,6 +60,8 @@
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
+	/* The textarea has no scroll anchoring; an anchoring layer slides its rows off the caret on every edit above the anchor. */
+	overflow-anchor: none;
 	pointer-events: none;
 	border-style: solid;
 	border-color: transparent;
