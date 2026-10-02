@@ -45,8 +45,7 @@ export function shiftWindow(window: StyleWindow, prev: string, next: string): St
 export interface RenderedLines {
 	layer: HTMLElement;
 	lineEls: readonly HTMLElement[];
-	lineNodes: readonly (readonly ChildNode[])[];
-	shown: readonly (readonly Token[])[];
+	lineTexts: readonly Text[];
 	starts: readonly number[];
 	length: number;
 }
@@ -62,24 +61,16 @@ export function firstIndex(count: number, passes: (index: number) => boolean): n
 	return lo;
 }
 
-/** The first source offset, within the node laid out across y, whose box reaches below y ("bottom") or starts at or below it ("top"). */
+/** The first source offset, within the line laid out across y, whose box reaches below y ("bottom") or starts at or below it ("top"). */
 function offsetAtY(rendered: RenderedLines, range: Range, y: number, edge: "bottom" | "top"): number {
-	const { lineEls, lineNodes, shown, starts, length } = rendered;
+	const { lineEls, lineTexts, starts, length } = rendered;
 	const passes = (box: DOMRect) => (edge === "bottom" ? box.bottom > y : box.top >= y);
 	const line = firstIndex(lineEls.length, (k) => lineEls[k].getBoundingClientRect().bottom > y);
 	if (line === lineEls.length) return length;
-	const nodes = lineNodes[line];
-	const node = firstIndex(nodes.length, (k) => {
-		range.selectNode(nodes[k]);
-		return range.getBoundingClientRect().bottom > y;
-	});
-	let offset = starts[line];
-	for (let k = 0; k < node; k++) offset += shown[line][k].text.length;
-	if (node === nodes.length) return offset;
-	const text = (shown[line][node].type === "text" ? nodes[node] : nodes[node].firstChild) as Text;
+	const text = lineTexts[line];
 	const chars = text.data.endsWith("\n") ? text.data.length - 1 : text.data.length;
 	return (
-		offset +
+		starts[line] +
 		firstIndex(chars, (k) => {
 			const low = text.data.charCodeAt(k) >= 0xdc00 && text.data.charCodeAt(k) <= 0xdfff;
 			range.setStart(text, low ? k - 1 : k);

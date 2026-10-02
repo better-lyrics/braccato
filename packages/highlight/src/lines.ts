@@ -21,7 +21,13 @@ function sameToken(a: Token, b: Token): boolean {
 	return a.type === b.type && a.text === b.text;
 }
 
-function sameLine(a: readonly Token[], b: readonly Token[]): boolean {
+export function lineText(tokens: readonly Token[]): string {
+	let text = "";
+	for (const token of tokens) text += token.text;
+	return text;
+}
+
+export function sameTokens(a: readonly Token[], b: readonly Token[]): boolean {
 	if (a.length !== b.length) return false;
 	for (let k = 0; k < a.length; k++) if (!sameToken(a[k], b[k])) return false;
 	return true;
@@ -44,23 +50,5 @@ function changedItems<T>(prev: readonly T[], next: readonly T[], same: (a: T, b:
 }
 
 export function changedRange(prev: readonly Token[][], next: readonly Token[][]): LineRange {
-	return changedItems(prev, next, sameLine);
-}
-
-export function changedTokens(prev: readonly Token[], next: readonly Token[]): LineRange {
-	return changedItems(prev, next, sameToken);
-}
-
-/** For each token of next, the index of the token of prev that starts at the same offset with the same type, or -1. */
-export function matchByOffset(prev: readonly Token[], next: readonly Token[]): Int32Array {
-	const matched = new Int32Array(next.length).fill(-1);
-	let i = 0;
-	let prevAt = 0;
-	let nextAt = 0;
-	for (let j = 0; j < next.length; j++) {
-		while (i < prev.length && prevAt < nextAt) prevAt += prev[i++].text.length;
-		if (i < prev.length && prevAt === nextAt && prev[i].type === next[j].type) matched[j] = i;
-		nextAt += next[j].text.length;
-	}
-	return matched;
+	return changedItems(prev, next, sameTokens);
 }
