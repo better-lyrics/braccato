@@ -1,5 +1,11 @@
 # @braccato/highlight
 
+## 0.3.1
+
+### Patch Changes
+
+- 30109f4: Dim background vocals in the editor, where they can no longer be italic, so they still stand apart from the main lyrics. The new `--bh-bgText-editor` property sets their colour (default `rgba(255, 255, 255, 0.65)`).
+
 ## 0.3.0
 
 ### Minor Changes
