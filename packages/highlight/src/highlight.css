@@ -44,7 +44,7 @@
 
 /* One text node per editor line keeps its wrapping identical to the textarea, so the layer colours through CSS.highlights. */
 .bh-edit > .bh-layer > .bh-line::highlight(bh-bgText) {
-	color: var(--bh-bgText, rgba(255, 255, 255, 0.82));
+	color: var(--bh-bgText-editor, rgba(255, 255, 255, 0.65));
 }
 .bh-edit > .bh-layer > .bh-line::highlight(bh-timestamp) {
 	color: var(--bh-timestamp, rgba(165, 180, 252, 0.7));

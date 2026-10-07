@@ -13,7 +13,7 @@ describe("highlight.css", () => {
 	});
 
 	it("colours every token type in the editor layer through a highlight with the same colour as its span", () => {
-		for (const type of TOKEN_TYPES.filter((t) => t !== "text")) {
+		for (const type of TOKEN_TYPES.filter((t) => t !== "text" && t !== "bgText")) {
 			const span = css.match(new RegExp(`^\\.bh \\.bh-${type} \\{[^}]*?(color: [^;]+;)`, "m"))?.[1];
 			const highlight = css.match(
 				new RegExp(
@@ -24,6 +24,12 @@ describe("highlight.css", () => {
 			expect(span, type).toBeDefined();
 			expect(highlight, type).toBe(span);
 		}
+	});
+
+	it("dims background vocals in the editor through their own property, since highlights cannot italicise them", () => {
+		expect(css).toMatch(
+			/^\.bh-edit > \.bh-layer > \.bh-line::highlight\(bh-bgText\) \{\s*color: var\(--bh-bgText-editor, rgba\(255, 255, 255, 0\.65\)\);\s*\}/m,
+		);
 	});
 
 	it("reads the background vocal style from a custom property", () => {
