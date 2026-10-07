@@ -64,7 +64,7 @@ It returns `{ wrap, layer, refresh, setFormat, destroy }`:
 
 The overlay needs the textarea and the layer to share one box, so `.bh-input` forces `margin: 0`, `box-sizing: border-box`, `width: 100%` and `resize: none` on the textarea. The layer copies that box sizing, so a textarea's padding and borders stay inside the wrapper and both wrap lines at the same width. Put any margin or width the host wants on the wrapper (`.bh-edit`, or `editor.wrap`) instead.
 
-Highlights can only change colours, so background vocals and comments are not italic in the editor, and `--bh-bgText-style` only applies to read-only panes. Any font works: the layer never changes the font of any part of the text.
+Highlights can only change colours, so background vocals and comments are not italic in the editor, and `--bh-bgText-style` only applies to read-only panes. Background vocals are dimmer in the editor instead, through `--bh-bgText-editor`. Any font works: the layer never changes the font of any part of the text.
 
 ### Tokens only
 
@@ -113,6 +113,7 @@ Every colour is a CSS custom property with a built-in fallback. The stylesheet d
 | `--bh-text` | `rgba(255, 255, 255, 0.95)` |
 | `--bh-bgText` | `rgba(255, 255, 255, 0.82)` |
 | `--bh-bgText-style` | `italic` |
+| `--bh-bgText-editor` | `rgba(255, 255, 255, 0.65)` |
 | `--bh-timestamp` | `rgba(165, 180, 252, 0.7)` |
 | `--bh-wordTime` | `rgba(165, 180, 252, 0.52)` |
 | `--bh-agent` | `rgba(252, 211, 77, 0.45)` |
