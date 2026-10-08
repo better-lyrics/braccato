@@ -708,6 +708,9 @@ interface HighlightAnimations {
 
 interface AnimationTimingTrack {
   offsetMs: number;
+  // Per-letter siblings run on the same clock as the animation sampled for their word, so sampling
+  // every one of them each frame finds nothing new.
+  skipDriftSample?: boolean;
   appliedTimingOffsetMs: number;
   wrapDurationMs?: number;
 }
@@ -734,7 +737,7 @@ function mirrorImageHighlightAnimations(part: PartData, animations: Animation[])
     mirror.playbackRate = animation.playbackRate;
     mirror.currentTime = animation.currentTime;
     const timing = animationTimingTracks.get(animation);
-    if (timing) animationTimingTracks.set(mirror, timing);
+    if (timing) animationTimingTracks.set(mirror, { ...timing, skipDriftSample: true });
     mirrors.push(mirror);
   }
   return mirrors;
@@ -765,7 +768,7 @@ function acquireWaveAnimation(
   letterElement: HTMLElement,
   keyframes: Keyframe[],
   keyframeSignature: string,
-  timing: { duration: number; delay: number; fill: FillMode }
+  timing: { duration: number; delay: number; endDelay: number; fill: FillMode }
 ): Animation {
   const pool = engine.waveAnimationPool;
   const pooled = pool[pool.length - 1];
@@ -852,8 +855,11 @@ function animationCurrentTimeMs(animation: Animation): number | null {
   return timingValueToMs(animation.currentTime);
 }
 
-function animationActiveDurationMs(animation: Animation): number | null {
-  return timingValueToMs(animation.effect?.getComputedTiming().activeDuration);
+// A finished animation's currentTime stops at its end time, which counts the delay, so that is where
+// the expected time has to stop too. Clamping to the active duration alone saturates a delayed
+// animation as soon as it is created and hides any drift in it.
+function animationEndTimeMs(animation: Animation): number | null {
+  return timingValueToMs(animation.effect?.getComputedTiming().endTime);
 }
 
 function wrappedTimingOffsetMs(actualTimeMs: number, expectedTimeMs: number, wrapDurationMs: number): number {
@@ -869,9 +875,9 @@ function normalizeAnimationTimeMs(animation: Animation, timeMs: number, timing: 
     return positiveModulo(timeMs, timing.wrapDurationMs);
   }
 
-  const activeDurationMs = animationActiveDurationMs(animation);
-  if (activeDurationMs !== null && Number.isFinite(activeDurationMs)) {
-    return Math.min(timeMs, activeDurationMs);
+  const endTimeMs = animationEndTimeMs(animation);
+  if (endTimeMs !== null && Number.isFinite(endTimeMs)) {
+    return Math.min(timeMs, endTimeMs);
   }
 
   return timeMs;
@@ -882,12 +888,12 @@ function animationTimingSample(
   animation: Animation,
   currentTime: number
 ): NativeAnimationTimingSample | null {
-  if (animation.playState === "idle") {
+  const timing = animationTimingTracks.get(animation);
+  if (!timing || timing.skipDriftSample) {
     return null;
   }
 
-  const timing = animationTimingTracks.get(animation);
-  if (!timing) {
+  if (animation.playState === "idle") {
     return null;
   }
 
@@ -1361,7 +1367,10 @@ function startRichSyncedHighlightAnimations(
               })) as Keyframe[],
               { duration: sweep.durationMs, delay: sweep.delayMs, easing: sweep.easing, fill: "both" }
             ),
-            swipeTiming
+            // The last letter's sweep ends last, so it alone covers the whole word.
+            index === sweeps.length - 1 && target === highlightLetters[index]
+              ? swipeTiming
+              : { ...swipeTiming, skipDriftSample: true }
           );
           animation.currentTime = swipeCurrentTimeMs;
           if (index === 0) swipeAnimation = animation;
@@ -1615,24 +1624,45 @@ function startWordAnimations(
       // as the wave running behind once it finishes. Run the wave's clock ahead by the head start
       // instead, the way the swipe carries its lead, so every delay stays at zero or above.
       const waveLeadMs = Math.max(0, -Math.min(...waves.map(wave => wave.delayMs)));
-      const cascadeDurationMs = waveLeadMs + Math.max(...waves.map(wave => wave.delayMs + wave.durationMs));
+      const waveEndsMs = waves.map(wave => wave.delayMs + wave.durationMs);
+      const lastWaveEndMs = Math.max(...waveEndsMs);
+      const lastEndingWaveIndex = waveEndsMs.lastIndexOf(lastWaveEndMs);
+      const cascadeDurationMs = waveLeadMs + lastWaveEndMs;
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs + waveLeadMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
-      for (const set of [part.letterElements, part.highlightLetterElements, part.imageLayers?.glowLetters]) {
-        set?.forEach((letterElement, index) => {
+      // Glow letters only show while the glow does: never when it is off or renders nothing for this
+      // word, and not once it has faded out. Their waves stop there instead of running to the end.
+      const glowLetters =
+        config.enabled.highlightGlow && !part.glowSuppressed ? part.imageLayers?.glowLetters : undefined;
+      const glowEndMs =
+        Number.parseFloat(config.highlight.imageGlowOpacityTo) === 0 ? waveLeadMs + glowDurationMs : Infinity;
+      const animateLetters = (letters: HTMLElement[] | undefined, endMs: number, sampled: boolean) => {
+        letters?.forEach((letterElement, index) => {
+          const delayMs = waves[index].delayMs + waveLeadMs;
+          if (delayMs >= endMs) return;
+          const endDelayMs = Math.min(0, endMs - delayMs - waves[index].durationMs);
           const animation = trackLyricAnimationTiming(
             engine,
             acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
               duration: waves[index].durationMs,
-              delay: waves[index].delayMs + waveLeadMs,
+              delay: delayMs,
+              endDelay: endDelayMs,
               fill: "forwards",
             }),
-            { appliedTimingOffsetMs, offsetMs: waveLeadMs }
+            {
+              appliedTimingOffsetMs,
+              offsetMs: waveLeadMs,
+              // The wave that ends last covers the whole word. A theme's swipe ramp can make that an early letter.
+              skipDriftSample: !sampled || index !== lastEndingWaveIndex,
+            }
           );
           animation.currentTime = floatStartMs;
           wobbleAnimations.push(animation);
         });
-      }
+      };
+      animateLetters(part.letterElements, Infinity, true);
+      animateLetters(part.highlightLetterElements, Infinity, false);
+      animateLetters(glowLetters, glowEndMs, false);
     }
   }
   part.animations = [
