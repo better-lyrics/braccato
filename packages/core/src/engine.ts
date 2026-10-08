@@ -1600,9 +1600,13 @@ function startWordAnimations(
         swipeLeadMs,
         config.letterWave.durationMs * LETTER_WAVE_CREST_OFFSET
       );
-      const lastDelayMs = delaysMs[letterCount - 1];
+      // A letter that starts before the word would have a negative delay, which the drift check reads
+      // as the wave running behind once it finishes. Run the wave's clock ahead by the head start
+      // instead, the way the swipe carries its lead, so every delay stays at zero or above.
+      const waveLeadMs = Math.max(0, -Math.min(...delaysMs));
+      const lastDelayMs = delaysMs[letterCount - 1] + waveLeadMs;
       const cascadeDurationMs = config.letterWave.durationMs + lastDelayMs;
-      const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
+      const floatStartMs = correctedAnimationTimeMs(wordTimeMs + waveLeadMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       for (const set of [part.letterElements, part.highlightLetterElements, part.imageLayers?.glowLetters]) {
         set?.forEach((letterElement, index) => {
@@ -1610,10 +1614,10 @@ function startWordAnimations(
             engine,
             acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
               duration: config.letterWave.durationMs,
-              delay: delaysMs[index],
+              delay: delaysMs[index] + waveLeadMs,
               fill: "forwards",
             }),
-            { appliedTimingOffsetMs, offsetMs: 0 }
+            { appliedTimingOffsetMs, offsetMs: waveLeadMs }
           );
           animation.currentTime = floatStartMs;
           wobbleAnimations.push(animation);
