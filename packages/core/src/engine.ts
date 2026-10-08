@@ -1270,6 +1270,22 @@ export function planLetterMaskSweep(
   });
 }
 
+// Letter i floats when the swipe reaches it, on the word clock rather than the swipe clock, which runs
+// swipeLeadMs ahead. The swipe is the reference because it spans longer than the word, so a stagger
+// scaled to the word alone races ahead of the reveal and the gap grows with the word.
+export function planLetterWaveDelays(
+  swipe: SwipeRamp,
+  letterCount: number,
+  timedDurationMs: number,
+  swipeDurationMs: number,
+  swipeLeadMs: number
+): number[] {
+  const windows = computeLetterSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
+  return Array.from({ length: Math.max(letterCount, 0) }, (_, index) =>
+    windows ? Math.max(windows[index].delayMs - swipeLeadMs, 0) : (timedDurationMs * index) / letterCount
+  );
+}
+
 function startRichSyncedHighlightAnimations(
   engine: AnimationEngineInstance,
   part: PartData,
@@ -1558,8 +1574,20 @@ function startWordAnimations(
         { transform: `${config.letterWave.settle}${emphasisRest}` },
       ];
       const letterCount = letters.length;
-      const staggerMs = timedDurationMs > 0 ? timedDurationMs / 2.5 / letterCount : 0;
-      const cascadeDurationMs = config.letterWave.durationMs + (letterCount - 1) * staggerMs;
+      const delaysMs = planLetterWaveDelays(
+        {
+          easing: config.highlight.swipeEasing,
+          startFrom: config.highlight.swipeStartFrom,
+          startTo: config.highlight.swipeStartTo,
+          endFrom: config.highlight.swipeEndFrom,
+          endTo: config.highlight.swipeEndTo,
+        },
+        letterCount,
+        timedDurationMs,
+        swipeDurationMs,
+        swipeLeadMs
+      );
+      const cascadeDurationMs = config.letterWave.durationMs + (delaysMs.at(-1) ?? 0);
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       for (const set of [part.letterElements, part.highlightLetterElements, part.imageLayers?.glowLetters]) {
@@ -1568,7 +1596,7 @@ function startWordAnimations(
             engine,
             acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
               duration: config.letterWave.durationMs,
-              delay: index * staggerMs,
+              delay: delaysMs[index],
               fill: "forwards",
             }),
             { appliedTimingOffsetMs, offsetMs: 0 }

@@ -16,6 +16,7 @@ import {
   noteUserScroll,
   parseColorAlpha,
   planLetterMaskSweep,
+  planLetterWaveDelays,
   relayout,
   resolveScrollInsets,
   resolveTickOptions,
@@ -1886,3 +1887,13 @@ console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
     `${panelDocument.calls.length + floatingDocument.calls.length} built node(s)`
 );
+
+// Under the default ramp the swipe reaches letter i a fraction i/n through the word, so the wave must
+// start there, whatever the word's length, rather than on a stagger squeezed into part of it.
+for (const wordMs of [400, 3200]) {
+  const delays = planLetterWaveDelays(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1);
+  assert.ok(
+    delays.every((delay, index) => Math.abs(delay - (wordMs * index) / SWIPE_LETTERS) < SWIPE_EPS * wordMs),
+    `Given a ${wordMs}ms word, Then letter i floats as the swipe reaches it, i/n of the way through`
+  );
+}
