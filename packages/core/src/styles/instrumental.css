@@ -57,11 +57,6 @@
 	transform: translateY(-4%);
 }
 
-.blyrics--paused .blyrics--wave-clip {
-	transition-duration: 100000000s !important;
-	transform: translateY(100%) !important;
-}
-
 .blyrics--wave-path {
 	/* Set the transform origin to the bottom of the wave shape (y=4). */
 	transform-box: fill-box;

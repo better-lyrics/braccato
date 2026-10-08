@@ -1,5 +1,17 @@
 # @braccato/core
 
+## 1.16.5
+
+### Patch Changes
+
+- 9648e23: The letter wave follows the highlight: each letter crests as the sweep finishes lighting it. A letter the sweep lights quickly starts early to make that, and one it lights slowly starts as the sweep touches it with its float stretched to match, so long words no longer run ahead of the sweep.
+
+## 1.16.4
+
+### Patch Changes
+
+- 34a335e: Keep the instrumental note, and the glow around it, in place when playback is paused. A leftover `!important` transform on `.blyrics--paused .blyrics--wave-clip` outranked the paused fill animation and dropped the fill out of view; the animation already holds its position on its own.
+
 ## 1.16.3
 
 ### Patch Changes
