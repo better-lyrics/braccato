@@ -1624,7 +1624,10 @@ function startWordAnimations(
       // as the wave running behind once it finishes. Run the wave's clock ahead by the head start
       // instead, the way the swipe carries its lead, so every delay stays at zero or above.
       const waveLeadMs = Math.max(0, -Math.min(...waves.map(wave => wave.delayMs)));
-      const cascadeDurationMs = waveLeadMs + Math.max(...waves.map(wave => wave.delayMs + wave.durationMs));
+      const waveEndsMs = waves.map(wave => wave.delayMs + wave.durationMs);
+      const lastWaveEndMs = Math.max(...waveEndsMs);
+      const lastEndingWaveIndex = waveEndsMs.lastIndexOf(lastWaveEndMs);
+      const cascadeDurationMs = waveLeadMs + lastWaveEndMs;
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs + waveLeadMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       // Glow letters only show while the glow does: never when it is off or renders nothing for this
@@ -1649,8 +1652,8 @@ function startWordAnimations(
             {
               appliedTimingOffsetMs,
               offsetMs: waveLeadMs,
-              // The last letter's wave ends last, so it alone covers the whole word.
-              skipDriftSample: !sampled || index !== letterCount - 1,
+              // The wave that ends last covers the whole word. A theme's swipe ramp can make that an early letter.
+              skipDriftSample: !sampled || index !== lastEndingWaveIndex,
             }
           );
           animation.currentTime = floatStartMs;
