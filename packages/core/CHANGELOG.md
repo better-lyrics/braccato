@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.5
+
+### Patch Changes
+
+- 9648e23: The letter wave follows the highlight: each letter crests as the sweep finishes lighting it. A letter the sweep lights quickly starts early to make that, and one it lights slowly starts as the sweep touches it with its float stretched to match, so long words no longer run ahead of the sweep.
+
 ## 1.16.4
 
 ### Patch Changes
