@@ -1280,22 +1280,28 @@ function swipeRamp(config: AnimationConfig): SwipeRamp {
   };
 }
 
-// How long each letter waits before its wave starts, counted from the start of the word. A letter
-// floats when the swipe reaches it, so the wave keeps pace with the highlight however long the word
-// is held.
+// How far through its float a letter crests, as a keyframe offset.
+const LETTER_WAVE_CREST_OFFSET = 0.4;
+
+// How long each letter waits before its wave starts, counted from the start of the word. A letter aims
+// to crest just as the swipe finishes lighting it, but never starts later than the moment the swipe
+// first touches it. On a short word that means starting before the word itself does.
 export function planLetterWaveDelays(
   swipe: SwipeRamp,
   letterCount: number,
   wordDurationMs: number,
   swipeDurationMs: number,
-  swipeLeadMs: number
+  swipeLeadMs: number,
+  riseMs: number
 ): number[] {
   const windows = computeLetterSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
   const delays: number[] = [];
   for (let index = 0; index < letterCount; index++) {
     if (windows) {
       // The swipe runs swipeLeadMs ahead of the word, so take the lead back off.
-      delays.push(Math.max(windows[index].delayMs - swipeLeadMs, 0));
+      const touchedMs = windows[index].delayMs - swipeLeadMs;
+      const litMs = touchedMs + windows[index].durationMs;
+      delays.push(Math.min(touchedMs, litMs - riseMs));
     } else {
       // No windows for this ramp, so spread the letters evenly over the word.
       delays.push((wordDurationMs * index) / letterCount);
@@ -1580,7 +1586,7 @@ function startWordAnimations(
         { transform: `translateY(0)${emphasisRest}`, easing: config.letterWave.riseEasing },
         {
           transform: `${config.letterWave.transform}${emphasisPeak}`,
-          offset: 0.4,
+          offset: LETTER_WAVE_CREST_OFFSET,
           easing: config.letterWave.fallEasing,
         },
         { transform: `${config.letterWave.settle}${emphasisRest}` },
@@ -1591,7 +1597,8 @@ function startWordAnimations(
         letterCount,
         timedDurationMs,
         swipeDurationMs,
-        swipeLeadMs
+        swipeLeadMs,
+        config.letterWave.durationMs * LETTER_WAVE_CREST_OFFSET
       );
       const lastDelayMs = delaysMs[letterCount - 1];
       const cascadeDurationMs = config.letterWave.durationMs + lastDelayMs;

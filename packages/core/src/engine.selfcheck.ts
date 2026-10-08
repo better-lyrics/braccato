@@ -1208,16 +1208,22 @@ assert.deepEqual(
   "Given a word with no letters, Then there is nothing to sweep"
 );
 
-// With the default ramp the swipe reaches letter i at i/n of the word, so that is where its wave
-// should start, for a short word and a long one alike.
-for (const wordMs of [400, 3200]) {
-  const delays = planLetterWaveDelays(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1);
-  const expected = delays.map((_, index) => (wordMs * index) / SWIPE_LETTERS);
-  assert.ok(
-    delays.every((delay, index) => Math.abs(delay - expected[index]) < 1e-6),
-    `Given a ${wordMs}ms word, Then each letter's wave starts as the swipe reaches it`
-  );
-}
+// With the default ramp the swipe touches letter i at i/n of the word and has lit it 1/n + 0.1 of the
+// word later. A long word lights each letter slower than the 360ms rise, so every letter starts as it
+// is touched. A short word lights them faster, so each starts early enough to crest as it is lit, the
+// first ones before the word begins.
+const waveDelays = (wordMs: number) =>
+  planLetterWaveDelays(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1, 360).map(Math.round);
+assert.deepEqual(
+  waveDelays(3200),
+  [0, 640, 1280, 1920, 2560],
+  "Given a long word, Then each letter starts as it is touched"
+);
+assert.deepEqual(
+  waveDelays(400),
+  [-240, -160, -80, 0, 80],
+  "Given a short word, Then each letter starts early enough to crest as it is lit"
+);
 
 const ltrSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
 const rtlSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, true);
