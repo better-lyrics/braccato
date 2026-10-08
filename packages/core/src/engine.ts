@@ -1270,20 +1270,38 @@ export function planLetterMaskSweep(
   });
 }
 
-// Letter i floats when the swipe reaches it, on the word clock rather than the swipe clock, which runs
-// swipeLeadMs ahead. The swipe is the reference because it spans longer than the word, so a stagger
-// scaled to the word alone races ahead of the reveal and the gap grows with the word.
+function swipeRamp(config: AnimationConfig): SwipeRamp {
+  return {
+    easing: config.highlight.swipeEasing,
+    startFrom: config.highlight.swipeStartFrom,
+    startTo: config.highlight.swipeStartTo,
+    endFrom: config.highlight.swipeEndFrom,
+    endTo: config.highlight.swipeEndTo,
+  };
+}
+
+// How long each letter waits before its wave starts, counted from the start of the word. A letter
+// floats when the swipe reaches it, so the wave keeps pace with the highlight however long the word
+// is held.
 export function planLetterWaveDelays(
   swipe: SwipeRamp,
   letterCount: number,
-  timedDurationMs: number,
+  wordDurationMs: number,
   swipeDurationMs: number,
   swipeLeadMs: number
 ): number[] {
   const windows = computeLetterSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
-  return Array.from({ length: Math.max(letterCount, 0) }, (_, index) =>
-    windows ? Math.max(windows[index].delayMs - swipeLeadMs, 0) : (timedDurationMs * index) / letterCount
-  );
+  const delays: number[] = [];
+  for (let index = 0; index < letterCount; index++) {
+    if (windows) {
+      // The swipe runs swipeLeadMs ahead of the word, so take the lead back off.
+      delays.push(Math.max(windows[index].delayMs - swipeLeadMs, 0));
+    } else {
+      // No windows for this ramp, so spread the letters evenly over the word.
+      delays.push((wordDurationMs * index) / letterCount);
+    }
+  }
+  return delays;
 }
 
 function startRichSyncedHighlightAnimations(
@@ -1306,13 +1324,7 @@ function startRichSyncedHighlightAnimations(
     const highlightLetters = part.highlightLetterElements;
     if (highlightLetters && highlightLetters.length > 0) {
       const sweeps = planLetterMaskSweep(
-        {
-          easing: config.highlight.swipeEasing,
-          startFrom: config.highlight.swipeStartFrom,
-          startTo: config.highlight.swipeStartTo,
-          endFrom: config.highlight.swipeEndFrom,
-          endTo: config.highlight.swipeEndTo,
-        },
+        swipeRamp(config),
         highlightLetters.length,
         swipeDurationMs,
         part.highlightElement.classList.contains(RTL_CLASS)
@@ -1575,19 +1587,14 @@ function startWordAnimations(
       ];
       const letterCount = letters.length;
       const delaysMs = planLetterWaveDelays(
-        {
-          easing: config.highlight.swipeEasing,
-          startFrom: config.highlight.swipeStartFrom,
-          startTo: config.highlight.swipeStartTo,
-          endFrom: config.highlight.swipeEndFrom,
-          endTo: config.highlight.swipeEndTo,
-        },
+        swipeRamp(config),
         letterCount,
         timedDurationMs,
         swipeDurationMs,
         swipeLeadMs
       );
-      const cascadeDurationMs = config.letterWave.durationMs + (delaysMs.at(-1) ?? 0);
+      const lastDelayMs = delaysMs[letterCount - 1];
+      const cascadeDurationMs = config.letterWave.durationMs + lastDelayMs;
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       for (const set of [part.letterElements, part.highlightLetterElements, part.imageLayers?.glowLetters]) {

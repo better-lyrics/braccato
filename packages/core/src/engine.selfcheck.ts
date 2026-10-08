@@ -1208,6 +1208,17 @@ assert.deepEqual(
   "Given a word with no letters, Then there is nothing to sweep"
 );
 
+// With the default ramp the swipe reaches letter i at i/n of the word, so that is where its wave
+// should start, for a short word and a long one alike.
+for (const wordMs of [400, 3200]) {
+  const delays = planLetterWaveDelays(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1);
+  const expected = delays.map((_, index) => (wordMs * index) / SWIPE_LETTERS);
+  assert.ok(
+    delays.every((delay, index) => Math.abs(delay - expected[index]) < 1e-6),
+    `Given a ${wordMs}ms word, Then each letter's wave starts as the swipe reaches it`
+  );
+}
+
 const ltrSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
 const rtlSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, true);
 assert.ok(
@@ -1887,13 +1898,3 @@ console.log(
   `Renderer engine self-check passed across ${viewNames.size} instance(s) over ` +
     `${panelDocument.calls.length + floatingDocument.calls.length} built node(s)`
 );
-
-// Under the default ramp the swipe reaches letter i a fraction i/n through the word, so the wave must
-// start there, whatever the word's length, rather than on a stagger squeezed into part of it.
-for (const wordMs of [400, 3200]) {
-  const delays = planLetterWaveDelays(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1);
-  assert.ok(
-    delays.every((delay, index) => Math.abs(delay - (wordMs * index) / SWIPE_LETTERS) < SWIPE_EPS * wordMs),
-    `Given a ${wordMs}ms word, Then letter i floats as the swipe reaches it, i/n of the way through`
-  );
-}
