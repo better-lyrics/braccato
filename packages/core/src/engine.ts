@@ -1283,31 +1283,42 @@ function swipeRamp(config: AnimationConfig): SwipeRamp {
 // How far through its float a letter crests, as a keyframe offset.
 const LETTER_WAVE_CREST_OFFSET = 0.4;
 
-// How long each letter waits before its wave starts, counted from the start of the word. A letter aims
-// to crest just as the swipe finishes lighting it, but never starts later than the moment the swipe
-// first touches it. On a short word that means starting before the word itself does.
-export function planLetterWaveDelays(
+export interface LetterWaveTiming {
+  delayMs: number;
+  durationMs: number;
+}
+
+// When each letter's wave starts, counted from the start of the word, and how long it lasts. A letter
+// crests just as the swipe finishes lighting it. If the swipe lights it faster than the float rises,
+// it starts early enough to make that, which on a short word means before the word itself does. If the
+// swipe lights it slower, it starts as the swipe touches it and its float stretches to crest on time.
+export function planLetterWave(
   swipe: SwipeRamp,
   letterCount: number,
   wordDurationMs: number,
   swipeDurationMs: number,
   swipeLeadMs: number,
-  riseMs: number
-): number[] {
+  floatDurationMs: number
+): LetterWaveTiming[] {
+  const riseMs = floatDurationMs * LETTER_WAVE_CREST_OFFSET;
   const windows = computeLetterSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
-  const delays: number[] = [];
+  const timings: LetterWaveTiming[] = [];
   for (let index = 0; index < letterCount; index++) {
-    if (windows) {
-      // The swipe runs swipeLeadMs ahead of the word, so take the lead back off.
-      const touchedMs = windows[index].delayMs - swipeLeadMs;
-      const litMs = touchedMs + windows[index].durationMs;
-      delays.push(Math.min(touchedMs, litMs - riseMs));
-    } else {
+    if (!windows) {
       // No windows for this ramp, so spread the letters evenly over the word.
-      delays.push((wordDurationMs * index) / letterCount);
+      timings.push({ delayMs: (wordDurationMs * index) / letterCount, durationMs: floatDurationMs });
+      continue;
+    }
+    // The swipe runs swipeLeadMs ahead of the word, so take the lead back off.
+    const touchedMs = windows[index].delayMs - swipeLeadMs;
+    const litMs = touchedMs + windows[index].durationMs;
+    if (litMs - riseMs > touchedMs) {
+      timings.push({ delayMs: touchedMs, durationMs: (litMs - touchedMs) / LETTER_WAVE_CREST_OFFSET });
+    } else {
+      timings.push({ delayMs: litMs - riseMs, durationMs: floatDurationMs });
     }
   }
-  return delays;
+  return timings;
 }
 
 function startRichSyncedHighlightAnimations(
@@ -1592,20 +1603,19 @@ function startWordAnimations(
         { transform: `${config.letterWave.settle}${emphasisRest}` },
       ];
       const letterCount = letters.length;
-      const delaysMs = planLetterWaveDelays(
+      const waves = planLetterWave(
         swipeRamp(config),
         letterCount,
         timedDurationMs,
         swipeDurationMs,
         swipeLeadMs,
-        config.letterWave.durationMs * LETTER_WAVE_CREST_OFFSET
+        config.letterWave.durationMs
       );
       // A letter that starts before the word would have a negative delay, which the drift check reads
       // as the wave running behind once it finishes. Run the wave's clock ahead by the head start
       // instead, the way the swipe carries its lead, so every delay stays at zero or above.
-      const waveLeadMs = Math.max(0, -Math.min(...delaysMs));
-      const lastDelayMs = delaysMs[letterCount - 1] + waveLeadMs;
-      const cascadeDurationMs = config.letterWave.durationMs + lastDelayMs;
+      const waveLeadMs = Math.max(0, -Math.min(...waves.map(wave => wave.delayMs)));
+      const cascadeDurationMs = waveLeadMs + Math.max(...waves.map(wave => wave.delayMs + wave.durationMs));
       const floatStartMs = correctedAnimationTimeMs(wordTimeMs + waveLeadMs, appliedTimingOffsetMs, cascadeDurationMs);
       const floatKeyframeSignature = JSON.stringify(floatKeyframes);
       for (const set of [part.letterElements, part.highlightLetterElements, part.imageLayers?.glowLetters]) {
@@ -1613,8 +1623,8 @@ function startWordAnimations(
           const animation = trackLyricAnimationTiming(
             engine,
             acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
-              duration: config.letterWave.durationMs,
-              delay: delaysMs[index] + waveLeadMs,
+              duration: waves[index].durationMs,
+              delay: waves[index].delayMs + waveLeadMs,
               fill: "forwards",
             }),
             { appliedTimingOffsetMs, offsetMs: waveLeadMs }

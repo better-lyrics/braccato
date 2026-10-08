@@ -16,7 +16,7 @@ import {
   noteUserScroll,
   parseColorAlpha,
   planLetterMaskSweep,
-  planLetterWaveDelays,
+  planLetterWave,
   relayout,
   resolveScrollInsets,
   resolveTickOptions,
@@ -1209,19 +1209,34 @@ assert.deepEqual(
 );
 
 // With the default ramp the swipe touches letter i at i/n of the word and has lit it 1/n + 0.1 of the
-// word later. A long word lights each letter slower than the 360ms rise, so every letter starts as it
-// is touched. A short word lights them faster, so each starts early enough to crest as it is lit, the
-// first ones before the word begins.
-const waveDelays = (wordMs: number) =>
-  planLetterWaveDelays(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1, 360).map(Math.round);
+// word later. A long word lights each letter slower than a 900ms float rises, so each starts as it is
+// touched and stretches its float to crest as it is lit. A short word lights them faster, so each
+// keeps the 900ms float and starts early enough to crest as it is lit, the first ones before the word.
+const waves = (wordMs: number) =>
+  planLetterWave(SWIPE_RAMP, SWIPE_LETTERS, wordMs, wordMs * 1.6, wordMs * 0.1, 900).map(wave => [
+    Math.round(wave.delayMs),
+    Math.round(wave.durationMs),
+  ]);
 assert.deepEqual(
-  waveDelays(3200),
-  [0, 640, 1280, 1920, 2560],
-  "Given a long word, Then each letter starts as it is touched"
+  waves(3200),
+  [
+    [0, 2400],
+    [640, 2400],
+    [1280, 2400],
+    [1920, 2400],
+    [2560, 2400],
+  ],
+  "Given a long word, Then each letter starts as it is touched and stretches to crest as it is lit"
 );
 assert.deepEqual(
-  waveDelays(400),
-  [-240, -160, -80, 0, 80],
+  waves(400),
+  [
+    [-240, 900],
+    [-160, 900],
+    [-80, 900],
+    [0, 900],
+    [80, 900],
+  ],
   "Given a short word, Then each letter starts early enough to crest as it is lit"
 );
 
