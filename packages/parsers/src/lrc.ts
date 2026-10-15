@@ -1,6 +1,6 @@
 import { isCreditLine, songwritersInCreditLine, splitCreditNames, uniqueNames } from "./credits.js";
 import { isLrc } from "./formatPredicates.js";
-import { DEFAULT_INSTRUMENTAL_GAP_MS, createInstrumental } from "./instrumentalBreaks.js";
+import { type InstrumentalBreakOptions, insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];
@@ -13,6 +13,8 @@ const ID_TAG_REGEX = /^\[(\w+):(.*)\]$/;
 // LySy enhanced LRC encodes background vocals as a trailing [bg:...] group. The [bg:] marker is
 // format and comes off; whatever the source wrote inside, parens included, passes through untouched.
 const BG_MARKER_REGEX = /\[bg:(.*)\]\s*$/;
+// A timed line with no words, or only music notes, marks where the line before it stops.
+const GAP_MARKER_REGEX = /^[\s♪♫♬♩🎵🎶]*$/u;
 
 function parseTime(timeStr: string | number | undefined): number {
 	if (!timeStr) return 0;
@@ -43,13 +45,19 @@ function parseTime(timeStr: string | number | undefined): number {
 /**
  * Parse an LRC document, plain or enhanced, into lines with optional word level parts.
  *
- * The result is returned exactly as the document states it. `LRCParser.parse` runs `lrcFixers` over
- * it afterwards, which is right for Musixmatch word-by-word lyrics and wrong for sources whose
+ * Timings are returned as the document states them. `LRCParser.parse` runs `lrcFixers` over the
+ * result afterwards, which is right for Musixmatch word-by-word lyrics and wrong for sources whose
  * timings are already clean, so callers that know their source can stay on this function.
+ *
+ * Blank lines are not lyrics. Each one ends the line before it, and the silences that leaves, along
+ * with any before the first line or after a line's closing timestamp, become instrumental lines on
+ * the same terms as the TTML gap fill.
  */
-export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
+export function parseLRC(lrcText: string, songDurationMs: number, options: InstrumentalBreakOptions = {}): Lyric[] {
 	const lines = lrcText.split("\n");
 	const result: Lyric[] = [];
+	// Where each line of `result` says it ends, or null when only the next line can tell.
+	const statedEnds: (number | null)[] = [];
 	const idTags: Record<string, string> = {};
 
 	for (const rawLine of lines) {
@@ -93,7 +101,10 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 			(f, i) => i % 2 === 0 && i > 0 && i < leadFragments.length - 1 && f.length > 0 && f.trim() === "",
 		);
 
-		const consumeSegment = (segmentText: string, isBackground: boolean) => {
+		// Returns the segment's closing timestamp, null when it has none, or undefined when it has no
+		// timestamps at all.
+		const consumeSegment = (segmentText: string, isBackground: boolean): number | null | undefined => {
+			const firstPart = parts.length;
 			segmentText.split(ENHANCED_WORD_REGEX).forEach((rawFragment, index) => {
 				if (index % 2 === 0) {
 					let fragment = rawFragment;
@@ -116,25 +127,39 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 					lastTime = startTime;
 				}
 			});
+			if (parts.length === firstPart) return undefined;
+			const closing = parts[parts.length - 1];
+			if (closing.words.trim() !== "") return null;
+			// A timestamp with nothing sung after it is where the word before it ends, not a word.
+			parts.pop();
+			lastTime = null;
+			return closing.startTimeMs;
 		};
 
-		consumeSegment(leadText, false);
-		if (bgText !== null) consumeSegment(bgText, true);
+		const leadEnd = consumeSegment(leadText, false);
+		const bgEnd = bgText === null ? undefined : consumeSegment(bgText, true);
 		if (isCreditLine(leadText.replace(ENHANCED_WORD_REGEX, ""))) continue;
 
-		const duration = lineEndTime - lineStartTime;
+		const closedAt = bgEnd === undefined ? leadEnd : bgEnd === null ? null : Math.max(bgEnd, leadEnd ?? bgEnd);
+		const words = plainText.trim();
 
 		result.push({
 			startTimeMs: lineStartTime,
-			words: plainText.trim(),
-			durationMs: duration,
+			words: GAP_MARKER_REGEX.test(words) ? "" : words,
+			durationMs: lineEndTime - lineStartTime,
 			parts: parts.length > 0 ? parts : undefined,
 		});
+		statedEnds.push(closedAt ?? (timeTagCount > 1 ? lineEndTime : null));
 	}
 
 	for (let i = 0; i < result.length; i++) {
 		const lyric = result[i];
-		if (i + 1 < result.length) {
+		const statedEnd = statedEnds[i];
+		if (statedEnd !== null) {
+			lyric.durationMs = Math.max(statedEnd - lyric.startTimeMs, 0);
+			const lastPart = lyric.parts?.[lyric.parts.length - 1];
+			if (lastPart && lastPart.durationMs === 0) lastPart.durationMs = Math.max(statedEnd - lastPart.startTimeMs, 0);
+		} else if (i + 1 < result.length) {
 			const nextLyric = result[i + 1];
 			if (lyric.durationMs === 0) {
 				lyric.durationMs = Math.max(nextLyric.startTimeMs - lyric.startTimeMs, 0);
@@ -164,11 +189,13 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 		}
 	}
 
+	const sung = result.filter((lyric) => lyric.words !== "");
+
 	if (idTags.offset) {
 		let offset = Number(idTags.offset);
 		if (Number.isNaN(offset)) offset = 0;
 		offset = offset * 1000;
-		for (const lyric of result) {
+		for (const lyric of sung) {
 			lyric.startTimeMs -= offset;
 			lyric.parts?.forEach((part) => {
 				part.startTimeMs -= offset;
@@ -176,7 +203,7 @@ export function parseLRC(lrcText: string, songDurationMs: number): Lyric[] {
 		}
 	}
 
-	return result;
+	return insertInstrumentalBreaks(sung, songDurationMs, options.instrumentalGapMs);
 }
 
 export function lrcFixers(lyrics: Lyric[]): void {
@@ -236,6 +263,13 @@ export function lrcFixers(lyrics: Lyric[]): void {
 					} else {
 						part.durationMs = nextPart.startTimeMs - part.startTimeMs;
 					}
+
+					// The next line's first word can sit on the far side of a gap, so the last word
+					// stops where its own line does.
+					const lineEnd = lyric.startTimeMs + lyric.durationMs;
+					if (j === lyric.parts.length - 1 && lyric.durationMs > 0 && lineEnd > part.startTimeMs) {
+						part.durationMs = Math.min(part.durationMs, lineEnd - part.startTimeMs);
+					}
 				}
 			}
 		}
@@ -249,12 +283,7 @@ export const LRCParser: LyricParser = {
 	parse(input: string, duration = 0): Lyric[] {
 		const lyrics = parseLRC(input, duration);
 		lrcFixers(lyrics);
-		// A blank line long enough to be a break, rather than a section separator, is an instrumental.
-		return lyrics.map((lyric) =>
-			lyric.words === "" && lyric.durationMs > DEFAULT_INSTRUMENTAL_GAP_MS
-				? createInstrumental(lyric.startTimeMs, lyric.durationMs)
-				: lyric,
-		);
+		return lyrics;
 	},
 	metadata(input: string): LyricMetadata {
 		const names: string[] = [];
