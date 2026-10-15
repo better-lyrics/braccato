@@ -353,6 +353,32 @@ describe("LRCParser", () => {
 			});
 		});
 
+		describe("regressions", () => {
+			it("regression: sorts lines a file lists out of order before finding the gaps", () => {
+				const result = parseLRC("[01:00.00]C\n[00:10.00]A\n[00:20.00]B", 120000);
+
+				expect(result.map((lyric) => lyric.words)).toEqual(["", "A", "B", "C"]);
+				expect(instrumentals(result)).toEqual([[0, 10000]]);
+			});
+
+			it("regression: keeps an untimed background group out of the closed lead word", () => {
+				const [line] = sung(
+					parseLRC("[00:10.00]<00:10.00>Hello <00:10.50>world<00:11.00> [bg:(ooh)]\n[00:30.00]Next", 60000),
+				);
+
+				expect(line.parts!.map((part) => part.words)).toEqual(["Hello ", "world", " (ooh)"]);
+			});
+
+			it("regression: keeps a short closed last word at its stated length when a break follows", () => {
+				const lrc =
+					"[00:10.00]<00:10.00>a <00:10.05>b <00:10.10>c<00:10.48>\n[00:20.00]<00:20.00>d <00:20.05>e <00:20.10>f<00:20.48>";
+
+				const [line] = sung(LRCParser.parse(lrc, 30000));
+
+				expect(line.parts![2]).toMatchObject({ words: "c", startTimeMs: 10100, durationMs: 380 });
+			});
+		});
+
 		describe("invariants", () => {
 			const song = [
 				"[ti:Song]",

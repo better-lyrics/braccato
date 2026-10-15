@@ -55,9 +55,8 @@ function parseTime(timeStr: string | number | undefined): number {
  */
 export function parseLRC(lrcText: string, songDurationMs: number, options: InstrumentalBreakOptions = {}): Lyric[] {
 	const lines = lrcText.split("\n");
-	const result: Lyric[] = [];
-	// Where each line of `result` says it ends, or null when only the next line can tell.
-	const statedEnds: (number | null)[] = [];
+	// `statedEnd` is where the document says a line ends, or null when only the next line can tell.
+	const entries: { lyric: Lyric; statedEnd: number | null }[] = [];
 	const idTags: Record<string, string> = {};
 
 	for (const rawLine of lines) {
@@ -101,9 +100,8 @@ export function parseLRC(lrcText: string, songDurationMs: number, options: Instr
 			(f, i) => i % 2 === 0 && i > 0 && i < leadFragments.length - 1 && f.length > 0 && f.trim() === "",
 		);
 
-		// Returns the segment's closing timestamp, null when it has none, or undefined when it has no
-		// timestamps at all.
-		const consumeSegment = (segmentText: string, isBackground: boolean): number | null | undefined => {
+		// Returns the segment's last part, or undefined when the segment has no timestamps.
+		const consumeSegment = (segmentText: string, isBackground: boolean): LyricPart | undefined => {
 			const firstPart = parts.length;
 			segmentText.split(ENHANCED_WORD_REGEX).forEach((rawFragment, index) => {
 				if (index % 2 === 0) {
@@ -127,34 +125,39 @@ export function parseLRC(lrcText: string, songDurationMs: number, options: Instr
 					lastTime = startTime;
 				}
 			});
-			if (parts.length === firstPart) return undefined;
-			const closing = parts[parts.length - 1];
-			if (closing.words.trim() !== "") return null;
-			// A timestamp with nothing sung after it is where the word before it ends, not a word.
-			parts.pop();
-			lastTime = null;
-			return closing.startTimeMs;
+			return parts.length > firstPart ? parts[parts.length - 1] : undefined;
 		};
 
-		const leadEnd = consumeSegment(leadText, false);
-		const bgEnd = bgText === null ? undefined : consumeSegment(bgText, true);
+		const leadLast = consumeSegment(leadText, false);
+		const bgLast = bgText === null ? undefined : consumeSegment(bgText, true);
 		if (isCreditLine(leadText.replace(ENHANCED_WORD_REGEX, ""))) continue;
 
-		const closedAt = bgEnd === undefined ? leadEnd : bgEnd === null ? null : Math.max(bgEnd, leadEnd ?? bgEnd);
+		// A timestamp with nothing sung after it is where the word before it ends, not a word. Read only
+		// once both segments are in, since untimed background text lands on the lead's last part.
+		const closings = [leadLast, bgLast].filter((part): part is LyricPart => part?.words.trim() === "");
+		const finalPart = bgLast ?? leadLast;
+		const closedAt =
+			finalPart && closings.includes(finalPart) ? Math.max(...closings.map((part) => part.startTimeMs)) : null;
+		const sungParts = parts.filter((part) => !closings.includes(part));
 		const words = plainText.trim();
 
-		result.push({
-			startTimeMs: lineStartTime,
-			words: GAP_MARKER_REGEX.test(words) ? "" : words,
-			durationMs: lineEndTime - lineStartTime,
-			parts: parts.length > 0 ? parts : undefined,
+		entries.push({
+			lyric: {
+				startTimeMs: lineStartTime,
+				words: GAP_MARKER_REGEX.test(words) ? "" : words,
+				durationMs: lineEndTime - lineStartTime,
+				parts: sungParts.length > 0 ? sungParts : undefined,
+			},
+			statedEnd: closedAt ?? (timeTagCount > 1 ? lineEndTime : null),
 		});
-		statedEnds.push(closedAt ?? (timeTagCount > 1 ? lineEndTime : null));
 	}
+
+	entries.sort((a, b) => a.lyric.startTimeMs - b.lyric.startTimeMs);
+	const result = entries.map((entry) => entry.lyric);
 
 	for (let i = 0; i < result.length; i++) {
 		const lyric = result[i];
-		const statedEnd = statedEnds[i];
+		const { statedEnd } = entries[i];
 		if (statedEnd !== null) {
 			lyric.durationMs = Math.max(statedEnd - lyric.startTimeMs, 0);
 			const lastPart = lyric.parts?.[lyric.parts.length - 1];
@@ -255,7 +258,7 @@ export function lrcFixers(lyrics: Lyric[]): void {
 					}
 
 					if (nextPart === null) {
-						part.durationMs = 300;
+						part.durationMs = Math.max(part.durationMs, 300);
 					} else if (nextPart.words === " ") {
 						part.durationMs += nextPart.durationMs;
 						nextPart.startTimeMs += nextPart.durationMs;
