@@ -6,6 +6,14 @@ export function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
+/**
+ * Whether the page renders with Gecko (Firefox). Detects the engine by a feature only it ships, so
+ * spoofed user agents and Firefox forks resolve the same way.
+ */
+export function isGecko(): boolean {
+  return typeof CSS !== "undefined" && CSS.supports("-moz-appearance", "none");
+}
+
 export function roundedMs(value: number): number {
   return Math.round(value * 10) / 10;
 }

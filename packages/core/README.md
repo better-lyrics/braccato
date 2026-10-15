@@ -328,6 +328,23 @@ It is written only when a word's state changes rather than every frame, so selec
 theme nothing per tick. A line synced word, which has no duration of its own, is `active` from its
 start until the next word begins.
 
+### Browser engine
+
+On Firefox the container carries `data-browser-engine="gecko"`. The renderer keys its own Gecko-only
+fixes on it, and a theme can do the same to target Firefox without sniffing the user agent. It is
+detected from a feature only Gecko ships, so forks of Firefox carry it too. Script reads the same
+answer from `isGecko()` in `@braccato/core/util`.
+
+```css
+.blyrics-container[data-browser-engine="gecko"] .blyrics--line {
+  /* Firefox only */
+}
+```
+
+One fix uses it today. WebRender rounds text moved by a 2D translation to whole device pixels, which
+makes the letter wave step on Firefox, so lettered words on animating lines get a distant
+`perspective` there. It costs Chromium nothing, because the rule never matches.
+
 ### Class names
 
 These are published API rather than implementation. Renaming one costs a migration rather than a
@@ -428,7 +445,7 @@ Four leaves import nothing at all, so taking one does not pull the engine into y
 - `@braccato/core/constants` for the class names and element ids above
 - `@braccato/core/text` for script detection: `testRtl`, `containsNonLatin`, `detectNonLatinLanguage`
 - `@braccato/core/themeSettings` for `parseThemeConfig`
-- `@braccato/core/util` for pure helpers such as `clamp` and `toMs`
+- `@braccato/core/util` for pure helpers such as `clamp` and `toMs`, and `isGecko` for engine-specific fixes
 
 Two notes on the element entry point. A browser extension's isolated world has no custom element
 registry, so `window.customElements` is null there and importing this file throws where it registers.
