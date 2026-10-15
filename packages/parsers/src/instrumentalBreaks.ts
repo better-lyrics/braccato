@@ -1,6 +1,10 @@
 import type { Lyric } from "./types.js";
 
-const DEFAULT_INSTRUMENTAL_GAP_MS = 5000;
+export const DEFAULT_INSTRUMENTAL_GAP_MS = 5000;
+
+export function createInstrumental(startTimeMs: number, durationMs: number): Lyric {
+	return { startTimeMs, durationMs, words: "", parts: [], isInstrumental: true };
+}
 
 /**
  * Turn the silences between lines into explicit instrumental lyrics, so a renderer has something to
@@ -17,14 +21,6 @@ export function insertInstrumentalBreaks(
 	if (lyrics.length === 0) return lyrics;
 
 	const result: Lyric[] = [];
-
-	const createInstrumental = (startTimeMs: number, durationMs: number): Lyric => ({
-		startTimeMs,
-		durationMs,
-		words: "",
-		parts: [],
-		isInstrumental: true,
-	});
 
 	if (lyrics[0].startTimeMs > gapThreshold) {
 		result.push(createInstrumental(0, lyrics[0].startTimeMs));

@@ -88,6 +88,134 @@ describe("LRCParser", () => {
 			expect(result[1].words).toBe("");
 		});
 
+		describe("blank lines", () => {
+			it("turns a long blank line into an instrumental line", () => {
+				const lrc = `[00:05.00]Line one
+[00:10.00]
+[00:30.00]Line three`;
+
+				const result = LRCParser.parse(lrc, 40000);
+
+				expect(result).toHaveLength(3);
+				expect(result[1]).toEqual({
+					startTimeMs: 10000,
+					durationMs: 20000,
+					words: "",
+					parts: [],
+					isInstrumental: true,
+				});
+			});
+
+			it("turns a trailing blank line into an outro instrumental", () => {
+				const lrc = `[00:00.00]Line one
+[00:10.00]Line two
+[00:20.00]`;
+
+				const result = LRCParser.parse(lrc, 60000);
+
+				expect(result).toHaveLength(3);
+				expect(result[2]).toMatchObject({ startTimeMs: 20000, durationMs: 40000, isInstrumental: true });
+			});
+
+			it("turns a leading blank line into an intro instrumental", () => {
+				const lrc = `[00:00.00]
+[00:20.00]Line one`;
+
+				const result = LRCParser.parse(lrc, 30000);
+
+				expect(result).toHaveLength(2);
+				expect(result[0]).toMatchObject({ startTimeMs: 0, durationMs: 20000, isInstrumental: true });
+			});
+
+			it("ends the line before the break where the blank line starts", () => {
+				const lrc = `[00:05.00]<00:05.00>Line <00:06.00>one
+[00:10.00]
+[00:30.00]Line three`;
+
+				const result = LRCParser.parse(lrc, 40000);
+
+				expect(result[0].durationMs).toBe(5000);
+				expect(result[1]).toMatchObject({ startTimeMs: 10000, durationMs: 20000, isInstrumental: true });
+			});
+		});
+
+		describe("blank lines: edge cases", () => {
+			it("keeps a short blank line as a separator", () => {
+				const lrc = `[00:05.00]Line one
+[00:10.00]
+[00:12.00]Line three`;
+
+				const result = LRCParser.parse(lrc, 20000);
+
+				expect(result).toHaveLength(3);
+				expect(result[1]).toMatchObject({ startTimeMs: 10000, durationMs: 2000, words: "" });
+				expect(result[1].isInstrumental).toBeUndefined();
+			});
+
+			it("keeps a blank line exactly at the threshold, matching the TTML gap fill", () => {
+				const lrc = `[00:05.00]Line one
+[00:10.00]
+[00:15.00]Line three`;
+
+				const result = LRCParser.parse(lrc, 20000);
+
+				expect(result[1].isInstrumental).toBeUndefined();
+			});
+
+			it("keeps a trailing blank line when no song duration is given", () => {
+				const lrc = `[00:05.00]Line one
+[00:10.00]`;
+
+				const result = LRCParser.parse(lrc, 0);
+
+				expect(result).toHaveLength(2);
+				expect(result[1].isInstrumental).toBeUndefined();
+			});
+
+			it("converts each long blank line in a row on its own", () => {
+				const lrc = `[00:05.00]Line one
+[00:10.00]
+[00:20.00]
+[00:30.00]Line four`;
+
+				const result = LRCParser.parse(lrc, 40000);
+
+				expect(result).toHaveLength(4);
+				expect(result[1]).toMatchObject({ startTimeMs: 10000, durationMs: 10000, isInstrumental: true });
+				expect(result[2]).toMatchObject({ startTimeMs: 20000, durationMs: 10000, isInstrumental: true });
+			});
+
+			it("turns a file of one blank line into one instrumental", () => {
+				const result = LRCParser.parse("[00:00.00]", 30000);
+
+				expect(result).toEqual([{ startTimeMs: 0, durationMs: 30000, words: "", parts: [], isInstrumental: true }]);
+			});
+
+			it("applies the offset tag before deciding the break", () => {
+				const lrc = `[offset:1]
+[00:05.00]Line one
+[00:10.00]
+[00:30.00]Line three`;
+
+				const result = LRCParser.parse(lrc, 40000);
+
+				expect(result[1]).toMatchObject({ startTimeMs: 9000, durationMs: 20000, isInstrumental: true });
+			});
+
+			it("leaves the sung lines untouched", () => {
+				const lrc = `[00:05.00]Line one
+[00:10.00]
+[00:30.00]Line three`;
+
+				const result = LRCParser.parse(lrc, 40000);
+
+				expect(result.filter((lyric) => !lyric.isInstrumental).map((lyric) => lyric.words)).toEqual([
+					"Line one",
+					"Line three",
+				]);
+			});
+		});
+
 		it("handles mm:ss.xx format", () => {
 			const lrc = "[01:30.50]Ninety seconds in";
 			const result = LRCParser.parse(lrc, 120000);

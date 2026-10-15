@@ -1,5 +1,6 @@
 import { isCreditLine, songwritersInCreditLine, splitCreditNames, uniqueNames } from "./credits.js";
 import { isLrc } from "./formatPredicates.js";
+import { DEFAULT_INSTRUMENTAL_GAP_MS, createInstrumental } from "./instrumentalBreaks.js";
 import type { Lyric, LyricMetadata, LyricParser, LyricPart } from "./types.js";
 
 const POSSIBLE_ID_TAGS = ["ti", "ar", "al", "au", "lr", "length", "by", "offset", "re", "tool", "ve", "#"];
@@ -248,7 +249,12 @@ export const LRCParser: LyricParser = {
 	parse(input: string, duration = 0): Lyric[] {
 		const lyrics = parseLRC(input, duration);
 		lrcFixers(lyrics);
-		return lyrics;
+		// A blank line long enough to be a break, rather than a section separator, is an instrumental.
+		return lyrics.map((lyric) =>
+			lyric.words === "" && lyric.durationMs > DEFAULT_INSTRUMENTAL_GAP_MS
+				? createInstrumental(lyric.startTimeMs, lyric.durationMs)
+				: lyric,
+		);
 	},
 	metadata(input: string): LyricMetadata {
 		const names: string[] = [];
