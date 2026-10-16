@@ -8,7 +8,7 @@
 // injection helpers decorate lines that are already built.
 
 export { resetPlaybackClock, resumeAllAutoscroll } from "./engine";
-export { injectRomanization, injectTranslation, type LineData } from "./inject";
+export { injectFurigana, injectRomanization, injectTranslation, type LineData } from "./inject";
 export { createLyricsRenderer } from "./renderer";
 export type { Lyric, LyricsRenderer, LyricsRendererHost, TickOptions } from "./types";
 
@@ -23,7 +23,7 @@ export type { AnimationTickStatus } from "./engine";
 /** @public */
 export type { PartData } from "./inject";
 /** @public */
-export type { LyricPart, LyricsRendererDebugSink, LyricsRendererOptions, LyricSyncType } from "./types";
+export type { LyricPart, LyricsRendererDebugSink, LyricsRendererOptions, LyricSyncType, RubySegment } from "./types";
 /** @public */
 export type { SetLyricsOptions } from "./view";
 /** @public */

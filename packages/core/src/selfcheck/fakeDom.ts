@@ -235,6 +235,10 @@ export class FakeNode {
     this.attributes[name] = value;
   }
 
+  getAttribute(name: string): string | null {
+    return this.attributes[name] ?? null;
+  }
+
   appendChild(child: FakeNode): FakeNode {
     const incoming = child.kind === "fragment" ? child.childNodes.splice(0) : [child];
     for (const node of incoming) {
