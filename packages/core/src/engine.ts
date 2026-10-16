@@ -61,6 +61,10 @@ const PASSIVE_USER_SCROLL_RESUME_DELAY_MS = 5000;
 const LYRIC_ENDING_THRESHOLD_S = registerThemeSetting("blyrics-lyric-ending-threshold-s", 0.5);
 const EARLY_SCROLL_CONSIDER = registerThemeSetting("blyrics-early-scroll-consider-s", 0.54);
 const TIME_JUMP_THRESHOLD = 0.5;
+// Gecko steps media time every ~40ms, so reads lag by a random amount (never lead) that reseeks lines as drift.
+const SMOOTH_PLAYBACK_CLOCK = isGecko();
+const CLOCK_RESYNC_THRESHOLD_S = 0.1;
+const CLOCK_SLEW_PER_S = 0.1;
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const SCROLL_PREPARE_LEAD_MS = 120;
 const LINE_SCROLL_FALLBACK_DURATION_MS = 750;
@@ -179,6 +183,8 @@ interface PlaybackClock {
   lastTime: number;
   lastPlayState: boolean;
   lastEventCreationTime: number;
+  smoothedTime: number;
+  smoothedAt: number;
 }
 
 /**
@@ -346,6 +352,8 @@ const playbackClock: PlaybackClock = {
   lastTime: 0,
   lastPlayState: false,
   lastEventCreationTime: NO_PLAYER_SNAPSHOT,
+  smoothedTime: 0,
+  smoothedAt: NO_PLAYER_SNAPSHOT,
 };
 
 /**
@@ -356,6 +364,22 @@ export function resetPlaybackClock(): void {
   playbackClock.lastTime = 0;
   playbackClock.lastPlayState = false;
   playbackClock.lastEventCreationTime = NO_PLAYER_SNAPSHOT;
+  playbackClock.smoothedAt = NO_PLAYER_SNAPSHOT;
+}
+
+export function smoothedPlaybackTime(
+  previousTime: number,
+  previousAt: number,
+  rawTime: number,
+  now: number,
+  playbackRate: number
+): number {
+  if (previousAt === NO_PLAYER_SNAPSHOT) return rawTime;
+  const elapsedS = Math.max(0, now - previousAt) / 1000;
+  const predictedTime = previousTime + elapsedS * playbackRate;
+  const errorS = rawTime - predictedTime;
+  if (errorS >= 0 || Math.abs(errorS) >= CLOCK_RESYNC_THRESHOLD_S) return rawTime;
+  return predictedTime + errorS * Math.min(1, elapsedS * CLOCK_SLEW_PER_S);
 }
 
 // -- View operations --------------------------
@@ -3418,6 +3442,20 @@ export function tickView(
   }
 
   currentTime += timeOffset / 1000;
+
+  if (SMOOTH_PLAYBACK_CLOCK) {
+    if (isPlaying && !timeJumped) {
+      currentTime = smoothedPlaybackTime(
+        playbackClock.smoothedTime,
+        playbackClock.smoothedAt,
+        currentTime,
+        now,
+        engine.playbackRate
+      );
+    }
+    playbackClock.smoothedTime = currentTime;
+    playbackClock.smoothedAt = isPlaying ? now : NO_PLAYER_SNAPSHOT;
+  }
 
   if (!engine.host.isViewVisible()) {
     clearVisibleLyricWillChange(engine);

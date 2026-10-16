@@ -347,6 +347,12 @@ wave stepped on Firefox. Lettered words on animating lines get a distant `perspe
 floating letter runs an invisible additive opacity ripple that changes every frame and forces the
 redraw. Chromium gets neither.
 
+The playback clock uses it too. Firefox advances a media element's `currentTime` about every 40ms, so
+each read lags the true time by a different amount and never leads it. The renderer took each new lag
+for drift and reseeked the line, so the highlight swipe jumped back mid-word. On Firefox the tick keeps
+its own clock instead: a read ahead of it is taken, a read behind it pulls it back by a tenth per
+second, and a read more than 100ms off counts as a seek.
+
 ### Class names
 
 These are published API rather than implementation. Renaming one costs a migration rather than a
