@@ -1,22 +1,13 @@
 import type { LyricPart } from "@braccato/types";
 
-/**
- * Unicode range for CJK Unified Ideographs (Kanji).
- */
 const KANJI_REGEX = /[\p{Script=Han}\u3005]/u;
 const ALL_KANJI_REGEX = /^[\p{Script=Han}\u3005]+$/u;
 const KANJI_BLOCK_GLOBAL = /(?:[0-9０-９]*[\p{Script=Han}\u3005][0-9０-９\p{Script=Han}\u3005]*)/gu;
 
-/**
- * Checks if a string contains any Japanese Kanji characters.
- */
 export function containsKanji(text: string): boolean {
 	return KANJI_REGEX.test(text);
 }
 
-/**
- * Counts the number of Kanji characters in a string.
- */
 function countKanji(text: string): number {
 	if (!text) return 0;
 	let count = 0;
@@ -26,18 +17,11 @@ function countKanji(text: string): number {
 	return count;
 }
 
-/**
- * Converts Katakana characters in text to Hiragana.
- */
 export function katakanaToHiragana(text: string): string {
 	return text.replace(/[\u30A1-\u30F6]/g, (match) => String.fromCharCode(match.charCodeAt(0) - 0x60));
 }
 
-/**
- * Romanization to Hiragana mapping dictionary (Hepburn and common variants).
- */
 const ROMAJI_TO_HIRAGANA: Record<string, string> = {
-	// 3-letter combos
 	kya: "きゃ",
 	kyu: "きゅ",
 	kyo: "きょ",
@@ -86,7 +70,6 @@ const ROMAJI_TO_HIRAGANA: Record<string, string> = {
 	tsu: "つ",
 	dzu: "づ",
 	dji: "ぢ",
-	// Kunrei-shiki / Nihon-shiki 3-letter combos
 	sya: "しゃ",
 	syu: "しゅ",
 	syo: "しょ",
@@ -105,7 +88,6 @@ const ROMAJI_TO_HIRAGANA: Record<string, string> = {
 	wha: "うぁ",
 	who: "うぉ",
 
-	// 2-letter combos
 	ka: "か",
 	ki: "き",
 	ku: "く",
@@ -190,7 +172,6 @@ const ROMAJI_TO_HIRAGANA: Record<string, string> = {
 	ve: "ゔぇ",
 	vo: "ゔぉ",
 
-	// Small vowels & kana
 	xa: "ぁ",
 	xi: "ぃ",
 	xu: "ぅ",
@@ -203,7 +184,6 @@ const ROMAJI_TO_HIRAGANA: Record<string, string> = {
 	xyu: "ゅ",
 	xyo: "ょ",
 
-	// 1-letter vowels
 	a: "あ",
 	i: "い",
 	u: "う",
@@ -217,7 +197,6 @@ const ROMAJI_TO_HIRAGANA: Record<string, string> = {
  * (e.g. "heart" -> "はーと", "love" -> "らぶ", "star" -> "すたー").
  */
 const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
-	// Emotions, relationships & greetings
 	heart: "はーと",
 	hearts: "はーつ",
 	love: "らぶ",
@@ -257,7 +236,6 @@ const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
 	please: "ぷりーず",
 	sorry: "そーりー",
 
-	// Music & Performance
 	music: "みゅーじっく",
 	song: "そんぐ",
 	songs: "そんぐず",
@@ -288,7 +266,6 @@ const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
 	vocal: "ぼーかる",
 	echo: "えこー",
 
-	// Time & Life
 	dream: "どりーむ",
 	dreams: "どりーむず",
 	dreamer: "どりーまー",
@@ -326,7 +303,6 @@ const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
 	universe: "ゆにばーす",
 	galaxy: "ぎゃらくしー",
 
-	// Nature, Sky & Weather
 	star: "すたー",
 	stars: "すたーず",
 	starlight: "すたーらいと",
@@ -367,7 +343,6 @@ const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
 	dark: "だーく",
 	shadow: "しゃどう",
 
-	// Actions & Concepts
 	magic: "まじっく",
 	magical: "まじかる",
 	secret: "しーくれっと",
@@ -441,25 +416,14 @@ const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
 const STRICT_ROMAJI_REGEX =
 	/^(?:[aiueo]|k[aiueo]|ky[auo]|s[aiueo]|sh[aiuo]|sy[auo]|t[aiueo]|ch[aiuo]|ts[u]|ty[auo]|n[aiueo]|ny[auo]|h[aiueo]|fu|hy[auo]|m[aiueo]|my[auo]|y[auoe]|r[aiueo]|ry[auo]|w[aeio]|g[aiueo]|gy[auo]|z[aiueo]|j[aiueo]|zy[auo]|d[aiueo]|dy[auo]|b[aiueo]|by[auo]|p[aiueo]|py[auo]|v[aiueo]|n(?![aiueoy])|([ksthcpb])\1)+$/i;
 
-/**
- * Checks whether an ASCII word is composed strictly of valid Japanese Romaji syllables.
- */
 function isStrictRomajiWord(word: string): boolean {
 	return STRICT_ROMAJI_REGEX.test(word);
 }
 
-/**
- * Normalizes romaji or mixed reading into pure Hiragana.
- * Handles macrons (ō, ū, etc.), gemination (double consonants -> っ), and particles.
- */
 export function romajiToHiragana(input: string, keepSpaces = false): string {
 	if (!input) return "";
 
-	// Convert katakana first if any
-	let str = katakanaToHiragana(input.trim());
-
-	// Replace macron / circumflex long vowels to romaji equivalents first
-	str = str
+	let str = katakanaToHiragana(input.trim())
 		.replace(/[āâ]/g, "aa")
 		.replace(/[īî]/g, "ii")
 		.replace(/[ūû]/g, "uu")
@@ -476,7 +440,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 		return match;
 	});
 
-	// If already predominantly Hiragana and long vowel marks, normalize spaces and return
 	if (/^[\u3040-\u309F\u30FC\s?!.,~:;？！、。〜：；]+$/u.test(str)) {
 		return keepSpaces ? str.replace(/\s+/g, " ") : str.replace(/[\s?!.,~:;？！、。〜：；]+/g, "");
 	}
@@ -488,14 +451,12 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 	while (i < len) {
 		const ch = str[i];
 
-		// Preserve existing hiragana and long vowel mark (ー)
 		if ((ch >= "\u3040" && ch <= "\u309F") || ch === "\u30FC") {
 			result += ch;
 			i++;
 			continue;
 		}
 
-		// Preserve whitespace as single space when requested
 		if (/\s/.test(ch)) {
 			if (keepSpaces && !result.endsWith(" ")) {
 				result += " ";
@@ -504,14 +465,12 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 			continue;
 		}
 
-		// Preserve punctuation marks when keepSpaces is true
 		if (keepSpaces && /[?!.,~:;？！、。〜：；]/.test(ch)) {
 			result += ch;
 			i++;
 			continue;
 		}
 
-		// Skip symbols
 		if (/[^a-z]/i.test(ch)) {
 			i++;
 			continue;
@@ -550,7 +509,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 			}
 		}
 
-		// Try 3-char match
 		if (i + 3 <= len) {
 			const sub3 = lowerStr.slice(i, i + 3);
 			if (ROMAJI_TO_HIRAGANA[sub3]) {
@@ -560,7 +518,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 			}
 		}
 
-		// Try 2-char match
 		if (i + 2 <= len) {
 			const sub2 = lowerStr.slice(i, i + 2);
 			if (ROMAJI_TO_HIRAGANA[sub2]) {
@@ -581,7 +538,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 			}
 		}
 
-		// 1-char vowel
 		if (ROMAJI_TO_HIRAGANA[lowerCh]) {
 			result += ROMAJI_TO_HIRAGANA[lowerCh];
 			i++;
@@ -595,7 +551,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 			continue;
 		}
 
-		// If no match, step forward
 		i++;
 	}
 
@@ -607,9 +562,6 @@ export interface RubySegment {
 	ruby?: string;
 }
 
-/**
- * Normalizes small Japanese kana (ぁ, ぃ, ぅ, ぇ, ぉ, ゎ, ヵ, ヶ) to standard kana.
- */
 function normalizeSmallKana(ch: string): string {
 	switch (ch) {
 		case "ぁ":
@@ -661,18 +613,12 @@ function areKanaEquivalent(textKana: string, readingKana: string): boolean {
 	if (normText === "お" && normReading === "を") return true;
 	if (normText === "へ" && normReading === "え") return true;
 	if (normText === "え" && normReading === "へ") return true;
-	// Yotsugana equivalents: づ (dzu) vs ず (zu), ぢ (dji) vs じ (ji)
 	if ((normText === "づ" && normReading === "ず") || (normText === "ず" && normReading === "づ")) return true;
 	if ((normText === "ぢ" && normReading === "じ") || (normText === "じ" && normReading === "ぢ")) return true;
-	// Long vowel mark ー
 	if (normText === "ー" || normReading === "ー") return true;
 	return false;
 }
 
-/**
- * Strips leading/trailing non-phonetic punctuation and whitespace from ruby reading,
- * ensuring any Latin characters are converted to Hiragana.
- */
 function cleanRuby(ruby: string): string {
 	if (!ruby) return "";
 	let kana = ruby;
@@ -693,9 +639,6 @@ interface KanaAnchor {
 	len: number;
 }
 
-/**
- * Normalizes full-width and half-width punctuation marks (e.g. ？ -> ?, ！ -> !).
- */
 export function normalizePunctuation(str: string): string {
 	return str
 		.replace(/？/g, "?")
@@ -708,10 +651,6 @@ export function normalizePunctuation(str: string): string {
 		.replace(/\u3000/g, " ");
 }
 
-/**
- * Finds the index of an anchor needle in a reading haystack, considering exact match,
- * case-insensitive Latin match, and phonetic variations with whitespace skipping.
- */
 function findKanaAnchor(
 	haystack: string,
 	needle: string,
@@ -834,7 +773,6 @@ function findKanaAnchor(
 		}
 	}
 
-	// If a phonetic anchor was found earlier than any direct match, return it
 	if (phoneticAnchor) {
 		return phoneticAnchor;
 	}
@@ -863,9 +801,6 @@ function findKanaAnchor(
 	return null;
 }
 
-/**
- * Finds all candidate anchor positions of needle in haystack from startIndex.
- */
 function findAllKanaAnchors(haystack: string, needle: string, startIndex = 0, expectedNextKana?: string): KanaAnchor[] {
 	if (!needle || !needle.trim()) return [];
 
@@ -973,7 +908,6 @@ function getNextExpectedKana(
 	const local = getFirstKana(tokens[tokenIdx].text.slice(offsetInTokenText));
 	if (local) return local;
 
-	// If token has nothing left, look at subsequent non-kanji token
 	if (!tokens[tokenIdx].text.slice(offsetInTokenText).trim()) {
 		for (let k = tokenIdx + 1; k < tokens.length; k++) {
 			if (!tokens[k].isKanji) {
@@ -990,20 +924,11 @@ function getNextExpectedKana(
 
 const BRACKETED_KANJI_GLOBAL = /([\p{Script=Han}\u3005]+)[（(]([\u3040-\u309F\u30A0-\u30FF\u30FC]+)[）)]/gu;
 
-/**
- * Aligns a line containing Kanji with its Hiragana reading using the Kana Anchor algorithm.
- *
- * @param lineText Original line text (e.g. "私の名前は運命です")
- * @param readingHiragana Full line reading in Hiragana (e.g. "わたしのなまえはさだめです")
- * @returns Array of segments, where Kanji segments have their matching `ruby` string.
- */
 export function alignLineByKanaAnchors(lineText: string, readingHiragana: string): RubySegment[] {
 	if (!lineText || !containsKanji(lineText) || !readingHiragana) {
 		return [{ text: lineText }];
 	}
 
-	// Tokenize lineText into alternating runs of Kanji and Non-Kanji,
-	// identifying Kanji(kana) bracketed units.
 	interface Token {
 		text: string;
 		isKanji: boolean;
@@ -1065,7 +990,6 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i];
 
-		// Skip any leading whitespace (and punctuation if current token is Kanji) in normalizedReading
 		while (
 			readingCursor < normalizedReading.length &&
 			(/\s/.test(normalizedReading[readingCursor]) ||
@@ -1089,13 +1013,11 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 		}
 
 		if (!token.isKanji) {
-			// Non-kanji token (kana / punctuation / spaces)
 			result.push({ text: token.text });
 			if (!token.text.trim()) {
 				continue;
 			}
 			const nextKanaAfterToken = getNextExpectedKana(tokens, i, token.text.length);
-			// Advance reading cursor if this token matches in normalizedReading
 			const fullAnchor = findKanaAnchor(normalizedReading, token.text, readingCursor, nextKanaAfterToken);
 			if (fullAnchor) {
 				readingCursor = fullAnchor.pos + fullAnchor.len;
@@ -1116,11 +1038,9 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 				}
 			}
 		} else {
-			// Kanji token: look ahead for the next anchor
 			const normToken = token.text.normalize("NFKC");
 			const dictMapping = COMPOUND_KANJI_MAPPINGS[token.text] || COMPOUND_KANJI_MAPPINGS[normToken];
 			const minKanjiMora = dictMapping ? dictMapping.join("").length : countKanji(token.text);
-			// Advance minKanjiMora by counting actual phonetic kana/mora from readingCursor
 			let minLookaheadPos = readingCursor;
 			let morasSeen = 0;
 			while (minLookaheadPos < normalizedReading.length && morasSeen < minKanjiMora) {
@@ -1242,7 +1162,6 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 					let bestBoundaryIdx = -1;
 					let bestDiff = Number.POSITIVE_INFINITY;
 
-					// Count remaining kanji and text after token j
 					let remainingKanji = 0;
 					let remainingNonKanjiLen = 0;
 					for (let k = j + 1; k < tokens.length; k++) {
@@ -1335,7 +1254,6 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 				}
 				readingCursor = nextAnchorPos;
 			} else {
-				// Last kanji token before end: take remainder of reading
 				const remainingReading = cleanRuby(normalizedReading.slice(readingCursor));
 				if (remainingReading && isPlausibleRuby(token.text, remainingReading)) {
 					const normKey = token.text.normalize("NFKC");
@@ -1365,12 +1283,6 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 	return normalized;
 }
 
-/**
- * Aligns a single word token (which might be mixed Kanji + Kana) with its Hiragana reading.
- * For example:
- *   "信じる" with reading "しんじる" -> [{ text: "信", ruby: "しん" }, { text: "じる" }]
- *   "運命" with reading "さだめ" -> [{ text: "運命", ruby: "さだめ" }]
- */
 export function alignWordWithReading(word: string, readingRomajiOrKana: string): RubySegment[] {
 	if (!word || !containsKanji(word)) {
 		return [{ text: word }];
@@ -1381,7 +1293,6 @@ export function alignWordWithReading(word: string, readingRomajiOrKana: string):
 		return [{ text: word }];
 	}
 
-	// Strip leading and trailing punctuation/symbols (e.g. "眼？", "「世界」", "言ってしまうの？")
 	const prefixMatch = word.match(
 		/^[^\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3005\p{Letter}\p{Number}]+/u,
 	);
@@ -1394,7 +1305,6 @@ export function alignWordWithReading(word: string, readingRomajiOrKana: string):
 
 	if (coreWord && containsKanji(coreWord)) {
 		let coreSegs: RubySegment[];
-		// Pure Kanji or Kanji+Digits with no kana inside (e.g. "100分", "罵倒", "笑顔")
 		if (!/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(coreWord)) {
 			const splitReadings = splitKanjiCompoundBySyllables(coreWord, readingHiragana);
 			if (splitReadings && splitReadings.length === coreWord.length) {
@@ -1403,7 +1313,6 @@ export function alignWordWithReading(word: string, readingRomajiOrKana: string):
 				coreSegs = [{ text: coreWord, ruby: readingHiragana }];
 			}
 		} else {
-			// Mixed Kanji + Kana (e.g. "言ってしまうの", "惹かれちゃうの")
 			coreSegs = alignLineByKanaAnchors(coreWord, readingHiragana);
 		}
 		const result: RubySegment[] = [];
@@ -1426,70 +1335,45 @@ export function alignWordWithReading(word: string, readingRomajiOrKana: string):
 function normalizeOrthographicRuby(kanji: string, ruby: string): string {
 	if (!kanji || !ruby) return ruby;
 
-	// 1. 続く / 続け / 続き / 続 -> つづ (not つず)
 	if (kanji.startsWith("続") && ruby.startsWith("つず")) {
 		return ruby.replace(/^つず/, "つづ");
 	}
-
-	// 2. 遠い / 遠く / 遠 -> とお (not とう)
 	if (kanji.startsWith("遠") && ruby.startsWith("とう")) {
 		return ruby.replace(/^とう/, "とお");
 	}
-
-	// 3. 大きい / 大きな / 大いに / 大 -> おお (not おう)
 	if (kanji.startsWith("大") && ruby.startsWith("おう")) {
 		return ruby.replace(/^おう/, "おお");
 	}
-
-	// 4. 多い / 多く / 多 -> おお (not おう)
 	if (kanji.startsWith("多") && ruby.startsWith("おう")) {
 		return ruby.replace(/^おう/, "おお");
 	}
-
-	// 5. 通り / 通る / 通す / 通 -> とお (not とう)
 	if (kanji.startsWith("通") && ruby.startsWith("とう")) {
 		return ruby.replace(/^とう/, "とお");
 	}
-
-	// 6. 氷 -> こおり (not こうり)
 	if (kanji === "氷" && (ruby === "こうり" || ruby === "こおり")) {
 		return "こおり";
 	}
-
-	// 7. 炎 -> ほのお (not ほのう)
 	if (kanji === "炎" && (ruby === "ほのう" || ruby === "ほのお")) {
 		return "ほのお";
 	}
-
-	// 8. 狼 -> おおかみ (not おうかみ)
 	if (kanji === "狼" && (ruby === "おうかみ" || ruby === "おおかみ")) {
 		return "おおかみ";
 	}
-
-	// 9. 凍る / 凍 -> こお (not こう)
 	if (kanji.startsWith("凍") && ruby.startsWith("こう")) {
 		return ruby.replace(/^こう/, "こお");
 	}
-
-	// 10. 覆う / 覆 -> おお (not おう)
 	if (kanji.startsWith("覆") && ruby.startsWith("おう")) {
 		return ruby.replace(/^おう/, "おお");
 	}
-
-	// 11. 気付く / 気づく -> づ (not ず)
 	if (kanji === "付" && ruby === "ず") {
 		return "づ";
 	}
 	if (kanji === "気付" && ruby === "きず") {
 		return "きづ";
 	}
-
-	// 12. 近づく -> づ (not ず)
 	if (kanji === "近" && ruby === "ちかず") {
 		return "ちかづ";
 	}
-
-	// 13. 縮む / 縮れる / 縮 -> ちぢ (not ちじ)
 	if (kanji.startsWith("縮") && ruby.startsWith("ちじ")) {
 		return ruby.replace(/^ちじ/, "ちぢ");
 	}
@@ -1503,9 +1387,6 @@ function normalizeOrthographicRuby(kanji: string, ruby: string): string {
 	return ruby;
 }
 
-/**
- * Applies orthographic ruby normalization across an array of RubySegments.
- */
 function normalizeRubySegments(segments: RubySegment[]): RubySegment[] {
 	return segments.map((seg) => {
 		if (!seg.ruby) return seg;
@@ -1527,7 +1408,6 @@ function isLineAlignmentValid(segments: RubySegment[]): boolean {
 		const seg = segments[i];
 		if (!seg.ruby) continue;
 
-		// 1. Plausibility check on ruby
 		if (!isPlausibleRuby(seg.text, seg.ruby)) {
 			return false;
 		}
@@ -1598,7 +1478,6 @@ const JUKUJIKUN_WORDS = new Set(["今日", "昨日", "明日", "大人", "眼鏡
 function splitKanjiCompoundBySyllables(kanjiText: string, readingHiragana: string): string[] | null {
 	if (!kanjiText || !readingHiragana) return null;
 	const kanjiCount = countKanji(kanjiText);
-	// Only handle pure multi-kanji compounds (at least 2 kanji, no non-kanji inside)
 	if (kanjiCount < 2 || kanjiCount !== kanjiText.length) return null;
 
 	// Explicit dictionary mappings take precedence (supporting NFKC-normalized lookups for Kangxi Radicals)
@@ -1624,7 +1503,6 @@ function splitKanjiCompoundBySyllables(kanjiText: string, readingHiragana: strin
 		}
 	}
 
-	// Exact 1:1 match between kanji count and syllable chunks
 	if (syllables.length === kanjiCount) {
 		const allPlausible = syllables.every((syl, idx) => isPlausibleRuby(kanjiText[idx], syl));
 		if (allPlausible) {
@@ -1635,12 +1513,8 @@ function splitKanjiCompoundBySyllables(kanjiText: string, readingHiragana: strin
 	return null;
 }
 
-/**
- * Refines assigned ruby for multi-character compound words across consecutive parts.
- */
 function refineCompoundKanjiParts(parts: LyricPart[], resultMap: Record<number, RubySegment[]>): void {
 	for (let i = 0; i < parts.length; i++) {
-		// 1. Explicit COMPOUND_KANJI_MAPPINGS
 		for (const [compound, readings] of Object.entries(COMPOUND_KANJI_MAPPINGS)) {
 			const compLen = compound.length;
 			if (readings.length !== compLen || i + compLen > parts.length) continue;
@@ -1664,7 +1538,6 @@ function refineCompoundKanjiParts(parts: LyricPart[], resultMap: Record<number, 
 			}
 		}
 
-		// 2. Dynamic multi-kanji compound splitting by syllable codas across consecutive single-kanji parts
 		if (i + 1 < parts.length) {
 			const w0 = parts[i].words;
 			const w1 = parts[i + 1].words;
@@ -1714,14 +1587,9 @@ export function isPlausibleRuby(text: string, ruby: string, hasOkurigana = false
 	return rubyKana.length <= maxMora;
 }
 
-/**
- * Normalizes reading for a line while preserving non-Kana delimiters such as spaces
- * and Latin word blocks (e.g. English words) present in the original line.
- */
 function buildLineReading(lineText: string, rawFullReading: string): string {
 	if (!rawFullReading) return "";
 
-	// Extract Latin word blocks from lineText (e.g. "Tell me a story", "overdrive", "Ave Mujica")
 	const latinSegments: { text: string; start: number; end: number }[] = [];
 	const regex = /\b[A-Za-z0-9'’\-]+(?:\s+[A-Za-z0-9'’\-]+)*\b/g;
 
@@ -1796,16 +1664,10 @@ function buildLineReading(lineText: string, rawFullReading: string): string {
 }
 
 /**
- * Aligns an array of LyricParts using timed romanization parts or a fallback full-line reading.
- * Uses a tiered approach:
+ * Tiered alignment approach:
  * 1. Line-level kana anchor baseline for global alignment.
  * 2. Monotonic consumption cursor for timed syllable parts.
  * 3. Mora ratio guard to prevent phonetic bleed-over.
- *
- * @param parts Original lyric parts for the line
- * @param timedRomanization Optional syllable/word-timed romanization parts
- * @param fullLineRomanization Optional full line romanization string
- * @returns Map of part index to RubySegment[]
  */
 export function alignLineParts(
 	parts: LyricPart[],
@@ -1816,7 +1678,6 @@ export function alignLineParts(
 	const result: Record<number, RubySegment[]> = {};
 	if (!parts || parts.length === 0) return result;
 
-	// Build full-line reading for line-level anchor alignment and fallback
 	const fullText = fullLineText || parts.map((p) => p.words).join("");
 	const cleanTimedRom = timedRomanization ? timedRomanization.filter((r) => r.words && r.words.trim().length > 0) : [];
 
@@ -1826,7 +1687,6 @@ export function alignLineParts(
 	const globalSegments =
 		globalReadingHiragana && containsKanji(fullText) ? alignLineByKanaAnchors(fullText, globalReadingHiragana) : null;
 
-	// Helper to extract segments from the global line alignment for a part by character range
 	const getGlobalFallbackForPart = (partStartChar: number, partEndChar: number, partWords: string): RubySegment[] => {
 		if (!globalSegments || !containsKanji(partWords)) {
 			return [{ text: partWords }];
@@ -1839,20 +1699,17 @@ export function alignLineParts(
 			const segLen = seg.text.length;
 			const segEnd = segStart + segLen;
 
-			// Check overlap between [partStartChar, partEndChar] and [segStart, segEnd]
 			const overlapStart = Math.max(partStartChar, segStart);
 			const overlapEnd = Math.min(partEndChar, segEnd);
 
 			if (overlapStart < overlapEnd) {
 				if (overlapStart === segStart && overlapEnd === segEnd) {
-					// Exact full segment match
 					if (!seg.ruby || isPlausibleRuby(seg.text, seg.ruby)) {
 						matchedSegs.push(seg);
 					} else {
 						matchedSegs.push({ text: seg.text });
 					}
 				} else {
-					// Partial segment slice
 					const localStart = overlapStart - segStart;
 					const localEnd = overlapEnd - segStart;
 					const slicedText = seg.text.slice(localStart, localEnd);
@@ -1885,7 +1742,6 @@ export function alignLineParts(
 		}
 
 		if (matchedSegs.length > 0) {
-			// Reconcile punctuation with partWords if they only differ by full/half width punctuation
 			const combinedSegText = matchedSegs.map((s) => s.text).join("");
 			if (combinedSegText !== partWords && normalizePunctuation(combinedSegText) === normalizePunctuation(partWords)) {
 				let cursor = 0;
@@ -1900,7 +1756,6 @@ export function alignLineParts(
 		return [{ text: partWords }];
 	};
 
-	// Case 1: Timed romanization is available -> align using monotonic cursor and mora guard
 	if (cleanTimedRom.length > 0) {
 		// Automatically compensate for global timing offsets (e.g. iTunes metadata leadingSilence offset)
 		let alignedTimedRom = cleanTimedRom;
@@ -1946,7 +1801,6 @@ export function alignLineParts(
 			const partDuration = Math.max(part.durationMs, 1);
 			const partEnd = partStart + partDuration;
 
-			// Find matching romanization tokens starting from romCursor
 			const matchingRoms: LyricPart[] = [];
 			let nextCursor = romCursor;
 
@@ -1984,18 +1838,16 @@ export function alignLineParts(
 				return;
 			}
 
-			// 1. Prioritize line-level segmentation (globalSegments) which preserves full grammatical & okurigana context
+			// Prioritize line-level segmentation (globalSegments) which preserves full grammatical & okurigana context
 			let candidateSegs: RubySegment[] | null = null;
 			const globalSegs = getGlobalFallbackForPart(partStartChar, partEndChar, part.words);
 			if (globalSegs.some((s) => Boolean(s.ruby))) {
 				candidateSegs = globalSegs;
 			}
 
-			// 2. If global line alignment has no ruby or cannot split adjacent kanji, evaluate candidate reading from matchingRoms
 			if (!candidateSegs && matchingRoms.length > 0) {
 				const combinedRomText = matchingRoms.map((r) => r.words).join("");
 				const segs = alignWordWithReading(part.words, combinedRomText);
-				// Plausibility check on candidate ruby mora count
 				const isPlausible = segs.every((s) => !s.ruby || isPlausibleRuby(s.text, s.ruby));
 				if (isPlausible) {
 					candidateSegs = segs;
@@ -2021,7 +1873,6 @@ export function alignLineParts(
 		return result;
 	}
 
-	// Case 2: Full-line romanization is available (or derived)
 	if (globalSegments) {
 		let searchIdx = 0;
 		parts.forEach((part, partIdx) => {
@@ -2072,7 +1923,6 @@ export function alignLineParts(
 		return result;
 	}
 
-	// Case 3: No pronunciation source available -> only show original words
 	parts.forEach((part, partIdx) => {
 		result[partIdx] = [{ text: part.words }];
 	});
