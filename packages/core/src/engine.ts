@@ -49,7 +49,7 @@ import {
 } from "./stage";
 import { registerThemeSetting } from "./themeSettings";
 import type { LyricsLayout, LyricsRendererHost, LyricSyncType, ResolvedTickOptions, TickOptions } from "./types";
-import { clamp, getRelativeLayoutBounds, positiveModulo, roundedMs, toMs } from "./util";
+import { clamp, getRelativeLayoutBounds, isGecko, positiveModulo, roundedMs, toMs } from "./util";
 
 const NO_LYRICS_ELEMENT_LOG = "No lyrics element found on the page, skipping lyrics injection";
 const LYRICS_CHECK_INTERVAL_ERROR = "Error in lyrics check interval:";
@@ -1289,6 +1289,12 @@ function swipeRamp(config: AnimationConfig): SwipeRamp {
 // How far through its float a letter crests, as a keyframe offset.
 const LETTER_WAVE_CREST_OFFSET = 0.4;
 
+// WebRender redraws a cached tile only after a quarter device pixel of movement, so Gecko letters step.
+// An invisible additive opacity ripple changes every frame and forces the redraw.
+const GECKO_REDRAW = isGecko();
+const GECKO_REDRAW_KEYFRAMES: Keyframe[] = [{ opacity: 0 }, { opacity: -0.002 }, { opacity: 0 }];
+const GECKO_REDRAW_PERIOD_MS = 200;
+
 export interface LetterWaveTiming {
   delayMs: number;
   durationMs: number;
@@ -1658,6 +1664,19 @@ function startWordAnimations(
           );
           animation.currentTime = floatStartMs;
           wobbleAnimations.push(animation);
+          if (!GECKO_REDRAW || !sampled) return;
+          const redraw = trackLyricAnimationTiming(
+            engine,
+            letterElement.animate(GECKO_REDRAW_KEYFRAMES, {
+              duration: GECKO_REDRAW_PERIOD_MS,
+              iterations: waves[index].durationMs / GECKO_REDRAW_PERIOD_MS,
+              delay: delayMs,
+              composite: "add",
+            }),
+            { appliedTimingOffsetMs, offsetMs: waveLeadMs, skipDriftSample: true }
+          );
+          redraw.currentTime = floatStartMs;
+          wobbleAnimations.push(redraw);
         });
       };
       animateLetters(part.letterElements, Infinity, true);

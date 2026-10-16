@@ -341,9 +341,11 @@ answer from `isGecko()` in `@braccato/core/util`.
 }
 ```
 
-One fix uses it today. WebRender rounds text moved by a 2D translation to whole device pixels, which
-makes the letter wave step on Firefox, so lettered words on animating lines get a distant
-`perspective` there. It costs Chromium nothing, because the rule never matches.
+The letter wave uses it today. WebRender rounds text moved by a 2D translation to whole device
+pixels, and it only redraws a cached tile once something on it has moved a quarter of a pixel, so the
+wave stepped on Firefox. Lettered words on animating lines get a distant `perspective` there, and each
+floating letter runs an invisible additive opacity ripple that changes every frame and forces the
+redraw. Chromium gets neither.
 
 ### Class names
 
