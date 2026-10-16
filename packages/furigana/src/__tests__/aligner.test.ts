@@ -111,6 +111,25 @@ describe("aligner", () => {
 				{ text: "界", ruby: "かい" },
 			]);
 		});
+
+		it("treats kanji with explicit bracketed kana as atomic units", () => {
+			const text = "運命(さだめ)を信じる";
+			const reading = "さだめをしんじる";
+			const segments = alignLineByKanaAnchors(text, reading);
+			expect(segments).toEqual([
+				{ text: "運命(さだめ)" },
+				{ text: "を" },
+				{ text: "信", ruby: "しん" },
+				{ text: "じる" },
+			]);
+		});
+
+		it("safely falls back to plain text when ruby mora count implausibly bleeds over", () => {
+			const text = "世界";
+			const implausibleReading = "せかいがおわるまでは";
+			const segments = alignLineByKanaAnchors(text, implausibleReading);
+			expect(segments).toEqual([{ text: "世界" }]);
+		});
 	});
 
 	describe("alignLineParts", () => {
@@ -130,6 +149,16 @@ describe("aligner", () => {
 			expect(result[0]).toEqual([{ text: "私", ruby: "わたし" }]);
 			expect(result[1]).toEqual([{ text: "は", ruby: undefined }]);
 			expect(result[2]).toEqual([{ text: "運命", ruby: "さだめ" }]);
+		});
+
+		it("aligns parts using full-line romanization when syllable timing is absent", () => {
+			const parts = [
+				{ words: "青い", startTimeMs: 0, durationMs: 500 },
+				{ words: "空", startTimeMs: 500, durationMs: 500 },
+			];
+			const result = alignLineParts(parts, null, "aoi sora");
+			expect(result[0]).toEqual([{ text: "青", ruby: "あお" }, { text: "い" }]);
+			expect(result[1]).toEqual([{ text: "空", ruby: "そら" }]);
 		});
 
 		it("falls back gracefully when pronunciation is unavailable", () => {
