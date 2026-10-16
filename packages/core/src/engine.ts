@@ -63,7 +63,8 @@ const EARLY_SCROLL_CONSIDER = registerThemeSetting("blyrics-early-scroll-conside
 const TIME_JUMP_THRESHOLD = 0.5;
 // Gecko steps media time every ~40ms, so reads lag by a random amount (never lead) that reseeks lines as drift.
 const SMOOTH_PLAYBACK_CLOCK = isGecko();
-const CLOCK_RESYNC_THRESHOLD_S = 0.1;
+// One Gecko step (~45ms) plus margin: a read further off is a seek or a timer spike, not media lag.
+const CLOCK_RESYNC_THRESHOLD_S = 0.06;
 const CLOCK_SLEW_PER_S = 0.1;
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const SCROLL_PREPARE_LEAD_MS = 120;

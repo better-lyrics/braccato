@@ -1350,6 +1350,11 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
     "Given a lagging read one tick later, Then the clock barely moves off its prediction"
   );
   close(
+    smoothedPlaybackTime(10, 1000, 10.93, 2000, 1),
+    10.93,
+    "Given a read 70ms behind the prediction, Then the clock takes it as a seek rather than lag"
+  );
+  close(
     smoothedPlaybackTime(10, 1000, 10.5, 2000, 1),
     10.5,
     "Given a read far behind the prediction, Then the clock takes it as a seek"
@@ -1381,6 +1386,17 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
       );
     }
   }
+}
+
+{
+  const spiked = smoothedPlaybackTime(20, 0, 21.1, 1000, 1);
+  const recovered = smoothedPlaybackTime(spiked, 1000, 21.02, 1020, 1);
+  assert.equal(spiked, 21.1, "Given a read 100ms ahead, Then the clock takes it");
+  assert.equal(
+    recovered,
+    21.02,
+    "regression: Given a timer spike that reads ahead and then falls back, Then the clock drops back at once instead of staying early"
+  );
 }
 
 // -- Songwriter credits close the view --------------------------------------------

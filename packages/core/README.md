@@ -330,10 +330,10 @@ start until the next word begins.
 
 ### Browser engine
 
-On Firefox the container carries `data-browser-engine="gecko"`. The renderer keys its own Gecko-only
-fixes on it, and a theme can do the same to target Firefox without sniffing the user agent. It is
-detected from a feature only Gecko ships, so forks of Firefox carry it too. Script reads the same
-answer from `isGecko()` in `@braccato/core/util`.
+On Firefox the container carries `data-browser-engine="gecko"`. The renderer's Gecko-only CSS keys on
+it, and a theme can do the same to target Firefox without sniffing the user agent. It is detected from
+a feature only Gecko ships, so forks of Firefox carry it too. Script reads the same answer from
+`isGecko()` in `@braccato/core/util`, which the renderer's Gecko-only script checks once on load.
 
 ```css
 .blyrics-container[data-browser-engine="gecko"] .blyrics--line {
@@ -341,19 +341,19 @@ answer from `isGecko()` in `@braccato/core/util`.
 }
 ```
 
-The letter wave uses it today. WebRender rounds text moved by a 2D translation to whole device
+The letter wave uses both. WebRender rounds text moved by a 2D translation to whole device
 pixels, and it only redraws a cached tile once something on it has moved a quarter of a pixel, so the
 wave stepped on Firefox. Lettered words on animating lines get a distant `perspective` there, and each
-floating letter runs an invisible additive opacity ripple that changes every frame and forces the
+base letter in the wave runs an invisible additive opacity ripple that changes every frame and forces the
 redraw. Chromium gets neither.
 
-The playback clock uses it too. Firefox advances a media element's `currentTime` about every 40ms, so
+The playback clock checks `isGecko()`. Firefox advances a media element's `currentTime` about every 40ms, so
 each read lags the true time by a different amount and never leads it. The renderer took each new lag
 for drift and reseeked the line, so the highlight swipe jumped back mid-word. On Firefox the tick keeps
 its own clock instead: a read ahead of it is taken, a read behind it pulls it back by a tenth per
-second, and a read more than 100ms off counts as a seek.
+second, and a read more than 60ms off, about one Firefox step plus margin, counts as a seek.
 
-The instrumental fill uses it as well. Gecko resolves a `fill-box` transform origin wrongly for a shape
+The instrumental fill uses the attribute. Gecko resolves a `fill-box` transform origin wrongly for a shape
 inside a `clipPath`, so the flattening wave crest came loose from the rising fill. On Firefox the wave
 scales from its floor in user units instead, which Chromium already renders identically.
 
