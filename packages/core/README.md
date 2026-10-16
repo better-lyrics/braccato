@@ -353,6 +353,10 @@ for drift and reseeked the line, so the highlight swipe jumped back mid-word. On
 its own clock instead: a read ahead of it is taken, a read behind it pulls it back by a tenth per
 second, and a read more than 100ms off counts as a seek.
 
+The instrumental fill uses it as well. Gecko resolves a `fill-box` transform origin wrongly for a shape
+inside a `clipPath`, so the flattening wave crest came loose from the rising fill. On Firefox the wave
+scales from its floor in user units instead, which Chromium already renders identically.
+
 ### Class names
 
 These are published API rather than implementation. Renaming one costs a migration rather than a

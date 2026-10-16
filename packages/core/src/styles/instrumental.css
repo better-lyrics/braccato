@@ -68,6 +68,12 @@
 	d: var(--blyrics-instrumental-wave-path-high);
 }
 
+/* Gecko misplaces a fill-box origin inside a clipPath, so pin the wave's floor (y=4) in user units. */
+.blyrics-container[data-browser-engine="gecko"] .blyrics--wave-path {
+	transform-box: view-box;
+	transform-origin: 0 4px;
+}
+
 /* Trigger the Flattening */
 .blyrics--instrumental.blyrics--animating:not(.blyrics--paused) .blyrics--wave-path {
 	/* Flatten the wave to 0 height */
