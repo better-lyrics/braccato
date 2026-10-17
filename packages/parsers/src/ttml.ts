@@ -1,7 +1,7 @@
 import { type X2jOptions, XMLParser } from "fast-xml-parser";
 import { uniqueNames } from "./credits.js";
 import { isTtml } from "./formatPredicates.js";
-import { insertInstrumentalBreaks } from "./instrumentalBreaks.js";
+import { type InstrumentalBreakOptions, insertInstrumentalBreaks } from "./instrumentalBreaks.js";
 import type {
 	MetadataElement,
 	ParagraphElementOrBackground,
@@ -211,9 +211,7 @@ const PARSER_OPTIONS: X2jOptions = {
 	htmlEntities: true,
 };
 
-export interface ParseTTMLOptions {
-	/** Silence longer than this becomes an instrumental line. Defaults to 5000. */
-	instrumentalGapMs?: number;
+export interface ParseTTMLOptions extends InstrumentalBreakOptions {
 	/** Used for the outro instrumental when the document's `<body>` carries no `dur`. */
 	songDurationMs?: number;
 }

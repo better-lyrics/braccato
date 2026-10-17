@@ -2,6 +2,11 @@ import type { Lyric } from "./types.js";
 
 const DEFAULT_INSTRUMENTAL_GAP_MS = 5000;
 
+export interface InstrumentalBreakOptions {
+	/** Silence longer than this becomes an instrumental line. Defaults to 5000. */
+	instrumentalGapMs?: number;
+}
+
 /**
  * Turn the silences between lines into explicit instrumental lyrics, so a renderer has something to
  * show during an intro, a solo or an outro instead of holding the last sung line on screen.

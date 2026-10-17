@@ -84,9 +84,13 @@ It reads syllable timing, `ttm:role="x-bg"` background vocals, `ttm:agent` (mapp
 ```typescript
 import { parseLRC, lrcFixers } from "@braccato/parsers";
 
-const lyrics = parseLRC(lrcText, durationMs);
+const lyrics = parseLRC(lrcText, durationMs, {
+  instrumentalGapMs: 5000, // silence longer than this becomes an instrumental line
+});
 lrcFixers(lyrics); // optional, mutates in place
 ```
+
+Instrumental lines follow the same rule as TTML. A blank timed line, or one holding only music notes, is not a lyric: it ends the line before it, and the silence it leaves becomes an instrumental line when it runs longer than `instrumentalGapMs`. Blank lines in a row make one break. In enhanced LRC, a timestamp with nothing after it closes the last word and the line, so the silence after it counts without a blank line. An intro is added when the first line starts after the threshold. An outro needs the last line to state where it ends, through a closing timestamp or a trailing blank line, because a plain last line runs to the end of the song.
 
 ### QRC
 
