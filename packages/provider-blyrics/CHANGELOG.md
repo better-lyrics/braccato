@@ -1,5 +1,12 @@
 # @braccato/provider-blyrics
 
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [cc6bc80]
+  - @braccato/parsers@0.4.0
+
 ## 0.2.2
 
 ### Patch Changes

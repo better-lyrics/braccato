@@ -1,5 +1,12 @@
 # @braccato/highlight
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [cc6bc80]
+  - @braccato/parsers@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

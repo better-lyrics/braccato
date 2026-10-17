@@ -1,5 +1,13 @@
 # @braccato/core
 
+## 1.16.7
+
+### Patch Changes
+
+- e710ee8: The instrumental fill keeps its wave attached on Firefox. Gecko placed the flattening wave crest away from the rising fill, so near the top it split into loose slivers.
+- e710ee8: The letter wave glides on Firefox instead of stepping a whole pixel at a time. The container now carries `data-browser-engine="gecko"` on Firefox, and `isGecko()` in `@braccato/core/util` answers the same question for script.
+- e710ee8: The highlight swipe no longer jumps back mid-word on Firefox. Firefox reports media time in steps of about 40ms, and the renderer read each step as drift and reseeked the line. It now smooths that clock on Firefox only.
+
 ## 1.16.6
 
 ### Patch Changes
