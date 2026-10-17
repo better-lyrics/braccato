@@ -14,7 +14,14 @@ import {
   WORD_HIGHLIGHT_CLASS,
   WORD_HIGHLIGHT_LETTERED_CLASS,
 } from "./constants";
-import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
+import {
+  addSeekHandler,
+  createLyricsLine,
+  injectFurigana,
+  injectRomanization,
+  injectTranslation,
+  newLineData,
+} from "./inject";
 import { createInstrumentalElement } from "./instrumental";
 import {
   asDocument,
@@ -649,6 +656,41 @@ for (const letterWaveSetting of ["true", "false"]) {
     wobbleLine.parts.flatMap(part => part.wobbleElements).length,
     `Given letter wave ${letterWaveSetting}, When a line is built, Then no word group is wobbled by two syllables`
   );
+}
+
+// -- Furigana injection --------------------------------------------
+{
+  setThemeSettings(
+    new Map([
+      ["blyrics-letter-wave", "true"],
+      ["blyrics-image-highlights", "true"],
+    ])
+  );
+  const fTarget = asElement<HTMLElement>(doc.createElement("div"));
+  const fLine = newLineData(fTarget, 0, 1000);
+  const fParts: LyricPart[] = [{ startTimeMs: 0, words: "運命", durationMs: 500 }];
+  createLyricsLine(buildDocument, fParts, fLine, fTarget);
+
+  const injected = injectFurigana(buildDocument, fLine, {
+    0: [{ text: "運命", ruby: "さだめ" }],
+  });
+  assert.equal(injected, true, "Given a line with ruby segments, When injectFurigana is called, Then it returns true");
+
+  const part = fLine.parts[0];
+  assert.equal(part.lyricElement.dataset.hasFurigana, "true");
+  assert.equal(part.highlightElement.dataset.hasFurigana, "true");
+
+  const rubyElements = collectTree(asFakeNode(part.lyricElement)).filter(n => n.name === "ruby");
+  assert.equal(rubyElements.length, 1, "Then a ruby element is constructed in the lyric element");
+  assert.ok(rubyElements[0].classList.contains("blyrics-ruby"));
+
+  const rtElements = collectTree(rubyElements[0]).filter(n => n.name === "rt");
+  assert.equal(rtElements.length, 1);
+  assert.equal(rtElements[0].textContent, "さだめ");
+
+  assert.ok(part.letterElements && part.letterElements.length === 2, "Then letter elements are preserved inside ruby");
+  assert.ok(part.imageLayers, "Then image highlight layers are preserved after furigana injection");
+  setThemeSettings(new Map());
 }
 
 const instrumentalIds = [0, 1].flatMap(() => {
