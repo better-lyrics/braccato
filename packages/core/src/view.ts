@@ -36,6 +36,7 @@ import { refreshInstrumentalImages } from "./imageHighlights";
 import { createInstrumentalElement } from "./instrumental";
 import type { Lyric } from "./types";
 import { applyLyricLanguage, resolveLyricLanguages } from "./language";
+import { isGecko } from "./util";
 
 const INITIAL_SKIP_SCROLLS = 2;
 const SKIP_SCROLL_DECAY_MS = 2000;
@@ -125,6 +126,7 @@ export function setLyrics(
   const doc = engine.document;
   const container = doc.createElement("div");
   container.className = LYRICS_CLASS;
+  if (isGecko()) container.dataset.browserEngine = "gecko";
   mount.replaceChildren(container);
 
   const allZero = lyrics.every(item => item.startTimeMs === 0);

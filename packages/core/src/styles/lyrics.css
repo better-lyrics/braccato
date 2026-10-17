@@ -177,6 +177,11 @@
 	unicode-bidi: isolate;
 }
 
+/* WebRender snaps 2D-translated glyphs to whole pixels; perspective rasterizes them in local space. */
+.blyrics-container[data-browser-engine="gecko"] .blyrics--animating .blyrics-word--lettered {
+	perspective: 100000px;
+}
+
 .blyrics-word-highlight.blyrics-word-highlight--lettered {
 	background-image: none;
 }

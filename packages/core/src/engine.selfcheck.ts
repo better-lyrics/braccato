@@ -22,6 +22,7 @@ import {
   resolveTickOptions,
   scheduleLyricPositionUpdate,
   setupLineCullObserver,
+  smoothedPlaybackTime,
   tickView,
 } from "./engine";
 import { asDocument, asElement, asFakeNode, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
@@ -1324,6 +1325,78 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   tick(1);
   assert.equal(engine.skipScrolls, firstScrollCount + 2, "Seeking backwards must still retarget the viewport");
   engine.destroy();
+}
+
+// -- A stepped media clock --------------------------------------------
+
+{
+  const close = (actual: number, expected: number, message: string) =>
+    assert.ok(Math.abs(actual - expected) < 1e-9, `${message} (got ${actual}, expected ${expected})`);
+
+  close(smoothedPlaybackTime(0, -1, 12.3, 5000, 1), 12.3, "Given no previous clock, Then the read is taken as is");
+  close(
+    smoothedPlaybackTime(10, 1000, 11.03, 2000, 1),
+    11.03,
+    "Given a read ahead of the prediction, Then the clock moves up to it"
+  );
+  close(
+    smoothedPlaybackTime(10, 1000, 10.96, 2000, 1),
+    10.996,
+    "Given a read 40ms behind the prediction, Then the clock gives up a tenth of it per second"
+  );
+  close(
+    smoothedPlaybackTime(10, 1000, 9.98, 1020, 1),
+    10.02 - 0.04 * 0.002,
+    "Given a lagging read one tick later, Then the clock barely moves off its prediction"
+  );
+  close(
+    smoothedPlaybackTime(10, 1000, 10.93, 2000, 1),
+    10.93,
+    "Given a read 70ms behind the prediction, Then the clock takes it as a seek rather than lag"
+  );
+  close(
+    smoothedPlaybackTime(10, 1000, 10.5, 2000, 1),
+    10.5,
+    "Given a read far behind the prediction, Then the clock takes it as a seek"
+  );
+  close(
+    smoothedPlaybackTime(10, 1000, 12.5, 2000, 2),
+    12.5,
+    "Given a read ahead at double speed, Then the clock moves up to it"
+  );
+  close(
+    smoothedPlaybackTime(10, 1000, 11.97, 2000, 2),
+    11.997,
+    "Given a lagging read at double speed, Then the prediction runs at that speed"
+  );
+
+  let clock = 30;
+  let at = 0;
+  for (let step = 1; step <= 600; step++) {
+    const now = step * 20;
+    const trueTime = 30 + now / 1000;
+    const steppedRead = Math.floor(trueTime / 0.042) * 0.042;
+    clock = smoothedPlaybackTime(clock, at, steppedRead, now, 1);
+    at = now;
+    assert.ok(clock <= trueTime + 1e-9, "invariant: a clock fed lagging reads never runs ahead of the true time");
+    if (step > 100) {
+      assert.ok(
+        trueTime - clock < 0.01,
+        "Given reads stepped every 42ms, Then the clock settles within 10ms of the true time"
+      );
+    }
+  }
+}
+
+{
+  const spiked = smoothedPlaybackTime(20, 0, 21.1, 1000, 1);
+  const recovered = smoothedPlaybackTime(spiked, 1000, 21.02, 1020, 1);
+  assert.equal(spiked, 21.1, "Given a read 100ms ahead, Then the clock takes it");
+  assert.equal(
+    recovered,
+    21.02,
+    "regression: Given a timer spike that reads ahead and then falls back, Then the clock drops back at once instead of staying early"
+  );
 }
 
 // -- Songwriter credits close the view --------------------------------------------
