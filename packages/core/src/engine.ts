@@ -200,6 +200,9 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
   lineScrollAnimations: LineScrollAnimationRecord[];
+  // Decoration slides still running, by the element they move. A line's slide is carried into the
+  // next scroll that starts on it (see `carryRunningLineScrollOffsets`).
+  decorationSlides: Map<HTMLElement, Animation>;
   lineScrollAnimationToken: number;
   pendingLineScroll: PendingLineScroll | null;
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
@@ -299,6 +302,7 @@ export function createAnimationEngineInstance(
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
     lineScrollAnimations: [],
+    decorationSlides: new Map(),
     lineScrollAnimationToken: 0,
     pendingLineScroll: null,
     lineScrollElementTokens: new WeakMap(),
@@ -2751,6 +2755,31 @@ function prepareLineScrollOffsets(
 }
 
 const TRANSLATE_PX_PATTERN = /^(-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?$/;
+const TRANSLATE_LENGTH_PATTERN = /^(-?[\d.]+)(px|%)$/;
+
+/**
+ * Rewrites a `translate` value whose components are pixels or percentages into pixels, against the
+ * box the percentages refer to, or returns null for any other form, such as a `calc()`. A theme may
+ * set the scroll offsets in percent, and the computed `translate` keeps them that way.
+ */
+export function resolveTranslatePx(value: string, width: number, height: number): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "none") return "0px 0px";
+  const parts = trimmed.split(/\s+/);
+  if (parts.length > 3) return null;
+  const resolved: number[] = [];
+  for (const [index, part] of parts.entries()) {
+    if (part === "0") {
+      resolved.push(0);
+      continue;
+    }
+    const match = TRANSLATE_LENGTH_PATTERN.exec(part);
+    if (!match) return null;
+    const amount = Number(match[1]);
+    resolved.push(match[2] === "%" ? (amount / 100) * (index === 0 ? width : height) : amount);
+  }
+  return `${resolved[0]}px ${resolved[1] ?? 0}px`;
+}
 
 /**
  * Sums two `translate` values given in pixels, or returns null when either is in a form it does not
@@ -2771,13 +2800,16 @@ export function addTranslatePx(first: string, second: string): string | null {
 }
 
 /**
- * A line still travelling from the previous scroll carries its remaining offset into the new one, so
- * the new animation starts from where the line is rather than from where it would have rested. Read
- * for every such line before anything is written, so the whole commit costs one style flush.
+ * A line still travelling from the previous scroll, or sliding to make room for a decoration, carries
+ * its current offset into the new scroll, so the new animation starts from where the line is rather
+ * than from where it would have rested. Read for every such line before anything is written, so the
+ * whole commit costs one style flush.
  *
  * The animations run in replace mode: the compositor refuses additive ones, and a scroll the main
  * thread has to tick is a scroll that stutters with it. The join is not the sum of two curves the
- * additive animations gave, only the same offset finishing on the new curve.
+ * additive animations gave, only the same offset finishing on the new curve. A decoration slide is
+ * additive and would otherwise be replaced outright the moment the scroll starts, so it ends here
+ * with its offset folded into the scroll's start.
  */
 function carryRunningLineScrollOffsets(
   engine: AnimationEngineInstance,
@@ -2789,15 +2821,23 @@ function carryRunningLineScrollOffsets(
     running.set(record.lineElement, record);
   }
   for (const item of items) {
-    const record = running.get(item.lineElement);
-    if (!record) continue;
-    const current = normalizedTranslate(engine.window.getComputedStyle(item.lineElement).translate);
-    const merged = addTranslatePx(current, item.startTranslate);
-    if (merged !== null) carried.set(item.lineElement, merged);
+    const lineElement = item.lineElement;
+    if (!running.has(lineElement) && !engine.decorationSlides.has(lineElement)) continue;
+    const current = normalizedTranslate(engine.window.getComputedStyle(lineElement).translate);
+    const box = { width: lineElement.offsetWidth, height: lineElement.offsetHeight };
+    const currentPx = resolveTranslatePx(current, box.width, box.height);
+    const startPx = resolveTranslatePx(item.startTranslate, box.width, box.height);
+    const merged = currentPx !== null && startPx !== null ? addTranslatePx(currentPx, startPx) : null;
+    if (merged !== null) carried.set(lineElement, merged);
   }
   for (const item of items) {
     const record = running.get(item.lineElement);
     if (record) supersedeLineScrollAnimation(engine, record);
+    const slide = engine.decorationSlides.get(item.lineElement);
+    if (slide) {
+      engine.decorationSlides.delete(item.lineElement);
+      slide.cancel();
+    }
   }
   return carried;
 }
@@ -4180,11 +4220,17 @@ const DECORATION_SLIDE_MS = 350;
 const DECORATION_SLIDE_EASING = "cubic-bezier(0.25, 1, 0.5, 1)";
 const DECORATION_MIN_SHIFT_PX = 0.5;
 
-function slideElementBy(element: HTMLElement, dy: number): void {
-  element.animate(
+function slideElementBy(engine: AnimationEngineInstance, element: HTMLElement, dy: number): void {
+  const animation = element.animate(
     { translate: [`0 ${dy}px`, "0 0"] },
     { duration: DECORATION_SLIDE_MS, easing: DECORATION_SLIDE_EASING, composite: "add" }
   );
+  engine.decorationSlides.set(element, animation);
+  const forget = () => {
+    if (engine.decorationSlides.get(element) === animation) engine.decorationSlides.delete(element);
+  };
+  animation.addEventListener("finish", forget, { once: true });
+  animation.addEventListener("cancel", forget, { once: true });
 }
 
 function decorationSlideAllowed(engine: AnimationEngineInstance, container: HTMLElement): boolean {
@@ -4221,13 +4267,13 @@ function captureDecorationSlide(engine: AnimationEngineInstance): (() => void) |
   return () => {
     for (const { line, position, decorations } of before) {
       const lineShift = position - line.position;
-      if (Math.abs(lineShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, lineShift);
+      if (Math.abs(lineShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(engine, line.lyricElement, lineShift);
 
       for (const [element, was] of decorations) {
         const now = line.decorations.get(element);
         if (now === undefined) continue;
         const shift = was - now - lineShift;
-        if (Math.abs(shift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, shift);
+        if (Math.abs(shift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(engine, element, shift);
       }
     }
   };

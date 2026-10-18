@@ -21,6 +21,7 @@ import {
   relayout,
   resolveScrollInsets,
   resolveTickOptions,
+  resolveTranslatePx,
   scheduleLyricPositionUpdate,
   setupLineCullObserver,
   tickView,
@@ -1271,6 +1272,10 @@ assert.equal(addTranslatePx("none", "0px -120px"), "0px -120px", "a resting line
 assert.equal(addTranslatePx("0px 37.5px", "0px -120px"), "0px -82.5px", "a moving line starts from where it is");
 assert.equal(addTranslatePx("0px 37.5px 0px", "4px"), "4px 37.5px", "reads 3D and single-axis forms");
 assert.equal(addTranslatePx("10%", "0px -120px"), null, "refuses a form it cannot sum");
+// A theme may give the scroll offset in percent, and the computed `translate` keeps it that way, so
+// both sides are resolved against the line's box before the merge rather than refused.
+assert.equal(resolveTranslatePx("0 10%", 400, 50), "0px 5px", "percentages resolve against the line's box");
+assert.equal(resolveTranslatePx("calc(1px + 1%)", 400, 50), null, "still refuses a form it cannot read");
 
 // Scroll grouping is committed only when a scroll happens. Animation length must not gate it.
 {
