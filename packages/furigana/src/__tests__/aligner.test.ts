@@ -52,6 +52,11 @@ describe("aligner", () => {
 			expect(romajiToHiragana("tōkyō")).toBe("とうきょう");
 			expect(romajiToHiragana("Tôkyô")).toBe("とうきょう");
 		});
+
+		it("converts common English loanwords", () => {
+			expect(romajiToHiragana("devil")).toBe("でびる");
+			expect(romajiToHiragana("heart")).toBe("はーと");
+		});
 	});
 
 	describe("alignWordWithReading", () => {
@@ -115,6 +120,18 @@ describe("aligner", () => {
 		it("treats kanji with explicit bracketed kana as atomic units", () => {
 			const text = "運命(さだめ)を信じる";
 			const reading = "さだめをしんじる";
+			const segments = alignLineByKanaAnchors(text, reading);
+			expect(segments).toEqual([
+				{ text: "運命(さだめ)" },
+				{ text: "を" },
+				{ text: "信", ruby: "しん" },
+				{ text: "じる" },
+			]);
+		});
+
+		it("treats kanji with explicit bracketed kana as atomic units even when reading has brackets or full readings", () => {
+			const text = "運命(さだめ)を信じる";
+			const reading = "うんめい(さだめ)をしんじる";
 			const segments = alignLineByKanaAnchors(text, reading);
 			expect(segments).toEqual([
 				{ text: "運命(さだめ)" },

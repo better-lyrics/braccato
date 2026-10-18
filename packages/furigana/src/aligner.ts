@@ -1,4 +1,7 @@
-import type { LyricPart } from "@braccato/types";
+import type { LyricPart, RubySegment } from "@braccato/types";
+import { COMMON_ENGLISH_LOANWORDS, COMPOUND_KANJI_MAPPINGS, JUKUJIKUN_WORDS, ROMAJI_TO_HIRAGANA } from "./dictionaries";
+
+export type { RubySegment };
 
 const KANJI_REGEX = /[\p{Script=Han}\u3005]/u;
 const ALL_KANJI_REGEX = /^[\p{Script=Han}\u3005]+$/u;
@@ -20,398 +23,6 @@ function countKanji(text: string): number {
 export function katakanaToHiragana(text: string): string {
 	return text.replace(/[\u30A1-\u30F6]/g, (match) => String.fromCharCode(match.charCodeAt(0) - 0x60));
 }
-
-const ROMAJI_TO_HIRAGANA: Record<string, string> = {
-	kya: "きゃ",
-	kyu: "きゅ",
-	kyo: "きょ",
-	sha: "しゃ",
-	shu: "しゅ",
-	sho: "しょ",
-	shi: "し",
-	cha: "ちゃ",
-	chu: "ちゅ",
-	cho: "ちょ",
-	che: "ちぇ",
-	she: "しぇ",
-	je: "じぇ",
-	tsa: "つぁ",
-	tse: "つぇ",
-	tso: "つぉ",
-	chi: "ち",
-	nya: "にゃ",
-	nyu: "にゅ",
-	nyo: "にょ",
-	hya: "ひゃ",
-	hyu: "ひゅ",
-	hyo: "ひょ",
-	mya: "みゃ",
-	myu: "みゅ",
-	myo: "みょ",
-	rya: "りゃ",
-	ryu: "りゅ",
-	ryo: "りょ",
-	gya: "ぎゃ",
-	gyu: "ぎゅ",
-	gyo: "ぎょ",
-	bya: "びゃ",
-	byu: "びゅ",
-	byo: "びょ",
-	pya: "ぴゃ",
-	pyu: "ぴゅ",
-	pyo: "ぴょ",
-	ja: "じゃ",
-	ju: "じゅ",
-	jo: "じょ",
-	ji: "じ",
-	jya: "じゃ",
-	jyu: "じゅ",
-	jyo: "じょ",
-	tsu: "つ",
-	dzu: "づ",
-	dji: "ぢ",
-	sya: "しゃ",
-	syu: "しゅ",
-	syo: "しょ",
-	tya: "ちゃ",
-	tyu: "ちゅ",
-	tyo: "ちょ",
-	zya: "じゃ",
-	zyu: "じゅ",
-	zyo: "じょ",
-	dya: "ぢゃ",
-	dyu: "ぢゅ",
-	dyo: "ぢょ",
-	thi: "てぃ",
-	dhi: "でぃ",
-	dhu: "でゅ",
-	wha: "うぁ",
-	who: "うぉ",
-
-	ka: "か",
-	ki: "き",
-	ku: "く",
-	ke: "け",
-	ko: "こ",
-	sa: "さ",
-	su: "す",
-	se: "せ",
-	so: "そ",
-	si: "し",
-	ta: "た",
-	te: "て",
-	to: "と",
-	ti: "ち",
-	tu: "つ",
-	na: "な",
-	ni: "に",
-	nu: "ぬ",
-	ne: "ね",
-	no: "の",
-	ha: "は",
-	hi: "ひ",
-	fu: "ふ",
-	hu: "ふ",
-	he: "へ",
-	ho: "ほ",
-	ma: "ま",
-	mi: "み",
-	mu: "む",
-	me: "め",
-	mo: "も",
-	ya: "や",
-	yu: "ゆ",
-	yo: "よ",
-	ye: "いぇ",
-	ra: "ら",
-	ri: "り",
-	ru: "る",
-	re: "れ",
-	ro: "ろ",
-	la: "ら",
-	li: "り",
-	lu: "る",
-	le: "れ",
-	lo: "ろ",
-	wa: "わ",
-	wo: "を",
-	we: "うぇ",
-	wi: "うぃ",
-	ga: "が",
-	gi: "ぎ",
-	gu: "ぐ",
-	ge: "げ",
-	go: "ご",
-	za: "ざ",
-	zu: "ず",
-	ze: "ぜ",
-	zo: "ぞ",
-	zi: "じ",
-	da: "だ",
-	de: "で",
-	do: "ど",
-	di: "でぃ",
-	du: "づ",
-	ba: "ば",
-	bi: "び",
-	bu: "ぶ",
-	be: "べ",
-	bo: "ぼ",
-	pa: "ぱ",
-	pi: "ぴ",
-	pu: "ぷ",
-	pe: "ぺ",
-	po: "ぽ",
-	fa: "ふぁ",
-	fi: "ふぃ",
-	fe: "ふぇ",
-	fo: "ふぉ",
-	va: "ゔぁ",
-	vi: "ゔぃ",
-	vu: "ゔ",
-	ve: "ゔぇ",
-	vo: "ゔぉ",
-
-	xa: "ぁ",
-	xi: "ぃ",
-	xu: "ぅ",
-	xe: "ぇ",
-	xo: "ぉ",
-	xwa: "ゎ",
-	xtsu: "っ",
-	xtu: "っ",
-	xya: "ゃ",
-	xyu: "ゅ",
-	xyo: "ょ",
-
-	a: "あ",
-	i: "い",
-	u: "う",
-	e: "え",
-	o: "お",
-	n: "ん",
-};
-
-/**
- * Common English loanwords that frequently appear in Japanese/J-pop lyrics and romanizations
- * (e.g. "heart" -> "はーと", "love" -> "らぶ", "star" -> "すたー").
- */
-const COMMON_ENGLISH_LOANWORDS: Record<string, string> = {
-	heart: "はーと",
-	hearts: "はーつ",
-	love: "らぶ",
-	loved: "らぶど",
-	lover: "らばー",
-	lovers: "らばーず",
-	like: "らいく",
-	kiss: "きす",
-	kisses: "きっしず",
-	hug: "はぐ",
-	hugs: "はぐず",
-	smile: "すまいる",
-	smiles: "すまいるず",
-	tear: "てぃあ",
-	tears: "てぃあーず",
-	cry: "くらい",
-	crying: "くらいんぐ",
-	baby: "べいびー",
-	darling: "だーりん",
-	honey: "はにー",
-	sweet: "すいーと",
-	sweets: "すいーつ",
-	friend: "ふれんど",
-	friends: "ふれんず",
-	peace: "ぴーす",
-	happy: "はっぴー",
-	happiness: "はっぴねす",
-	lucky: "らっきー",
-	lonely: "ろんりー",
-	sad: "さっど",
-	hello: "はろー",
-	goodbye: "ぐっばい",
-	bye: "ばい",
-	thank: "さんく",
-	thanks: "さんくす",
-	welcome: "うぇるかむ",
-	please: "ぷりーず",
-	sorry: "そーりー",
-
-	music: "みゅーじっく",
-	song: "そんぐ",
-	songs: "そんぐず",
-	sing: "しんぐ",
-	singer: "しんがー",
-	dance: "だんす",
-	dancing: "だんしんぐ",
-	dancer: "だんさー",
-	stage: "すてーじ",
-	live: "らいぶ",
-	show: "しょー",
-	band: "ばんど",
-	voice: "ぼいす",
-	sound: "さうんど",
-	sounds: "さうんず",
-	beat: "びーと",
-	rhythm: "りずむ",
-	melody: "めろでぃー",
-	harmony: "はーもにー",
-	chord: "こーど",
-	tune: "ちゅーん",
-	track: "とらっく",
-	guitar: "ぎたー",
-	bass: "べーす",
-	drum: "どらむ",
-	drums: "どらむす",
-	piano: "ぴあの",
-	vocal: "ぼーかる",
-	echo: "えこー",
-
-	dream: "どりーむ",
-	dreams: "どりーむず",
-	dreamer: "どりーまー",
-	dreaming: "どりーみんぐ",
-	night: "ないと",
-	nights: "ないつ",
-	midnight: "みっどないと",
-	tonight: "とないと",
-	day: "でい",
-	days: "でいず",
-	today: "とぅでい",
-	yesterday: "いえすたでい",
-	tomorrow: "とぅもろー",
-	morning: "もーにんぐ",
-	time: "たいむ",
-	times: "たいむず",
-	future: "ふゅーちゃー",
-	memory: "めもりー",
-	memories: "めもりーず",
-	forever: "ふぉーえばー",
-	together: "とぅげざー",
-	always: "おーるうぇいず",
-	never: "ねばー",
-	again: "あげいん",
-	start: "すたーと",
-	stop: "すとっぷ",
-	end: "えんど",
-	ending: "えんでぃんぐ",
-	life: "らいふ",
-	story: "すとーりー",
-	stories: "すとーりーず",
-	history: "ひすとりー",
-	world: "わーるど",
-	space: "すぺーす",
-	universe: "ゆにばーす",
-	galaxy: "ぎゃらくしー",
-
-	star: "すたー",
-	stars: "すたーず",
-	starlight: "すたーらいと",
-	moon: "むーん",
-	moonlight: "むーんらいと",
-	sun: "さん",
-	sunshine: "さんしゃいん",
-	sky: "すかい",
-	blue: "ぶるー",
-	red: "れっど",
-	pink: "ぴんく",
-	white: "ほわいと",
-	black: "ぶらっく",
-	green: "ぐりーん",
-	yellow: "いえろー",
-	gold: "ごーるど",
-	silver: "しるばー",
-	rainbow: "れいんぼー",
-	rain: "れいん",
-	snow: "すのー",
-	wind: "うぃんど",
-	cloud: "くらうど",
-	storm: "すとーむ",
-	wave: "うぇーぶ",
-	sea: "しー",
-	ocean: "おーしゃん",
-	river: "りばー",
-	flower: "ふらわー",
-	flowers: "ふらわーず",
-	rose: "ろーず",
-	cherry: "ちぇりー",
-	fire: "ふぁいあ",
-	light: "らいと",
-	lights: "らいつ",
-	shine: "しゃいん",
-	shining: "しゃいにんぐ",
-	bright: "ぶらいと",
-	dark: "だーく",
-	shadow: "しゃどう",
-
-	magic: "まじっく",
-	magical: "まじかる",
-	secret: "しーくれっと",
-	secrets: "しーくれっつ",
-	miracle: "みらくる",
-	destiny: "ですてぃにー",
-	paradise: "ぱらだいす",
-	heaven: "へぶん",
-	angel: "えんじぇる",
-	devil: "デビル",
-	hero: "ひーろー",
-	heroine: "ひろいん",
-	monster: "もんすたー",
-	king: "きんぐ",
-	queen: "くいーん",
-	prince: "ぷりんす",
-	princess: "ぷりんせす",
-	knight: "ないと",
-	power: "ぱわー",
-	energy: "えなじー",
-	force: "ふぉーす",
-	speed: "すぴーど",
-	chance: "ちゃんす",
-	change: "ちぇんじ",
-	step: "すてっぷ",
-	jump: "じゃんぷ",
-	fly: "ふらい",
-	flying: "ふらいいんぐ",
-	run: "らん",
-	running: "らんにんぐ",
-	drive: "どらいぶ",
-	touch: "たっち",
-	feel: "ふぃーる",
-	feeling: "ふぃーりんぐ",
-	look: "るっく",
-	see: "しー",
-	stay: "すてい",
-	game: "げーむ",
-	play: "ぷれい",
-	player: "ぷれいやー",
-	party: "ぱーてぃー",
-	special: "すぺしゃる",
-	perfect: "ぱーふぇくと",
-	wonder: "わんだー",
-	wonderful: "わんだふる",
-	diamond: "だいやもんど",
-	crystal: "くりすたる",
-	ring: "りんぐ",
-	door: "どあ",
-	window: "うぃんどう",
-	room: "るーむ",
-	city: "してぃ",
-	town: "たうん",
-	street: "すとりーと",
-	road: "ろーど",
-	message: "めっせーじ",
-	letter: "れたー",
-	chocolate: "ちょこれーと",
-	cake: "けーき",
-	candy: "きゃんでぃ",
-	coffee: "こーひー",
-	tea: "てぃー",
-	ice: "あいす",
-	boy: "ぼーい",
-	boys: "ぼーいず",
-	girl: "がーる",
-	girls: "がーるず",
-	lady: "れでぃ",
-};
 
 const STRICT_ROMAJI_REGEX =
 	/^(?:[aiueo]|k[aiueo]|ky[auo]|s[aiueo]|sh[aiuo]|sy[auo]|t[aiueo]|ch[aiuo]|ts[u]|ty[auo]|n[aiueo]|ny[auo]|h[aiueo]|fu|hy[auo]|m[aiueo]|my[auo]|y[auoe]|r[aiueo]|ry[auo]|w[aeio]|g[aiueo]|gy[auo]|z[aiueo]|j[aiueo]|zy[auo]|d[aiueo]|dy[auo]|b[aiueo]|by[auo]|p[aiueo]|py[auo]|v[aiueo]|n(?![aiueoy])|([ksthcpb])\1)+$/i;
@@ -447,6 +58,7 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 	let result = "";
 	let i = 0;
 	const len = str.length;
+	const lowerStr = str.toLowerCase();
 
 	while (i < len) {
 		const ch = str[i];
@@ -476,7 +88,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 			continue;
 		}
 
-		const lowerStr = str.toLowerCase();
 		const lowerCh = lowerStr[i];
 
 		// Double consonant for sokuon (っ) e.g., "tte", "kki", "ssh"
@@ -555,11 +166,6 @@ export function romajiToHiragana(input: string, keepSpaces = false): string {
 	}
 
 	return result;
-}
-
-export interface RubySegment {
-	text: string;
-	ruby?: string;
 }
 
 function normalizeSmallKana(ch: string): string {
@@ -1001,15 +607,14 @@ export function alignLineByKanaAnchors(lineText: string, readingHiragana: string
 		// If Kanji(kana) bracketed reading: when reading has no brackets and matches bracketKana,
 		// treat as an atomic unit: consume reading, preserve text without ruby or absorption.
 		if (token.bracketKana) {
-			let anchor: KanaAnchor | null = null;
-			if (!/[()（）]/.test(readingHiragana)) {
-				anchor = findKanaAnchor(normalizedReading, token.bracketKana, readingCursor);
-			}
+			const anchor = !/[()（）]/.test(readingHiragana)
+				? findKanaAnchor(normalizedReading, token.bracketKana, readingCursor)
+				: null;
 			if (anchor && anchor.pos >= readingCursor && anchor.pos <= readingCursor + 4) {
-				result.push({ text: token.text });
 				readingCursor = anchor.pos + anchor.len;
-				continue;
 			}
+			result.push({ text: token.text });
+			continue;
 		}
 
 		if (!token.isKanji) {
@@ -1378,7 +983,7 @@ function normalizeOrthographicRuby(kanji: string, ruby: string): string {
 		return ruby.replace(/^ちじ/, "ちぢ");
 	}
 
-	// 14. Kanji readings never use the grammatical particle "を".
+	// Kanji readings never use the grammatical particle "を".
 	// Romanized "wo" mapped to Kanji (e.g. "我" in "我愛你/我愛迩", or loanwords) represents "うぉ".
 	if (ruby.includes("を")) {
 		return ruby.replace(/を/g, "うぉ");
@@ -1412,7 +1017,7 @@ function isLineAlignmentValid(segments: RubySegment[]): boolean {
 			return false;
 		}
 
-		// 2. Orphan mora bleed-over check:
+		// Orphan mora bleed-over check:
 		// If immediately preceded by unannotated kana/text (e.g. "い", "の", "を"),
 		// check if the kanji's ruby starts with double identical vowels (e.g. "いいしょう" after "い")
 		// or starts with the preceding kana and exceeds normal kanji mora bounds.
@@ -1440,32 +1045,6 @@ function isLineAlignmentValid(segments: RubySegment[]): boolean {
 }
 
 /**
- * Common compound Kanji words where syllable boundaries in singing or romanization
- * might deviate from individual Kanji morphemes (e.g. 笑顔 -> え + がお).
- */
-const COMPOUND_KANJI_MAPPINGS: Record<string, string[]> = {
-	笑顔: ["え", "がお"],
-	世界: ["せ", "かい"],
-	未来: ["み", "らい"],
-	大丈夫: ["だい", "じょう", "ぶ"],
-	今夜: ["こん", "や"],
-	深夜: ["しん", "や"],
-	金曜: ["きん", "よう"],
-	金曜日: ["きん", "よう", "び"],
-	歯車: ["は", "ぐるま"],
-	冒険: ["ぼう", "けん"],
-	海越: ["うみ", "こ"],
-	可愛: ["か", "わい"],
-	衣装: ["い", "しょう"],
-};
-
-/**
- * Known Jukujikun (熟字訓) words whose readings are idiomatic to the compound as a whole
- * and should not be mechanically split into individual kanji.
- */
-const JUKUJIKUN_WORDS = new Set(["今日", "昨日", "明日", "大人", "眼鏡", "煙草", "紅葉", "田舎", "為替", "吹雪"]);
-
-/**
  * Splits a multi-kanji compound reading across its individual kanji when no timing is available,
  * by binding small kana (拗音), sokuon (促音 っ), hatsuon (撥音 ん), and chōon (ー)
  * to their preceding kana mora.
@@ -1477,8 +1056,9 @@ const JUKUJIKUN_WORDS = new Set(["今日", "昨日", "明日", "大人", "眼鏡
  */
 function splitKanjiCompoundBySyllables(kanjiText: string, readingHiragana: string): string[] | null {
 	if (!kanjiText || !readingHiragana) return null;
+	const chars = Array.from(kanjiText);
 	const kanjiCount = countKanji(kanjiText);
-	if (kanjiCount < 2 || kanjiCount !== kanjiText.length) return null;
+	if (kanjiCount < 2 || kanjiCount !== chars.length) return null;
 
 	// Explicit dictionary mappings take precedence (supporting NFKC-normalized lookups for Kangxi Radicals)
 	const normKey = kanjiText.normalize("NFKC");
@@ -1494,8 +1074,8 @@ function splitKanjiCompoundBySyllables(kanjiText: string, readingHiragana: strin
 
 	// Group reading into syllables by attaching codas (ん, っ, ー) and glides (small kana)
 	const syllables: string[] = [];
-	const chars = Array.from(katakanaToHiragana(readingHiragana));
-	for (const ch of chars) {
+	const readingChars = Array.from(katakanaToHiragana(readingHiragana));
+	for (const ch of readingChars) {
 		if (/^[んっーぁぃぅぇぉゃゅょゎァィゥェォャュョヮ]/u.test(ch) && syllables.length > 0) {
 			syllables[syllables.length - 1] += ch;
 		} else {
@@ -1504,7 +1084,7 @@ function splitKanjiCompoundBySyllables(kanjiText: string, readingHiragana: strin
 	}
 
 	if (syllables.length === kanjiCount) {
-		const allPlausible = syllables.every((syl, idx) => isPlausibleRuby(kanjiText[idx], syl));
+		const allPlausible = syllables.every((syl, idx) => isPlausibleRuby(chars[idx], syl));
 		if (allPlausible) {
 			return syllables;
 		}
@@ -1568,6 +1148,7 @@ function refineCompoundKanjiParts(parts: LyricPart[], resultMap: Record<number, 
  */
 export function isPlausibleRuby(text: string, ruby: string, hasOkurigana = false): boolean {
 	if (!text || !ruby) return false;
+	const chars = Array.from(text);
 	const kanjiCount = countKanji(text);
 	if (kanjiCount === 0) return true;
 
@@ -1580,7 +1161,7 @@ export function isPlausibleRuby(text: string, ruby: string, hasOkurigana = false
 	// Minimum mora: each kanji in Japanese has at least 1 mora (e.g. 気->き, 目->め, 手->て)
 	if (rubyKana.length < kanjiCount) return false;
 
-	const nonKanjiLen = text.length - kanjiCount;
+	const nonKanjiLen = chars.length - kanjiCount;
 	// Single kanji nouns can have up to 4 moras (e.g. 魂->たましい), but with okurigana stems rarely exceed 3
 	const singleMax = text === "志" ? 5 : hasOkurigana && text !== "承" && text !== "慈" ? 3 : 4;
 	const maxMora = (kanjiCount === 1 ? singleMax : kanjiCount * 3) + nonKanjiLen * 2;
@@ -1679,6 +1260,7 @@ export function alignLineParts(
 	if (!parts || parts.length === 0) return result;
 
 	const fullText = fullLineText || parts.map((p) => p.words).join("");
+	const normFull = fullText ? normalizePunctuation(fullText) : "";
 	const cleanTimedRom = timedRomanization ? timedRomanization.filter((r) => r.words && r.words.trim().length > 0) : [];
 
 	const rawFullReading =
@@ -1777,11 +1359,11 @@ export function alignLineParts(
 		parts.forEach((part, partIdx) => {
 			let partStartChar = searchIdx;
 			let partEndChar = searchIdx + part.words.length;
+			let partFoundInFullText = false;
 			if (fullText) {
 				let foundIdx = fullText.indexOf(part.words, searchIdx);
 				const matchLen = part.words.length;
-				if (foundIdx === -1) {
-					const normFull = normalizePunctuation(fullText);
+				if (foundIdx === -1 && normFull) {
 					const normPart = normalizePunctuation(part.words);
 					const normIdx = normFull.indexOf(normPart, searchIdx);
 					if (normIdx !== -1) {
@@ -1789,6 +1371,7 @@ export function alignLineParts(
 					}
 				}
 				if (foundIdx !== -1) {
+					partFoundInFullText = true;
 					partStartChar = foundIdx;
 					partEndChar = foundIdx + matchLen;
 					searchIdx = partEndChar;
@@ -1840,9 +1423,11 @@ export function alignLineParts(
 
 			// Prioritize line-level segmentation (globalSegments) which preserves full grammatical & okurigana context
 			let candidateSegs: RubySegment[] | null = null;
-			const globalSegs = getGlobalFallbackForPart(partStartChar, partEndChar, part.words);
-			if (globalSegs.some((s) => Boolean(s.ruby))) {
-				candidateSegs = globalSegs;
+			if (partFoundInFullText) {
+				const globalSegs = getGlobalFallbackForPart(partStartChar, partEndChar, part.words);
+				if (globalSegs.some((s) => Boolean(s.ruby))) {
+					candidateSegs = globalSegs;
+				}
 			}
 
 			if (!candidateSegs && matchingRoms.length > 0) {
@@ -1878,11 +1463,11 @@ export function alignLineParts(
 		parts.forEach((part, partIdx) => {
 			let partStartChar = searchIdx;
 			let partEndChar = searchIdx + part.words.length;
+			let partFoundInFullText = false;
 			if (fullText) {
 				let foundIdx = fullText.indexOf(part.words, searchIdx);
 				const matchLen = part.words.length;
-				if (foundIdx === -1) {
-					const normFull = normalizePunctuation(fullText);
+				if (foundIdx === -1 && normFull) {
 					const normPart = normalizePunctuation(part.words);
 					const normIdx = normFull.indexOf(normPart, searchIdx);
 					if (normIdx !== -1) {
@@ -1890,6 +1475,7 @@ export function alignLineParts(
 					}
 				}
 				if (foundIdx !== -1) {
+					partFoundInFullText = true;
 					partStartChar = foundIdx;
 					partEndChar = foundIdx + matchLen;
 					searchIdx = partEndChar;
@@ -1898,7 +1484,7 @@ export function alignLineParts(
 				}
 			}
 
-			if (!containsKanji(part.words)) {
+			if (!containsKanji(part.words) || !partFoundInFullText) {
 				result[partIdx] = [{ text: part.words }];
 				return;
 			}
