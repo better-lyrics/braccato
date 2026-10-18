@@ -200,6 +200,96 @@
 	mask-position: 100% 0%;
 }
 
+/* Composited karaoke sweep. The mask is static: opaque for 2.5 word widths of its 3-wide box, then a
+   soft edge 0.1 word widths wide. The engine translates the mask one way and the text inside it the
+   other, so the glyphs hold still while the edge crosses them, and the compositor runs both. At rest
+   (no translate) the edge sits past the word's end, so cancelling the animations leaves it revealed. */
+.blyrics--word.blyrics-word-highlight.blyrics-word-highlight--sweep {
+	/* Not text-clipped: a text-clipped background repaints whenever any descendant changes, which the
+	   waving letters would make every frame. */
+	-webkit-background-clip: border-box;
+	background-clip: border-box;
+	background-image: none;
+	color: var(--blyrics-lyric-active-color);
+	isolation: isolate;
+	opacity: 0;
+	/* The mask boxes are three words wide; clipped here so they add nothing to the row's scroll width,
+	   with room kept for the glow's halo. A plain length: Chromium takes no calc() here. */
+	overflow: clip;
+	overflow-clip-margin: 2rem;
+}
+
+.blyrics-sweep-mask {
+	display: block;
+	margin-left: -100%;
+	-webkit-mask-image: linear-gradient(90deg, #000 80%, #0000 83.3333%);
+	mask-image: linear-gradient(90deg, #000 80%, #0000 83.3333%);
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+	width: 300%;
+}
+
+.blyrics-word-highlight.blyrics-rtl .blyrics-sweep-mask {
+	-webkit-mask-image: linear-gradient(270deg, #000 80%, #0000 83.3333%);
+	mask-image: linear-gradient(270deg, #000 80%, #0000 83.3333%);
+}
+
+.blyrics-sweep-text {
+	display: block;
+	margin-left: 33.3333%;
+	width: 33.3333%;
+}
+
+/* The glow is the sweep again with a text shadow that never animates; the engine fades it by opacity.
+   A shadow rather than a filter: a filter above compositor-animated layers makes the browser
+   re-layerize every frame. The shadow is inside the mask, so the halo fades out across the sweep's
+   soft edge instead of spilling past it. */
+.blyrics-sweep-glow {
+	inset: 0;
+	opacity: 0;
+	pointer-events: none;
+	position: absolute;
+	user-select: none;
+	z-index: -1;
+}
+
+.blyrics-sweep-glow .blyrics-sweep-text {
+	text-shadow: 0 0 var(--blyrics-highlight-glow-radius-from, 0.8rem) var(--blyrics-glow-color);
+}
+
+/* The glow's mask edge is widened by the glow radius on both sides, so the halo of a letter just
+   lit is whole and fades out past the edge rather than being cut at it. */
+.blyrics-sweep-glow .blyrics-sweep-mask {
+	-webkit-mask-image: linear-gradient(
+		90deg,
+		#000 calc(80% - var(--blyrics-highlight-glow-radius-from, 0.8rem)),
+		#0000 calc(83.3333% + var(--blyrics-highlight-glow-radius-from, 0.8rem))
+	);
+	mask-image: linear-gradient(
+		90deg,
+		#000 calc(80% - var(--blyrics-highlight-glow-radius-from, 0.8rem)),
+		#0000 calc(83.3333% + var(--blyrics-highlight-glow-radius-from, 0.8rem))
+	);
+}
+
+.blyrics-word-highlight.blyrics-rtl .blyrics-sweep-glow .blyrics-sweep-mask {
+	-webkit-mask-image: linear-gradient(
+		270deg,
+		#000 calc(80% - var(--blyrics-highlight-glow-radius-from, 0.8rem)),
+		#0000 calc(83.3333% + var(--blyrics-highlight-glow-radius-from, 0.8rem))
+	);
+	mask-image: linear-gradient(
+		270deg,
+		#000 calc(80% - var(--blyrics-highlight-glow-radius-from, 0.8rem)),
+		#0000 calc(83.3333% + var(--blyrics-highlight-glow-radius-from, 0.8rem))
+	);
+}
+
+.blyrics-word-highlight--sweep .blyrics--letter {
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+
 [blyrics-alt-hover] .blyrics--word:hover {
 	text-decoration: underline;
 	text-underline-offset: 0.15em;

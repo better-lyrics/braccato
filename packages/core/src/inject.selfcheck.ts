@@ -232,6 +232,25 @@ assert.equal(
 );
 
 const waveHighlights = waveNodes.filter(node => node.classList.contains(WORD_HIGHLIGHT_CLASS));
+{
+  const sweep = waveLine.parts[0].sweep;
+  assert.ok(sweep, "Given a short LTR word, When it is built, Then its highlight carries the composited sweep layers");
+  assert.equal(
+    sweep?.text.parentNode,
+    sweep?.mask,
+    "Given a composited sweep, When it is built, Then the text sits inside its mask"
+  );
+  assert.equal(
+    sweep?.glowText.textContent,
+    sweep?.text.textContent,
+    "Given a composited sweep, When it is built, Then the glow copy repeats the text exactly"
+  );
+  assert.deepEqual(
+    sweep?.glowLetters.map(letter => letter.textContent),
+    ["H", "i"],
+    "Given letter wave on, When a sweep word is built, Then the glow copy is split into the same letters"
+  );
+}
 assert.ok(
   waveHighlights.length > 0 && waveHighlights.every(node => node.classList.contains(WORD_HIGHLIGHT_LETTERED_CLASS)),
   "Given letter wave on, When a highlight word is split into letters, Then it carries the lettered class the swipe-off rule selects"

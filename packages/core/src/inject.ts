@@ -12,7 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
-import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
+import { alignImageGlowRun, imageHighlights, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
   BACKGROUND_LINE_CLASS,
@@ -28,11 +28,15 @@ import {
   LONG_WORD_GROUP_CLASS,
   ROMANIZED_LYRICS_CLASS,
   RTL_CLASS,
+  SWEEP_GLOW_CLASS,
+  SWEEP_MASK_CLASS,
+  SWEEP_TEXT_CLASS,
   TRANSLATED_LYRICS_CLASS,
   WORD_CLASS,
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
   WORD_HIGHLIGHT_LETTERED_CLASS,
+  WORD_HIGHLIGHT_SWEEP_CLASS,
   WORD_STATE_ATTR,
   WORD_STATE_UPCOMING,
   type WordState,
@@ -48,6 +52,10 @@ let lineSyncedAnimationDelay = registerThemeSetting("blyrics-line-synced-animati
 let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500, true);
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
 let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
+// The karaoke sweep as a static mask over a counter-translated copy of the word, so the compositor
+// runs it. Off, the sweep is the gradient the custom properties drive, which a theme replacing the
+// karaoke effect through `--lyric-transition-amount-*` still needs.
+const compositedHighlight = registerThemeSetting("blyrics-composited-highlight", true, true);
 export const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -113,9 +121,25 @@ export interface AnimationData {
   animations: Animation[];
 }
 
+/**
+ * The layers of a composited sweep. The mask carries a static soft edge and translates one way while
+ * the text inside it translates the other, so the glyphs hold still and only the edge moves. The glow
+ * is the same pair again under a static blur, so the halo is never cut at the sweep edge, with its
+ * opacity standing in for the blur the main thread used to animate.
+ */
+export interface SweepLayers {
+  mask: HTMLElement;
+  text: HTMLElement;
+  glow: HTMLElement;
+  glowMask: HTMLElement;
+  glowText: HTMLElement;
+  glowLetters: HTMLElement[];
+}
+
 export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
   imageLayers?: ImageHighlightLayers;
+  sweep?: SweepLayers;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
   // Only a word's first syllable holds its groups, so a word split into syllables wobbles once, whole.
@@ -172,14 +196,16 @@ function newPartData(
   highlight: HTMLElement,
   wobbleElements: HTMLElement[],
   letterElements?: HTMLElement[],
-  highlightLetterElements?: HTMLElement[]
+  highlightLetterElements?: HTMLElement[],
+  sweep?: SweepLayers
 ): PartData {
   return {
     time: part.startTimeMs / 1000,
     duration: part.durationMs / 1000,
     lyricElement: span,
     highlightElement: highlight,
-    imageLayers: wrapImageHighlight(highlight),
+    imageLayers: sweep ? undefined : wrapImageHighlight(highlight),
+    sweep,
     letterElements,
     highlightLetterElements,
     wobbleElements,
@@ -345,21 +371,61 @@ function appendLetters(doc: Document, wordElement: HTMLElement, text: string): H
   });
 }
 
+function fillWordText(
+  doc: Document,
+  host: HTMLElement,
+  text: string,
+  wrapThreshold: number,
+  perLetter: boolean,
+  preserveJoining: boolean
+): HTMLElement[] | undefined {
+  if (perLetter) return appendLetters(doc, host, text);
+  if (preserveJoining) host.textContent = text;
+  else appendLongWordBreaks(doc, host, text, wrapThreshold);
+  return undefined;
+}
+
+function createSweepLayers(doc: Document, highlight: HTMLElement): SweepLayers {
+  const make = (className: string): HTMLSpanElement => {
+    const element = doc.createElement("span");
+    element.classList.add(className);
+    return element;
+  };
+  const text = make(SWEEP_TEXT_CLASS);
+  const mask = make(SWEEP_MASK_CLASS);
+  mask.appendChild(text);
+  const glowText = make(SWEEP_TEXT_CLASS);
+  const glowMask = make(SWEEP_MASK_CLASS);
+  const glow = make(SWEEP_GLOW_CLASS);
+  glow.setAttribute("aria-hidden", "true");
+  glowMask.appendChild(glowText);
+  glow.appendChild(glowMask);
+  highlight.classList.add(WORD_HIGHLIGHT_SWEEP_CLASS);
+  highlight.appendChild(glow);
+  highlight.appendChild(mask);
+  return { mask, text, glow, glowMask, glowText, glowLetters: [] };
+}
+
 function createTimedWordSpan(
   doc: Document,
   part: LyricPart,
   wrapThreshold: number,
   perLetter: boolean,
-  preserveJoining: boolean
+  preserveJoining: boolean,
+  composited: boolean
 ): {
   span: HTMLSpanElement;
   highlight: HTMLSpanElement;
   letters?: HTMLElement[];
   highlightLetters?: HTMLElement[];
+  sweep?: SweepLayers;
 } {
   const span = doc.createElement("span");
   const highlight = doc.createElement("span");
   highlight.classList.add(WORD_HIGHLIGHT_CLASS);
+  // A word given break opportunities can fragment across lines, which the sweep's blocks cannot follow.
+  const canFragment = !perLetter && !preserveJoining && part.words.length > wrapThreshold;
+  const sweep = composited && !canFragment ? createSweepLayers(doc, highlight) : undefined;
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
@@ -378,17 +444,16 @@ function createTimedWordSpan(
 
     if (perLetter) {
       wordElement.classList.add("blyrics-word--lettered");
-      const collected = appendLetters(doc, wordElement, part.words);
-      if (wordElement === span) {
-        letters = collected;
-      } else {
-        highlightLetters = collected;
-        wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
-      }
-    } else if (preserveJoining) {
-      wordElement.textContent = part.words;
+      if (wordElement === highlight) wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
+    }
+    if (wordElement === highlight && sweep) {
+      highlightLetters = fillWordText(doc, sweep.text, part.words, wrapThreshold, perLetter, preserveJoining);
+      sweep.glowLetters =
+        fillWordText(doc, sweep.glowText, part.words, wrapThreshold, perLetter, preserveJoining) ?? [];
     } else {
-      appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+      const collected = fillWordText(doc, wordElement, part.words, wrapThreshold, perLetter, preserveJoining);
+      if (wordElement === span) letters = collected;
+      else highlightLetters = collected;
     }
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
@@ -396,13 +461,23 @@ function createTimedWordSpan(
     wordElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
     wordElement.style.setProperty("--blyrics-duration", part.durationMs + "ms");
   }
-  return { span, highlight, letters, highlightLetters };
+  return { span, highlight, letters, highlightLetters, sweep };
+}
+
+/**
+ * Whether a run's words can carry the composited sweep. Its layers are blocks inside an inline-block
+ * word, so a run whose words flow inline, which is every bidi-sensitive run, keeps the gradient; so
+ * does an image highlight, which has its own layers.
+ */
+function sweepAllowedFor(runText: string): boolean {
+  return compositedHighlight.getBooleanValue() && !imageHighlights.getBooleanValue() && !testRtl(runText);
 }
 
 function createWordGroup(
   doc: Document,
   group: WordGroup,
-  lineData: LineData
+  lineData: LineData,
+  sweepAllowed: boolean
 ): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
   // Atomic grapheme spans disrupt the browser's bidi ordering inside a mixed word.
@@ -413,12 +488,16 @@ function createWordGroup(
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
 
+  // A long group's words flow inline so they can break mid-word, which the sweep's blocks cannot.
+  const isLongGroup = group.text.length > wrapThreshold * 2;
+  const composited = sweepAllowed && !isLongGroup;
+
   for (const groupElement of [lyricGroup, highlightGroup]) {
     groupElement.classList.add(WORD_GROUP_CLASS);
     groupElement.dir = "auto";
     groupElement.dataset.content = group.text;
 
-    if (group.text.length > wrapThreshold * 2) {
+    if (isLongGroup) {
       groupElement.classList.add(LONG_WORD_GROUP_CLASS);
     }
 
@@ -430,15 +509,16 @@ function createWordGroup(
   for (const token of group.tokens) {
     if (token.kind === "space") continue;
 
-    const { span, highlight, letters, highlightLetters } = createTimedWordSpan(
+    const { span, highlight, letters, highlightLetters, sweep } = createTimedWordSpan(
       doc,
       token.part,
       wrapThreshold,
       perLetter,
-      preserveJoining
+      preserveJoining,
+      composited
     );
     const wobbleElements = lyricGroup.childNodes.length === 0 ? [lyricGroup, highlightGroup] : [];
-    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters));
+    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters, sweep));
     lyricGroup.appendChild(span);
     highlightGroup.appendChild(highlight);
   }
@@ -496,6 +576,8 @@ export function createLyricsLine(
     .map(part => part.words)
     .join("");
   const main = createContentLine(doc, LINE_MAIN_CLASS, mainText);
+  const mainSweepAllowed = sweepAllowedFor(mainText);
+  const backgroundSweepAllowed = sweepAllowedFor(backgroundText);
   const mainRun = createBidiRun(doc, mainText);
   const mainHighlightRun = createHighlightRun(doc, mainText);
   const groupedTokens = groupTokensByWord(normalizeParts(parts));
@@ -525,7 +607,12 @@ export function createLyricsLine(
         target.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
         highlightRun.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
       }
-      const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
+      const { lyricGroup, highlightGroup } = createWordGroup(
+        doc,
+        item,
+        line,
+        shouldUseBackgroundLine ? backgroundSweepAllowed : mainSweepAllowed
+      );
       target.appendChild(lyricGroup);
       highlightRun.appendChild(highlightGroup);
       if (shouldUseBackgroundLine) {

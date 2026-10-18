@@ -662,6 +662,8 @@ interface AnimationConfig {
     glowEasing: string;
     glowContainerAlpha: number;
     glowRestingInvisible: boolean;
+    glowRadiusFrom: string;
+    glowRadiusTo: string;
   };
   word: {
     wobbleDurationMs: number;
@@ -1129,7 +1131,10 @@ function activeTextVisibleKeyframes(): Keyframe[] {
   return [{ opacity: 1 }, { opacity: 1 }];
 }
 
-function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
+// A composited sweep holds its reveal in its own layers, so the overlay's opacity animations carry no
+// custom properties: with them, the whole animation would run on the main thread.
+function activeTextInstantKeyframes(config: AnimationConfig, part?: PartData): Keyframe[] {
+  if (part?.sweep) return [{ opacity: 1 }, { opacity: 1 }];
   return [
     {
       opacity: 1,
@@ -1144,7 +1149,8 @@ function activeTextInstantKeyframes(config: AnimationConfig): Keyframe[] {
   ] as Keyframe[];
 }
 
-function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
+function lineSyncedTextKeyframes(config: AnimationConfig, part?: PartData): Keyframe[] {
+  if (part?.sweep) return [{ opacity: 0 }, { opacity: 1 }];
   return [
     {
       opacity: 0,
@@ -1160,6 +1166,8 @@ function lineSyncedTextKeyframes(config: AnimationConfig): Keyframe[] {
 }
 
 function fadeOutTextKeyframes(config: AnimationConfig, part: PartData): Keyframe[] {
+  // A composited sweep's glow lives on its own layer, so its fade is opacity alone.
+  if (part.sweep) return [{ opacity: 1 }, { opacity: 0 }];
   return [
     {
       opacity: 1,
@@ -1295,6 +1303,78 @@ function swipeRamp(config: AnimationConfig): SwipeRamp {
   };
 }
 
+// The composited sweep's mask box is three word widths wide with its soft edge 2.5 widths in; see
+// `.blyrics-sweep-mask` in lyrics.css. Both numbers are in word widths.
+const SWEEP_MASK_WIDTH = 3;
+const SWEEP_MASK_EDGE = 2.5;
+
+export interface SweepPose {
+  /** `translate` for the mask, as a percentage of its own three-word box. */
+  mask: string;
+  /** `translate` for the text inside it, as a percentage of the word. */
+  text: string;
+}
+
+/**
+ * Where the sweep's mask and text sit for a swipe position, the fraction of the word width the
+ * gradient's leading stop used to be at. The text moves against the mask by the same distance, so
+ * it stays put on screen while the edge crosses it; RTL mirrors the direction.
+ */
+export function sweepPoseAt(start: number, rtl: boolean): SweepPose {
+  const offset = rtl ? SWEEP_MASK_EDGE - 1 - start : start - (SWEEP_MASK_EDGE - 1);
+  return {
+    mask: `${(offset / SWEEP_MASK_WIDTH) * 100}% 0`,
+    text: `${-offset * 100}% 0`,
+  };
+}
+
+/** The sweep's start and end poses for a swipe ramp, falling back to the engine's own ramp. */
+export function planSweep(swipe: SwipeRamp, rtl: boolean): { from: SweepPose; to: SweepPose } {
+  const parse = (value: string, fallback: number): number => {
+    const number = Number.parseFloat(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
+  return {
+    from: sweepPoseAt(parse(swipe.startFrom, -0.2), rtl),
+    to: sweepPoseAt(parse(swipe.startTo, 1.4), rtl),
+  };
+}
+
+type SweepLayers = NonNullable<PartData["sweep"]>;
+
+function sweepTargets(sweep: SweepLayers): { element: HTMLElement; key: keyof SweepPose }[] {
+  return [
+    { element: sweep.mask, key: "mask" },
+    { element: sweep.text, key: "text" },
+    { element: sweep.glowMask, key: "mask" },
+    { element: sweep.glowText, key: "text" },
+  ];
+}
+
+/**
+ * Runs the sweep from one pose to another on all four layers. The mask's animation is the one the
+ * drift check samples; the others carry the same timing and would only repeat it.
+ */
+function startSweep(
+  engine: AnimationEngineInstance,
+  sweep: SweepLayers,
+  from: SweepPose,
+  to: SweepPose,
+  options: KeyframeAnimationOptions,
+  currentTimeMs: number,
+  timing: AnimationTimingTrack
+): Animation[] {
+  return sweepTargets(sweep).map(({ element, key }, index) => {
+    const animation = trackLyricAnimationTiming(
+      engine,
+      element.animate([{ translate: from[key] }, { translate: to[key] }] as Keyframe[], options),
+      index === 0 ? timing : { ...timing, skipDriftSample: true }
+    );
+    animation.currentTime = currentTimeMs;
+    return animation;
+  });
+}
+
 // How far through its float a letter crests, as a keyframe offset.
 const LETTER_WAVE_CREST_OFFSET = 0.4;
 
@@ -1354,7 +1434,20 @@ function startRichSyncedHighlightAnimations(
     const swipeTiming = { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs };
     const swipeCurrentTimeMs = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
     const highlightLetters = part.highlightLetterElements;
-    if (highlightLetters && highlightLetters.length > 0) {
+    if (part.sweep) {
+      const plan = planSweep(swipeRamp(config), highlight.classList.contains(RTL_CLASS));
+      const sweeps = startSweep(
+        engine,
+        part.sweep,
+        plan.from,
+        plan.to,
+        { duration: swipeDurationMs, easing: config.highlight.swipeEasing, fill: "forwards" },
+        swipeCurrentTimeMs,
+        swipeTiming
+      );
+      swipeAnimation = sweeps[0];
+      animations.push(...sweeps);
+    } else if (highlightLetters && highlightLetters.length > 0) {
       const sweeps = planLetterMaskSweep(
         swipeRamp(config),
         highlightLetters.length,
@@ -1404,7 +1497,7 @@ function startRichSyncedHighlightAnimations(
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
     highlight.animate(
-      config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(config),
+      config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(config, part),
       {
         duration: 1,
         easing: "linear",
@@ -1415,23 +1508,90 @@ function startRichSyncedHighlightAnimations(
   );
   opacityAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, 1);
   animations.push(opacityAnimation);
-
-  let glowAnimation: Animation | undefined;
-  if (config.enabled.highlightGlow && !part.glowSuppressed) {
-    glowAnimation = trackLyricAnimationTiming(
-      engine,
-      (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
-        duration: glowDurationMs,
-        easing: config.highlight.glowEasing,
-        fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: 0 }
-    );
-    glowAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, glowDurationMs);
-    animations.push(glowAnimation);
+  if (part.sweep && !config.enabled.highlightSwipe) {
+    animations.push(...startRevealedSweep(engine, part.sweep, config, highlight, wordTimeMs, appliedTimingOffsetMs));
   }
 
+  const [glowAnimation, ...glowExtras] = startGlowAnimation(
+    engine,
+    part,
+    config,
+    highlight,
+    wordTimeMs,
+    glowDurationMs,
+    appliedTimingOffsetMs
+  );
+  if (glowAnimation) animations.push(glowAnimation, ...glowExtras);
+
   return { animations, swipe: swipeAnimation, fade: opacityAnimation, glow: glowAnimation };
+}
+
+/** Holds the sweep at its revealed pose for a word that shows whole: line-synced, or swipe off. */
+function startRevealedSweep(
+  engine: AnimationEngineInstance,
+  sweep: SweepLayers,
+  config: AnimationConfig,
+  highlight: HTMLElement,
+  wordTimeMs: number,
+  appliedTimingOffsetMs: number
+): Animation[] {
+  const { to } = planSweep(swipeRamp(config), highlight.classList.contains(RTL_CLASS));
+  return startSweep(
+    engine,
+    sweep,
+    to,
+    to,
+    { duration: 1, easing: "linear", fill: "forwards" },
+    correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, 1),
+    { appliedTimingOffsetMs, offsetMs: 0, skipDriftSample: true }
+  );
+}
+
+/**
+ * The glow. A composited sweep draws it as a text shadow on its glow copy rather than a filter: a
+ * filter above compositor-animated layers makes the browser re-layerize on every frame. A glow that
+ * rests invisible fades the copy by opacity, which the compositor runs; one that rests visible has to
+ * animate the shadow's radius, which only the main thread can, though it repaints the copy alone.
+ * Everything else still animates the blur the way it always did.
+ */
+function startGlowAnimation(
+  engine: AnimationEngineInstance,
+  part: PartData,
+  config: AnimationConfig,
+  highlight: HTMLElement,
+  wordTimeMs: number,
+  glowDurationMs: number,
+  appliedTimingOffsetMs: number
+): Animation[] {
+  if (!config.enabled.highlightGlow || part.glowSuppressed) return [];
+  // Animations started alongside the glow, held with it so they are cancelled with it.
+  const extra: Animation[] = [];
+  let animation: Animation;
+  if (part.sweep && config.highlight.glowRestingInvisible) {
+    animation = part.sweep.glow.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: glowDurationMs,
+      easing: config.highlight.glowEasing,
+      fill: "none",
+    });
+  } else if (part.sweep) {
+    extra.push(part.sweep.glow.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 1, fill: "forwards" }));
+    animation = part.sweep.glowText.animate(
+      [
+        { textShadow: `0 0 ${config.highlight.glowRadiusFrom} var(--blyrics-glow-color)` },
+        { textShadow: `0 0 ${config.highlight.glowRadiusTo} var(--blyrics-glow-color)` },
+      ],
+      { duration: glowDurationMs, easing: config.highlight.glowEasing, fill: "forwards" }
+    );
+  } else {
+    animation = (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
+      duration: glowDurationMs,
+      easing: config.highlight.glowEasing,
+      fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
+    });
+  }
+  const glowAnimation = trackLyricAnimationTiming(engine, animation, { appliedTimingOffsetMs, offsetMs: 0 });
+  glowAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, glowDurationMs);
+  return [glowAnimation, ...extra];
 }
 
 function startLineSyncedHighlightAnimations(
@@ -1448,7 +1608,7 @@ function startLineSyncedHighlightAnimations(
 
   const opacityAnimation = trackLyricAnimationTiming(
     engine,
-    highlight.animate(lineSyncedTextKeyframes(config), {
+    highlight.animate(lineSyncedTextKeyframes(config, part), {
       duration: fadeInDuration,
       easing: config.enabled.highlightFade ? config.highlight.fadeInEasing : "linear",
       fill: "forwards",
@@ -1457,21 +1617,20 @@ function startLineSyncedHighlightAnimations(
   );
   opacityAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, fadeInDuration);
   animations.push(opacityAnimation);
-
-  let glowAnimation: Animation | undefined;
-  if (config.enabled.highlightGlow && !part.glowSuppressed) {
-    glowAnimation = trackLyricAnimationTiming(
-      engine,
-      (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
-        duration: glowDurationMs,
-        easing: config.highlight.glowEasing,
-        fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: 0 }
-    );
-    glowAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, glowDurationMs);
-    animations.push(glowAnimation);
+  if (part.sweep) {
+    animations.push(...startRevealedSweep(engine, part.sweep, config, highlight, wordTimeMs, appliedTimingOffsetMs));
   }
+
+  const [glowAnimation, ...glowExtras] = startGlowAnimation(
+    engine,
+    part,
+    config,
+    highlight,
+    wordTimeMs,
+    glowDurationMs,
+    appliedTimingOffsetMs
+  );
+  if (glowAnimation) animations.push(glowAnimation, ...glowExtras);
 
   return { animations, fade: opacityAnimation, glow: glowAnimation };
 }
@@ -1672,6 +1831,7 @@ function startWordAnimations(
       animateLetters(part.letterElements, Infinity, true);
       animateLetters(part.highlightLetterElements, Infinity, false);
       animateLetters(glowLetters, glowEndMs, false);
+      animateLetters(part.sweep?.glowLetters, Infinity, false);
     }
   }
   part.animations = [
@@ -1716,6 +1876,11 @@ function startWordExitAnimation(
   });
 
   part.animations = [animation, ...mirrorImageHighlightAnimations(part, [animation])];
+  if (part.sweep && !config.highlight.glowRestingInvisible) {
+    part.animations.push(
+      part.sweep.glow.animate([{ opacity: 1 }, { opacity: 0 }], { duration: fadeDuration, fill: "none" })
+    );
+  }
   // Keep the current blur, letter masks and motion visible until the parent fade ends.
   for (const { target, frame } of imagePaint) {
     part.animations.push(target.animate([frame, frame], { duration: fadeDuration, fill: "none" }));
@@ -2145,6 +2310,8 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       glowEasing: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-easing", "ease"),
       glowContainerAlpha: parseColorAlpha(getCSSValue(engine, lyricsElement, "--blyrics-glow-color", "")) ?? 1,
       glowRestingInvisible: isGlowRestingInvisible(resolveGlowFilter(engine, lyricsElement, "to", "0")),
+      glowRadiusFrom: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-radius-from", "0.8rem"),
+      glowRadiusTo: getCSSValue(engine, lyricsElement, "--blyrics-highlight-glow-radius-to", "0"),
     },
     word: {
       wobbleDurationMs: getCSSDurationWithFallback(engine, lyricsElement, "--blyrics-wobble-duration", "1s"),
