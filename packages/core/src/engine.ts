@@ -205,6 +205,8 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
   visibleWillChangeElements: Set<HTMLElement>;
   culledLineElements: Set<HTMLElement>;
+  pendingCullStates: Map<HTMLElement, boolean>;
+  pendingCullFlushFrame: number | null;
   waveAnimationPool: Animation[];
   lineCullObserver: IntersectionObserver | null;
   cachedDurations: Map<string, number>;
@@ -302,6 +304,8 @@ export function createAnimationEngineInstance(
     lineScrollElementTokens: new WeakMap(),
     visibleWillChangeElements: new Set(),
     culledLineElements: new Set(),
+    pendingCullStates: new Map(),
+    pendingCullFlushFrame: null,
     waveAnimationPool: [],
     lineCullObserver: null,
     cachedDurations: new Map(),
@@ -332,6 +336,7 @@ export function createAnimationEngineInstance(
       engine.observedTabRenderer = null;
       engine.lineCullObserver?.disconnect();
       engine.lineCullObserver = null;
+      cancelPendingCullFlush(engine);
       stopPassiveScrollLoop(engine);
       cancelLyricPositionUpdate(engine);
     },
@@ -2235,6 +2240,7 @@ function clearLineScrollAnimations(engine: AnimationEngineInstance): void {
     record.animation.cancel();
     clearLineScrollInlineProperties(engine, record.lineElement, record.token);
   }
+  flushPendingCullStates(engine);
 }
 
 function removeLineScrollAnimation(engine: AnimationEngineInstance, record: LineScrollAnimationRecord): void {
@@ -2243,6 +2249,20 @@ function removeLineScrollAnimation(engine: AnimationEngineInstance, record: Line
     engine.lineScrollAnimations.splice(index, 1);
   }
   clearLineScrollInlineProperties(engine, record.lineElement, record.token);
+  if (engine.lineScrollAnimations.length === 0) flushPendingCullStates(engine);
+}
+
+/**
+ * Ends a scroll animation that a newer one on the same line is taking over from. Untracked here
+ * rather than from its cancel event, which arrives a frame later and would leave the list claiming
+ * a scroll is still running. Its inline properties stay: the newer plan already holds the line's token.
+ */
+function supersedeLineScrollAnimation(engine: AnimationEngineInstance, record: LineScrollAnimationRecord): void {
+  const index = engine.lineScrollAnimations.indexOf(record);
+  if (index !== -1) {
+    engine.lineScrollAnimations.splice(index, 1);
+  }
+  record.animation.cancel();
 }
 
 function trackLineScrollAnimation(
@@ -2429,9 +2449,14 @@ function clearVisibleLyricWillChange(engine: AnimationEngineInstance): void {
   engine.visibleWillChangeElements = new Set();
 }
 
-// Near-viewport lines come from the intersection observer with one viewport of overscan, not from
+// Near-viewport lines come from the intersection observer with a band of overscan, not from
 // scrollTop, because a scaled/transformed scroll decouples layout coords from what is on screen.
-const LINE_CULL_ROOT_MARGIN = "100% 0px 100% 0px";
+// The band is three viewports deep on each side. Browsers render a `content-visibility: auto`
+// subtree that is anywhere near the viewport whatever its property says (Chrome keeps about two
+// viewports of them), so a narrower band would only toggle the property on lines that are rendered
+// either way, and each toggle re-lays the line out for nothing.
+const LINE_CULL_OVERSCAN_VIEWPORTS = 3;
+const LINE_CULL_ROOT_MARGIN = `${LINE_CULL_OVERSCAN_VIEWPORTS * 100}% 0px ${LINE_CULL_OVERSCAN_VIEWPORTS * 100}% 0px`;
 
 function cullLine(element: HTMLElement): void {
   element.style.setProperty("content-visibility", "auto");
@@ -2446,6 +2471,58 @@ function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {
     uncullLine(element);
   }
   engine.culledLineElements = new Set();
+  engine.pendingCullStates.clear();
+  cancelPendingCullFlush(engine);
+}
+
+function cancelPendingCullFlush(engine: AnimationEngineInstance): void {
+  if (engine.pendingCullFlushFrame === null) return;
+  engine.window.cancelAnimationFrame(engine.pendingCullFlushFrame);
+  engine.pendingCullFlushFrame = null;
+}
+
+function applyCullState(engine: AnimationEngineInstance, element: HTMLElement, isIntersecting: boolean): void {
+  if (isIntersecting) {
+    if (engine.culledLineElements.delete(element)) uncullLine(element);
+  } else if (!engine.culledLineElements.has(element)) {
+    cullLine(element);
+    engine.culledLineElements.add(element);
+  }
+}
+
+/**
+ * Applies the cull changes held back while lines were scrolling, one line per frame. Each one
+ * re-lays out a line's subtree, and the overscan band is viewports deep, so a line crossing its edge
+ * mid-scroll can wait until the lines stop moving, and then take its own frame rather than share one
+ * long task with every other line that crossed during the scroll.
+ */
+function flushPendingCullStates(engine: AnimationEngineInstance): void {
+  if (engine.pendingCullFlushFrame !== null) return;
+  const next = engine.pendingCullStates.entries().next();
+  if (next.done) return;
+  const [element, isIntersecting] = next.value;
+  engine.pendingCullStates.delete(element);
+  applyCullState(engine, element, isIntersecting);
+  if (engine.pendingCullStates.size === 0) return;
+  engine.pendingCullFlushFrame = engine.window.requestAnimationFrame(() => {
+    engine.pendingCullFlushFrame = null;
+    // A scroll that started in the meantime holds the rest back again until it ends.
+    if (engine.lineScrollAnimations.length === 0) flushPendingCullStates(engine);
+  });
+}
+
+/**
+ * Whether an entry's line overlaps the root's own box, inside the overscan. The reported root bounds
+ * are the box plus the band on each side, so the box is the middle share of their height.
+ */
+function intersectsVisibleBand(entry: IntersectionObserverEntry): boolean {
+  const bounds = entry.rootBounds;
+  if (!bounds) return true;
+  const margin = (bounds.height * LINE_CULL_OVERSCAN_VIEWPORTS) / (1 + 2 * LINE_CULL_OVERSCAN_VIEWPORTS);
+  const top = bounds.top + margin;
+  const bottom = bounds.bottom - margin;
+  const rect = entry.boundingClientRect;
+  return rect.bottom > top && rect.top < bottom;
 }
 
 // Rebuilt rather than updated on every line change or relayout, so a skipped line's placeholder height
@@ -2465,7 +2542,8 @@ export function setupLineCullObserver(engine: AnimationEngineInstance): void {
   }
 
   // Scroll anchoring would compensate residual cull height-shifts with a scroll the engine misreads as the user's (Firefox); the engine owns scrollTop, so disable it.
-  engine.host.getScrollElement()?.style.setProperty("overflow-anchor", "none");
+  const scrollElement = engine.host.getScrollElement();
+  scrollElement?.style.setProperty("overflow-anchor", "none");
 
   // Pin each line's skipped placeholder to its last rendered size, so skipping a line never shifts the
   // container's scroll height, which the engine would misread as a user scroll.
@@ -2474,19 +2552,24 @@ export function setupLineCullObserver(engine: AnimationEngineInstance): void {
     line.lyricElement.style.setProperty("contain-intrinsic-block-size", `auto ${restingHeights[index]}px`);
   });
 
+  // Rooted on the scroller, not the window: an observer rooted above a scroll container is still
+  // clipped by it, and the margin would widen the window's box while the scroller's edge decided
+  // every crossing, leaving each line to render in the same frame it came into view.
   const observer = new ObserverConstructor(
     entries => {
+      const scrolling = engine.lineScrollAnimations.length > 0;
       for (const entry of entries) {
         const element = entry.target as HTMLElement;
-        if (entry.isIntersecting) {
-          if (engine.culledLineElements.delete(element)) uncullLine(element);
-        } else if (!engine.culledLineElements.has(element)) {
-          cullLine(element);
-          engine.culledLineElements.add(element);
+        // A line already inside the visible box cannot wait: it would show as a blank placeholder.
+        if (scrolling && !(entry.isIntersecting && intersectsVisibleBand(entry))) {
+          engine.pendingCullStates.set(element, entry.isIntersecting);
+          continue;
         }
+        engine.pendingCullStates.delete(element);
+        applyCullState(engine, element, entry.isIntersecting);
       }
     },
-    { root: null, rootMargin: LINE_CULL_ROOT_MARGIN, threshold: 0 }
+    { root: scrollElement, rootMargin: LINE_CULL_ROOT_MARGIN, threshold: 0 }
   );
 
   for (const line of engine.lines) {
@@ -2667,17 +2750,70 @@ function prepareLineScrollOffsets(
   };
 }
 
-function startPreparedLineScroll(engine: AnimationEngineInstance, plan: LineScrollPlan): void {
-  for (const item of plan.items) {
-    if (!item.lineElement.isConnected || engine.lineScrollElementTokens.get(item.lineElement) !== item.token) continue;
+const TRANSLATE_PX_PATTERN = /^(-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?$/;
 
+/**
+ * Sums two `translate` values given in pixels, or returns null when either is in a form it does not
+ * read, such as a percentage or a `calc()`.
+ */
+export function addTranslatePx(first: string, second: string): string | null {
+  const parse = (value: string): [number, number] | null => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === "none") return [0, 0];
+    const match = TRANSLATE_PX_PATTERN.exec(trimmed);
+    if (!match) return null;
+    return [Number(match[1]), Number(match[2] ?? 0)];
+  };
+  const a = parse(first);
+  const b = parse(second);
+  if (!a || !b) return null;
+  return `${a[0] + b[0]}px ${a[1] + b[1]}px`;
+}
+
+/**
+ * A line still travelling from the previous scroll carries its remaining offset into the new one, so
+ * the new animation starts from where the line is rather than from where it would have rested. Read
+ * for every such line before anything is written, so the whole commit costs one style flush.
+ *
+ * The animations run in replace mode: the compositor refuses additive ones, and a scroll the main
+ * thread has to tick is a scroll that stutters with it. The join is not the sum of two curves the
+ * additive animations gave, only the same offset finishing on the new curve.
+ */
+function carryRunningLineScrollOffsets(
+  engine: AnimationEngineInstance,
+  items: ResolvedLineScroll[]
+): Map<HTMLElement, string> {
+  const carried = new Map<HTMLElement, string>();
+  const running = new Map<HTMLElement, LineScrollAnimationRecord>();
+  for (const record of engine.lineScrollAnimations) {
+    running.set(record.lineElement, record);
+  }
+  for (const item of items) {
+    const record = running.get(item.lineElement);
+    if (!record) continue;
+    const current = normalizedTranslate(engine.window.getComputedStyle(item.lineElement).translate);
+    const merged = addTranslatePx(current, item.startTranslate);
+    if (merged !== null) carried.set(item.lineElement, merged);
+  }
+  for (const item of items) {
+    const record = running.get(item.lineElement);
+    if (record) supersedeLineScrollAnimation(engine, record);
+  }
+  return carried;
+}
+
+function startPreparedLineScroll(engine: AnimationEngineInstance, plan: LineScrollPlan): void {
+  const items = plan.items.filter(
+    item => item.lineElement.isConnected && engine.lineScrollElementTokens.get(item.lineElement) === item.token
+  );
+  const carried = carryRunningLineScrollOffsets(engine, items);
+  for (const item of items) {
     const animation = item.lineElement.animate(
       [
-        { translate: item.startTranslate, easing: item.startEasing },
+        { translate: carried.get(item.lineElement) ?? item.startTranslate, easing: item.startEasing },
         { translate: item.endTranslate, easing: item.endEasing },
       ] as Keyframe[],
       {
-        composite: "add",
         duration: item.durationMs,
         easing: "linear",
         fill: "none",
@@ -2933,6 +3069,10 @@ function setupTabRendererObserver(engine: AnimationEngineInstance, element: HTML
   engine.tabRendererResizeObserver.observe(element);
   engine.observedTabRenderer = element;
   measureScrollViewport(engine, element);
+  // The cull observer is rooted on the scroller, so a swapped node leaves it watching a detached one.
+  if (engine.lineCullObserver && engine.lineCullObserver.root !== element) {
+    setupLineCullObserver(engine);
+  }
 }
 
 // -- Visible scroll band --------------------------
@@ -3458,6 +3598,9 @@ export function tickView(
         engine.pendingLineScroll?.toScrollTop ?? scrollTop,
         tabRendererHeight
       );
+      // Held-back cull changes are released as the last scroll animation ends. This covers an end the
+      // engine never hears of, such as an animation that finished while the document was hidden.
+      if (engine.lineScrollAnimations.length === 0) flushPendingCullStates(engine);
     } else {
       dropPendingLineScroll(engine);
       clearVisibleLyricWillChange(engine);
