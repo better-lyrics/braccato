@@ -697,6 +697,10 @@ for (const letterWaveSetting of ["true", "false"]) {
   );
   assert.equal(part.letterElements?.length, 1, "Then the ruby unit acts as a single letter element");
   assert.ok(part.imageLayers, "Then image highlight layers are preserved after furigana injection");
+  if (part.imageLayers?.highlight) {
+    assert.equal(part.imageLayers.highlight.dataset.hasFurigana, "true");
+    assert.equal(part.imageLayers.highlight.style.getPropertyValue("--letters"), "1");
+  }
 
   const secondInject = injectFurigana(buildDocument, fLine, {
     0: [{ text: "運命", ruby: "さだめ" }],

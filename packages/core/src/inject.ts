@@ -727,6 +727,14 @@ export function injectFurigana(
           if (existingHighlightCopy) {
             existingHighlightCopy.dataset.hasFurigana = "true";
             existingHighlightCopy.dataset.content = segText;
+            if (newHighlightLetters) {
+              existingHighlightCopy.style.setProperty("--letters", String(newHighlightLetters.length));
+              existingHighlightCopy.style.setProperty(
+                "--mask-fade",
+                `${(10 * newHighlightLetters.length) / (newHighlightLetters.length + 2)}%`
+              );
+              existingHighlightCopy.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
+            }
             existingHighlightCopy.replaceChildren(newLayers.glow);
             newLayers.highlight = existingHighlightCopy;
           }
