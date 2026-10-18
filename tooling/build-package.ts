@@ -39,7 +39,6 @@ rmSync(outDir, { recursive: true, force: true });
 execFileSync("npx", ["tsc", "-p", join(__dirname, "tsconfig.package.json"), "--outDir", outDir], {
   stdio: "inherit",
   cwd: root,
-  shell: true,
 });
 
 // -- Extensions --------------------------------------------
