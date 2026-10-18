@@ -1,7 +1,7 @@
 // Builds what goes inside a lyric line: the main and background content lines, the bidi runs inside
-// them, the word groups and the timed word spans the sweep animates, and the two decorators that
-// hang a translation or a romanization off a line that is already built. `view.ts` builds the line
-// and the container around it.
+// them, the word groups and the timed word spans the sweep animates, and the three decorators that
+// hang a translation, a romanization, or furigana (ruby annotations) off a line that is already built.
+// `view.ts` builds the line and the container around it.
 //
 // The structure emitted here is as much published contract as the names written into it.
 // `constants.ts` says why a class name cannot be renamed; the nesting is under the same rule,
@@ -27,7 +27,9 @@ import {
   LINE_SYNCED_WORD_CLASS,
   LONG_WORD_GROUP_CLASS,
   ROMANIZED_LYRICS_CLASS,
+  RT_CLASS,
   RTL_CLASS,
+  RUBY_CLASS,
   TRANSLATED_LYRICS_CLASS,
   WORD_CLASS,
   WORD_GROUP_CLASS,
@@ -629,6 +631,10 @@ export function injectFurigana(
   let injectedAny = false;
 
   lineData.parts.forEach((part, partIdx) => {
+    if (part.lyricElement?.dataset.hasFurigana === "true") {
+      return;
+    }
+
     const partSegments = segments instanceof Map ? segments.get(partIdx) : segments[partIdx];
     if (!partSegments || !partSegments.some(s => Boolean(s.ruby))) {
       return;
@@ -644,23 +650,21 @@ export function injectFurigana(
       if (perLetter) {
         const collectedLetters: HTMLElement[] = [];
         for (const seg of partSegments) {
-          const chars = [...graphemeSegmenter.segment(seg.text)].map(s => s.segment);
           if (seg.ruby) {
+            const letter = doc.createElement("span");
+            letter.classList.add(LETTER_CLASS);
             const ruby = doc.createElement("ruby");
-            ruby.classList.add("blyrics-ruby");
-            for (const char of chars) {
-              const letter = doc.createElement("span");
-              letter.classList.add(LETTER_CLASS);
-              letter.textContent = char;
-              ruby.appendChild(letter);
-              collectedLetters.push(letter);
-            }
+            ruby.classList.add(RUBY_CLASS);
+            ruby.appendChild(doc.createTextNode(seg.text));
             const rt = doc.createElement("rt");
-            rt.classList.add("blyrics-rt");
+            rt.classList.add(RT_CLASS);
             rt.textContent = seg.ruby;
             ruby.appendChild(rt);
-            element.appendChild(ruby);
+            letter.appendChild(ruby);
+            element.appendChild(letter);
+            collectedLetters.push(letter);
           } else {
+            const chars = [...graphemeSegmenter.segment(seg.text)].map(s => s.segment);
             for (const char of chars) {
               const letter = doc.createElement("span");
               letter.classList.add(LETTER_CLASS);
@@ -682,10 +686,10 @@ export function injectFurigana(
       for (const seg of partSegments) {
         if (seg.ruby) {
           const ruby = doc.createElement("ruby");
-          ruby.classList.add("blyrics-ruby");
+          ruby.classList.add(RUBY_CLASS);
           ruby.appendChild(doc.createTextNode(seg.text));
           const rt = doc.createElement("rt");
-          rt.classList.add("blyrics-rt");
+          rt.classList.add(RT_CLASS);
           rt.textContent = seg.ruby;
           ruby.appendChild(rt);
           element.appendChild(ruby);
@@ -721,6 +725,8 @@ export function injectFurigana(
         const newLayers = wrapImageHighlight(part.highlightElement);
         if (newLayers) {
           if (existingHighlightCopy) {
+            existingHighlightCopy.dataset.hasFurigana = "true";
+            existingHighlightCopy.dataset.content = segText;
             existingHighlightCopy.replaceChildren(newLayers.glow);
             newLayers.highlight = existingHighlightCopy;
           }

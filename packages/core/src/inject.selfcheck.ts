@@ -8,6 +8,8 @@ import {
   LINE_MAIN_CLASS,
   LYRICS_CLASS,
   ROMANIZED_LYRICS_CLASS,
+  RT_CLASS,
+  RUBY_CLASS,
   TRANSLATED_LYRICS_CLASS,
   WORD_CLASS,
   WORD_GROUP_CLASS,
@@ -682,14 +684,28 @@ for (const letterWaveSetting of ["true", "false"]) {
 
   const rubyElements = collectTree(asFakeNode(part.lyricElement)).filter(n => n.name === "ruby");
   assert.equal(rubyElements.length, 1, "Then a ruby element is constructed in the lyric element");
-  assert.ok(rubyElements[0].classList.contains("blyrics-ruby"));
+  assert.ok(rubyElements[0].classList.contains(RUBY_CLASS));
 
   const rtElements = collectTree(rubyElements[0]).filter(n => n.name === "rt");
   assert.equal(rtElements.length, 1);
   assert.equal(rtElements[0].textContent, "さだめ");
+  assert.ok(rtElements[0].classList.contains(RT_CLASS));
 
-  assert.ok(part.letterElements && part.letterElements.length === 2, "Then letter elements are preserved inside ruby");
+  assert.ok(
+    rubyElements[0].parentNode?.classList.contains(LETTER_CLASS),
+    "Then ruby is contained within a letter element"
+  );
+  assert.equal(part.letterElements?.length, 1, "Then the ruby unit acts as a single letter element");
   assert.ok(part.imageLayers, "Then image highlight layers are preserved after furigana injection");
+
+  const secondInject = injectFurigana(buildDocument, fLine, {
+    0: [{ text: "運命", ruby: "さだめ" }],
+  });
+  assert.equal(
+    secondInject,
+    false,
+    "Given furigana already injected, When injectFurigana is called again, Then it returns false without re-injecting"
+  );
   setThemeSettings(new Map());
 }
 
