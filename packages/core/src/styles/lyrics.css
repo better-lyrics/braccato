@@ -186,7 +186,13 @@
 	background-image: none;
 }
 
+/* A mask clips to the border box, cutting off glyph overhang (a j's hook, italics). The padding
+   widens that clip without moving layout, and the content-box origin keeps the sweep geometry. */
 .blyrics-word-highlight .blyrics--letter {
+	padding-inline: 0.25em;
+	margin-inline: -0.25em;
+	-webkit-mask-origin: content-box;
+	mask-origin: content-box;
 	color: var(--blyrics-lyric-active-color);
 	-webkit-mask-image: linear-gradient(90deg, #000 0, #000 50%, #0000 calc(50% + var(--mask-fade, 3%)));
 	mask-image: linear-gradient(90deg, #000 0, #000 50%, #0000 calc(50% + var(--mask-fade, 3%)));

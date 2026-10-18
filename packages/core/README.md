@@ -586,5 +586,7 @@ For real-browser regression checks, build the package, serve the repository root
 `tooling/browser/image-highlights.html`. Import `image-highlights-checks.js` from that page and
 call `runImageHighlightChecks(testView)`. The default fixture uses an SDR image; a `theme` query
 parameter can point at a consumer's HDR stylesheet for physical-display testing.
+`runLetterInkChecks(testView)` in the same module checks that letter masks cover glyph overhang,
+such as a `j`'s hook or an italic `f`, without moving any letter.
 
 Words that mix RTL characters with LTR letters or numbers retain native text shaping instead of per-letter motion. Image glow, letter masks and letter motion retain their current paint during the line exit fade.

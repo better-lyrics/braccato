@@ -363,3 +363,67 @@ export async function runLetterSweepDirectionChecks(view) {
   }
   return checks;
 }
+
+export async function runLetterInkChecks(view) {
+  const { renderer: r, theme, lyrics } = view;
+  const checks = [];
+  const check = (ok, message) => {
+    if (!ok) throw new Error(message);
+    checks.push(message);
+  };
+  const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const context = document.createElement("canvas").getContext("2d");
+  const words = ["ujung ", "senja ", "fjord"];
+  const fixture = [
+    {
+      words: words.join(""),
+      startTimeMs: 0,
+      durationMs: 6000,
+      parts: words.map((word, i) => ({ words: word, startTimeMs: i * 1500, durationMs: 1500 })),
+    },
+  ];
+  try {
+    for (const [name, css] of [
+      ["upright", ""],
+      ["italic", ".blyrics-container { --blyrics-font-family: Georgia, serif; font-style: italic; }"],
+    ])
+      for (const image of [false, true]) {
+        r.setTheme(`${image ? theme : ""}\n${css}`);
+        r.setLyrics(fixture);
+        r.tick(5.9, { isPlaying: false });
+        await frame();
+        let overflowing = 0;
+        for (const p of r.lines[0].parts)
+          for (const letters of [p.highlightLetterElements, ...(image ? [p.imageLayers.glowLetters] : [])])
+            letters.forEach((letter, i) => {
+              const style = getComputedStyle(letter);
+              context.font = style.font;
+              const ink = context.measureText(letter.textContent);
+              const left = Math.max(0, ink.actualBoundingBoxLeft);
+              const right = Math.max(0, ink.actualBoundingBoxRight - ink.width);
+              if (left > 0 || right > 0) overflowing++;
+              check(
+                Number.parseFloat(style.paddingLeft) >= left && Number.parseFloat(style.paddingRight) >= right,
+                `${name}/${image}: the mask around "${letter.textContent}" covers its ink`
+              );
+              const base = p.letterElements[i];
+              const glyphX = (e, s) => e.getBoundingClientRect().x + Number.parseFloat(s.paddingLeft);
+              check(
+                Math.abs(glyphX(letter, style) - glyphX(base, getComputedStyle(base))) < 0.1,
+                `${name}/${image}: "${letter.textContent}" stays over its base glyph`
+              );
+              if (image)
+                check(
+                  style.backgroundOrigin === "content-box, padding-box",
+                  `${name}: "${letter.textContent}" keeps its image on the glyph box and under its overhang`
+                );
+            });
+        check(overflowing > 0, `${name}/${image}: the fixture has glyphs that overhang their box`);
+      }
+  } finally {
+    r.setTheme(theme);
+    r.setLyrics(lyrics);
+    view.tick(0.6, false);
+  }
+  return checks;
+}
