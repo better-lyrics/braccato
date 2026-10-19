@@ -15,6 +15,7 @@ import {
   hasRenderedLines,
   noteUserScroll,
   addTranslatePx,
+  planSweep,
   parseColorAlpha,
   planLetterMaskSweep,
   planLetterWave,
@@ -1266,6 +1267,33 @@ assert.equal(parseColorAlpha("white"), 1, "treats a keyword as opaque");
 assert.equal(parseColorAlpha("rgb(255, 255, 255)"), 1, "treats alphaless rgb as opaque");
 assert.equal(parseColorAlpha(""), null, "reports nothing for an empty value");
 assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolved reference");
+
+// The composited sweep moves a static mask and its text in opposite directions, so the geometry has to
+// hide the whole word at the ramp's start, reveal it at the end, and mirror exactly for RTL.
+{
+  const ramp = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
+  const numbers = (pose: { mask: string; text: string }) =>
+    [pose.mask, pose.text].map(value => Number.parseFloat(value));
+  const close = (actual: number[], expected: number[], message: string) =>
+    assert.ok(
+      actual.every((value, index) => Math.abs(value - expected[index]) < 1e-9),
+      `${message}: ${actual.join(", ")} vs ${expected.join(", ")}`
+    );
+  const ltr = planSweep(ramp, false);
+  close(numbers(ltr.from), [-170 / 3, 170], "the start pose parks the text a full mask width outside the edge");
+  close(numbers(ltr.to), [-10 / 3, 10], "the end pose leaves the edge past the word");
+  const rtl = planSweep(ramp, true);
+  close(
+    numbers(rtl.from),
+    numbers(ltr.from).map(value => -value),
+    "RTL mirrors the pose"
+  );
+  assert.deepEqual(
+    planSweep({ ...ramp, startFrom: "oops" }, false).from,
+    ltr.from,
+    "an unreadable ramp falls back to the engine's own"
+  );
+}
 
 // A line mid-scroll carries its current offset into the next scroll, so the merge has to read every
 // pixel form the computed `translate` takes and refuse the rest rather than guess.
