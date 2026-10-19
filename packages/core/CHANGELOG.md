@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.9
+
+### Patch Changes
+
+- 3825916: Skip a romanization or translation that repeats its line's own text.
+
 ## 1.16.8
 
 ### Patch Changes
