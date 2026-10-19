@@ -662,4 +662,51 @@ assert.equal(
   "Given two views in one document, When both build the same instrumental line, Then their SVG ids do not collide"
 );
 
+for (const letterWaveSetting of ["true", "false"]) {
+  setThemeSettings(new Map([["blyrics-letter-wave", letterWaveSetting]]));
+  const sameTextDoc = new FakeDocument();
+  const sameTextTarget = asElement<HTMLElement>(sameTextDoc.createElement("div"));
+  const sameTextLine = newLineData(sameTextTarget, 0, 1600);
+  createLyricsLine(
+    asDocument(sameTextDoc),
+    [
+      { startTimeMs: 0, words: "Siap-siap ", durationMs: 400 },
+      { startTimeMs: 400, words: "akhirat", durationMs: 400 },
+      { startTimeMs: 800, words: "oh", durationMs: 400, isBackground: true },
+    ],
+    sameTextLine,
+    sameTextTarget
+  );
+  sameTextTarget
+    .querySelector(`.${HIGHLIGHT_RUN_CLASS}`)
+    ?.appendChild(asDocument(sameTextDoc).createTextNode("Siap-siap akhirat"));
+  injectRomanization(asDocument(sameTextDoc), sameTextTarget, sameTextLine, " siap-siap Akhirat ");
+  injectRomanization(asDocument(sameTextDoc), sameTextTarget, sameTextLine, "Siap-siap akhirat", [
+    { startTimeMs: 0, words: "Siap-siap ", durationMs: 400 },
+    { startTimeMs: 400, words: "akhirat", durationMs: 400 },
+  ]);
+  injectTranslation(asDocument(sameTextDoc), sameTextTarget, "SIAP-SIAP AKHIRAT");
+  assert.equal(
+    sameTextTarget.querySelector(`.${ROMANIZED_LYRICS_CLASS}`),
+    null,
+    `Given letter wave ${letterWaveSetting}, When a romanization repeats the line, Then it is not shown even though the highlight run text differs`
+  );
+  assert.equal(
+    sameTextTarget.querySelector(`.${TRANSLATED_LYRICS_CLASS}`),
+    null,
+    `Given letter wave ${letterWaveSetting}, When a translation repeats the line, Then it is not shown`
+  );
+
+  injectRomanization(asDocument(sameTextDoc), sameTextTarget, sameTextLine, "siap siap akhirat");
+  injectTranslation(asDocument(sameTextDoc), sameTextTarget, "Get ready for the afterlife");
+  assert.ok(
+    sameTextTarget.querySelector(`.${ROMANIZED_LYRICS_CLASS}`),
+    `Given letter wave ${letterWaveSetting}, When a romanization differs from the line, Then it is shown`
+  );
+  assert.ok(
+    sameTextTarget.querySelector(`.${TRANSLATED_LYRICS_CLASS}`),
+    `Given letter wave ${letterWaveSetting}, When a translation differs from the line, Then it is shown`
+  );
+}
+
 console.log(`Renderer builder self-check passed across ${doc.calls.length} built node(s)`);
