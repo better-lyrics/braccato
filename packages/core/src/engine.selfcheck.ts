@@ -14,12 +14,14 @@ import {
   getRenderedSyncType,
   hasRenderedLines,
   noteUserScroll,
+  addTranslatePx,
   parseColorAlpha,
   planLetterMaskSweep,
   planLetterWave,
   relayout,
   resolveScrollInsets,
   resolveTickOptions,
+  resolveTranslatePx,
   scheduleLyricPositionUpdate,
   setupLineCullObserver,
   smoothedPlaybackTime,
@@ -1265,6 +1267,17 @@ assert.equal(parseColorAlpha("rgb(255, 255, 255)"), 1, "treats alphaless rgb as 
 assert.equal(parseColorAlpha(""), null, "reports nothing for an empty value");
 assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolved reference");
 
+// A line mid-scroll carries its current offset into the next scroll, so the merge has to read every
+// pixel form the computed `translate` takes and refuse the rest rather than guess.
+assert.equal(addTranslatePx("none", "0px -120px"), "0px -120px", "a resting line starts from the new delta");
+assert.equal(addTranslatePx("0px 37.5px", "0px -120px"), "0px -82.5px", "a moving line starts from where it is");
+assert.equal(addTranslatePx("0px 37.5px 0px", "4px"), "4px 37.5px", "reads 3D and single-axis forms");
+assert.equal(addTranslatePx("10%", "0px -120px"), null, "refuses a form it cannot sum");
+// A theme may give the scroll offset in percent, and the computed `translate` keeps it that way, so
+// both sides are resolved against the line's box before the merge rather than refused.
+assert.equal(resolveTranslatePx("0 10%", 400, 50), "0px 5px", "percentages resolve against the line's box");
+assert.equal(resolveTranslatePx("calc(1px + 1%)", 400, 50), null, "still refuses a form it cannot read");
+
 // Scroll grouping is committed only when a scroll happens. Animation length must not gate it.
 {
   const document = new FakeDocument();
@@ -1316,9 +1329,21 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   );
   assert.ok(host.scrollElement.scrollTop > firstPosition);
   assert.deepEqual(engine.lastScrollElements, [lines[2], lines[3]], "C's scroll includes upcoming D");
+  const scrollingElements = engine.lineScrollAnimations.map(record => record.lineElement);
+  assert.equal(
+    new Set(scrollingElements).size,
+    scrollingElements.length,
+    "A new scroll takes over from a line's running animation instead of stacking on it"
+  );
   assert.ok(
-    previousAnimations.every(animation => engine.lineScrollAnimations.some(record => record.animation === animation)),
-    "A new scroll preserves the previous additive animations"
+    previousAnimations.some(animation => (animation as unknown as { cancelled: boolean }).cancelled),
+    "The superseded animations are cancelled"
+  );
+  assert.ok(
+    engine.lineScrollAnimations.every(
+      record => (record.animation as unknown as { options: KeyframeAnimationOptions }).options.composite === undefined
+    ),
+    "Scroll animations replace, so the compositor can run them"
   );
   tick(2.1);
   assert.equal(engine.skipScrolls, firstScrollCount + 1, "D must not trigger a duplicate scroll");
