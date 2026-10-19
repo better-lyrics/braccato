@@ -39,7 +39,7 @@ import {
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
 import { getSeekTimeFromClick } from "./seek";
-import { testJoiningScript, testRtl } from "./text";
+import { isSameText, testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
 import type { Lyric, LyricPart, LyricSyncType } from "./types";
 
@@ -582,6 +582,14 @@ export function addSeekHandler(seek: (timeS: number) => void, lyricElement: HTML
   });
 }
 
+function repeatsLine(lyricElement: HTMLElement, text: string): boolean {
+  const mainRun = [
+    ...(lyricElement.querySelector(`:scope > .${LINE_MAIN_CLASS}`)?.querySelectorAll(`:scope > .${BIDI_RUN_CLASS}`) ??
+      []),
+  ].find(run => !run.classList.contains(HIGHLIGHT_RUN_CLASS));
+  return mainRun?.textContent != null && isSameText(mainRun.textContent, text);
+}
+
 export function injectRomanization(
   doc: Document,
   lyricElement: HTMLElement,
@@ -589,7 +597,7 @@ export function injectRomanization(
   text: string,
   timedRomanization: LyricPart[] | null = null
 ) {
-  if (lyricElement.querySelector(`.${ROMANIZED_LYRICS_CLASS}`)) return;
+  if (lyricElement.querySelector(`.${ROMANIZED_LYRICS_CLASS}`) || repeatsLine(lyricElement, text)) return;
 
   const romanizedLine = doc.createElement("div");
   romanizedLine.classList.add(ROMANIZED_LYRICS_CLASS, CONTENT_LINE_CLASS);
@@ -608,7 +616,7 @@ export function injectRomanization(
 }
 
 export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string, language?: string | null) {
-  if (lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`)) return;
+  if (lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`) || repeatsLine(lyricElement, text)) return;
 
   const translatedLine = doc.createElement("div");
   translatedLine.classList.add(TRANSLATED_LYRICS_CLASS, CONTENT_LINE_CLASS);
