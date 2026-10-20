@@ -211,9 +211,15 @@
 	mask-position: 100% 0%;
 }
 
+/* text-decoration skips inline-block letters and rides the wave, so draw on the word box instead, from its
+   center (fixed against the text at any line-height), with layout-neutral padding so a tight box can hold it. */
 [blyrics-alt-hover] .blyrics--word:hover {
-	text-decoration: underline;
-	text-underline-offset: 0.15em;
+	padding-block: 0.25em;
+	margin-block: -0.25em;
+	background-image: linear-gradient(currentColor, currentColor);
+	background-position: 0 calc(50% + 0.54em);
+	background-repeat: no-repeat;
+	background-size: 100% 0.06em;
 }
 
 .blyrics--line > .blyrics-line-main > .blyrics-background-lyric,
