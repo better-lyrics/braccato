@@ -222,6 +222,11 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
    * from a tick, so it has no options object to read.
    */
   passiveScrollEnabled: boolean;
+  /**
+   * Last options the tick was given, kept before any early return. A click reads its offsets to seek
+   * to where a line plays rather than to its unshifted time.
+   */
+  lastTickOptions: ResolvedTickOptions | null;
   playbackRate: number;
   passiveRAFId: number | null;
   pendingLyricsUpdateFrame: number | null;
@@ -315,6 +320,7 @@ export function createAnimationEngineInstance(
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
     passiveScrollEnabled: false,
+    lastTickOptions: null,
     playbackRate: 1,
     passiveRAFId: null,
     pendingLyricsUpdateFrame: null,
@@ -3390,6 +3396,33 @@ function applyStage(engine: AnimationEngineInstance, timeS: number, instant: boo
 }
 
 /**
+ * Seconds to add to the player time to get the lyric time this view renders: the theme's offset
+ * and the trim for its sync type, less the global and per-song offsets.
+ */
+function lyricClockShiftS(
+  engine: AnimationEngineInstance,
+  lyricsElement: HTMLElement,
+  options: ResolvedTickOptions
+): number {
+  const syncTypeShiftS =
+    engine.syncType === "richsync"
+      ? getCSSDurationInMs(engine, lyricsElement, "--blyrics-richsync-timing-offset") / 1000 -
+        options.richsyncOffsetTrim
+      : getCSSDurationInMs(engine, lyricsElement, "--blyrics-timing-offset") / 1000 - options.lineOffsetTrim;
+  return syncTypeShiftS - options.globalLyricOffset - options.lyricOffset;
+}
+
+/**
+ * The player time at which a lyric time plays, under the offsets of the last tick.
+ */
+export function playerTimeForLyricTime(engine: AnimationEngineInstance, lyricTimeS: number): number {
+  const options = engine.lastTickOptions;
+  const lyricsElement = engine.lyricsContainer;
+  if (!options || !lyricsElement) return lyricTimeS;
+  return Math.max(0, lyricTimeS - lyricClockShiftS(engine, lyricsElement, options));
+}
+
+/**
  * Renders one view against a tick with nothing left out.
  */
 export function tickView(
@@ -3398,6 +3431,7 @@ export function tickView(
   options: ResolvedTickOptions
 ): AnimationTickStatus {
   const { eventCreationTime, isPlaying, smoothScroll } = options;
+  engine.lastTickOptions = options;
   engine.passiveScrollEnabled = options.passiveScrollEnabled;
 
   if (engine.playbackRate !== options.playbackRate) {
@@ -3477,15 +3511,7 @@ export function tickView(
 
     const lines = engine.lines;
 
-    if (engine.syncType === "richsync") {
-      currentTime += getCSSDurationInMs(engine, lyricsElement, "--blyrics-richsync-timing-offset") / 1000;
-      currentTime -= options.richsyncOffsetTrim;
-    } else {
-      currentTime += getCSSDurationInMs(engine, lyricsElement, "--blyrics-timing-offset") / 1000;
-      currentTime -= options.lineOffsetTrim;
-    }
-
-    currentTime -= options.globalLyricOffset + options.lyricOffset;
+    currentTime += lyricClockShiftS(engine, lyricsElement, options);
 
     const lyricScrollTime =
       correctedScrollTimeS(engine, currentTime) +
