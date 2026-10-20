@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.10
+
+### Patch Changes
+
+- c36c692: Underline the hovered word again while Alt is held when the letter wave is on.
+
 ## 1.16.9
 
 ### Patch Changes
