@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.11
+
+### Patch Changes
+
+- 26b3c96: Clicking a line or Alt-clicking a word now seeks to where it plays when lyric offsets or trims are set, instead of to its unshifted time.
+
 ## 1.16.10
 
 ### Patch Changes
