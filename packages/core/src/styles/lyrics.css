@@ -211,9 +211,12 @@
 	mask-position: 100% 0%;
 }
 
+/* Drawn on the word box: text-decoration skips inline-block letters and would ride the wave per letter. */
 [blyrics-alt-hover] .blyrics--word:hover {
-	text-decoration: underline;
-	text-underline-offset: 0.15em;
+	background-image: linear-gradient(currentColor, currentColor);
+	background-position: 0 100%;
+	background-repeat: no-repeat;
+	background-size: 100% 0.06em;
 }
 
 .blyrics--line > .blyrics-line-main > .blyrics-background-lyric,
