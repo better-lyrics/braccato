@@ -1,5 +1,11 @@
 import { strict as assert } from "node:assert";
-import { CUSTOM_THEME_STYLE_ID, LINE_CLASS, ROMANIZED_LYRICS_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import {
+  CUSTOM_THEME_STYLE_ID,
+  LINE_CLASS,
+  ROMANIZED_LYRICS_CLASS,
+  USER_SCROLLING_CLASS,
+  WORD_CLASS,
+} from "./constants";
 import type { LineData } from "./inject";
 import { createLyricsRenderer, withHostDefaults } from "./renderer";
 import { asDocument, asElement, asFakeAnimation, asFakeNode, FakeDocument, FakeNode } from "./selfcheck/fakeDom";
@@ -1928,7 +1934,116 @@ assert.equal(
   "Given a view whose document resolves no target scroll position, When it scrolls to a line, Then the line lands where the theme's settings put it"
 );
 
+// -- A click seeks to where the line plays, offsets and all -------------------------------------
+
+function offsetSeekView(
+  lyrics: Lyric[],
+  styleValues: Record<string, string>
+): { fixture: ViewFixture; renderer: ReturnType<typeof createLyricsRenderer>; seeks: number[] } {
+  const { fixture, host } = newViewFixture({ ...SCROLL_ANIMATION_OFF, ...styleValues });
+  const seeks: number[] = [];
+  const renderer = createLyricsRenderer({
+    document: asDocument(fixture.fakeDocument),
+    window: asWindow(fixture.fakeWindow),
+    mount: asElement<HTMLElement>(fixture.mount),
+    host: { ...host, seek: timeS => seeks.push(timeS) },
+  });
+  renderer.setLyrics(lyrics);
+  return { fixture, renderer, seeks };
+}
+
+function clickLine(renderer: ReturnType<typeof createLyricsRenderer>, lineIndex: number): void {
+  const line = asFakeNode(renderer.lines[lineIndex].lyricElement);
+  line.dispatchClick({ target: line, altKey: false, clientX: 0, clientY: 0 });
+}
+
+const LINE_OFFSETS = { globalLyricOffset: 1, lyricOffset: 2, lineOffsetTrim: 0.5 };
+const lineOffsetView = offsetSeekView(SYNCED_LYRICS, { "--blyrics-timing-offset": "250ms" });
+
+clickLine(lineOffsetView.renderer, 1);
+
+assert.deepEqual(
+  lineOffsetView.seeks,
+  [5],
+  "Given a view that has not ticked, When a line is clicked, Then it seeks to the line's own time"
+);
+
+lineOffsetView.renderer.tick(PLAYBACK_TIME_S, { isPlaying: false, ...LINE_OFFSETS });
+clickLine(lineOffsetView.renderer, 1);
+
+assert.equal(
+  lineOffsetView.seeks[1],
+  8.25,
+  "Given lyrics shifted by a theme offset, a trim, a global offset and a song offset, When a line is clicked, Then it seeks to the player time that line plays at"
+);
+
+lineOffsetView.renderer.tick(lineOffsetView.seeks[1], { isPlaying: false, ...LINE_OFFSETS });
+
+assert.equal(
+  lineOffsetView.renderer.lines[1].isSelected,
+  true,
+  "Given a seek to a clicked line under offsets, When the view ticks at that time, Then the clicked line is selected"
+);
+
+lineOffsetView.renderer.tick(PLAYBACK_TIME_S, { isPlaying: false, lyricOffset: -10 });
+clickLine(lineOffsetView.renderer, 0);
+
+assert.equal(
+  lineOffsetView.seeks[2],
+  0,
+  "Given lyrics shifted earlier than the first line's time, When the first line is clicked, Then the seek stops at the start of the song"
+);
+
+// A paused tick at zero returns before it renders anything, which is how a song loads.
+lineOffsetView.renderer.setLyrics(SYNCED_LYRICS);
+lineOffsetView.renderer.tick(0, { isPlaying: false, ...LINE_OFFSETS });
+clickLine(lineOffsetView.renderer, 1);
+
+assert.equal(
+  lineOffsetView.seeks[3],
+  8.25,
+  "Given a song loaded paused at the start under offsets, When a line is clicked before it plays, Then the seek still honours those offsets"
+);
+
+lineOffsetView.renderer.setLyrics(SYNCED_LYRICS);
+lineOffsetView.renderer.tick(0, { isPlaying: false, globalLyricOffset: 1 });
+clickLine(lineOffsetView.renderer, 1);
+
+assert.equal(
+  lineOffsetView.seeks[4],
+  5.75,
+  "Given a song offset on the last song and none on the next, When a line of the next is clicked before it plays, Then the last song's offset is not applied"
+);
+
+lineOffsetView.renderer.destroy();
+
+const richOffsetView = offsetSeekView(RICHSYNC_LYRICS, {
+  "--blyrics-timing-offset": "250ms",
+  "--blyrics-richsync-timing-offset": "-100ms",
+});
+
+richOffsetView.renderer.tick(PLAYBACK_TIME_S, {
+  isPlaying: false,
+  lyricOffset: 1,
+  richsyncOffsetTrim: 0.4,
+  lineOffsetTrim: 3,
+});
+
+const secondRichLine = asFakeNode(richOffsetView.renderer.lines[1].lyricElement);
+const lastWordOfSecondLine = secondRichLine.querySelectorAll(`.${WORD_CLASS}`).at(-1)!;
+secondRichLine.dispatchClick({ target: lastWordOfSecondLine, altKey: true, clientX: 0, clientY: 0 });
+
+assert.deepEqual(
+  richOffsetView.seeks,
+  [9],
+  "Given rich synced lyrics under the rich synced offset and trim, When a word is alt clicked, Then it seeks to the player time that word plays at, ignoring the line synced ones"
+);
+
+richOffsetView.renderer.destroy();
+
 const drivenFixtures = [
+  lineOffsetView.fixture,
+  richOffsetView.fixture,
   panel,
   faceless,
   floating,

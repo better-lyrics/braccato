@@ -18,7 +18,7 @@ import {
   LYRICS_CLASS,
   RTL_CLASS,
 } from "./constants";
-import { type AnimationEngineInstance, setupLineCullObserver } from "./engine";
+import { type AnimationEngineInstance, playerTimeForLyricTime, setupLineCullObserver } from "./engine";
 import {
   addSeekHandler,
   applyDirection,
@@ -130,7 +130,7 @@ export function setLyrics(
   mount.replaceChildren(container);
 
   const allZero = lyrics.every(item => item.startTimeMs === 0);
-  const seek = (timeS: number): void => engine.host.seek(timeS);
+  const seek = (timeS: number): void => engine.host.seek(playerTimeForLyricTime(engine, timeS));
   const lines: LineData[] = [];
   const syncType = deriveSyncType(lyrics);
   const languages = resolveLyricLanguages(lyrics, options.language);
