@@ -211,10 +211,13 @@
 	mask-position: 100% 0%;
 }
 
-/* Drawn on the word box: text-decoration skips inline-block letters and would ride the wave per letter. */
+/* text-decoration skips inline-block letters and rides the wave, so draw on the word box instead, from its
+   center (fixed against the text at any line-height), with layout-neutral padding so a tight box can hold it. */
 [blyrics-alt-hover] .blyrics--word:hover {
+	padding-block: 0.25em;
+	margin-block: -0.25em;
 	background-image: linear-gradient(currentColor, currentColor);
-	background-position: 0 100%;
+	background-position: 0 calc(50% + 0.54em);
 	background-repeat: no-repeat;
 	background-size: 100% 0.06em;
 }
