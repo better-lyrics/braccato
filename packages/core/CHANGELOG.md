@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.12
+
+### Patch Changes
+
+- 772a4c9: A host that keeps playing through a seek, such as a looped audio element, no longer leaves the next line sweeping from the clock before the jump.
+
 ## 1.16.11
 
 ### Patch Changes
