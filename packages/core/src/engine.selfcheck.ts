@@ -25,7 +25,15 @@ import {
   smoothedPlaybackTime,
   tickView,
 } from "./engine";
-import { asDocument, asElement, asFakeNode, collectTree, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
+import {
+  asDocument,
+  asElement,
+  asFakeAnimation,
+  asFakeNode,
+  collectTree,
+  FakeDocument,
+  type FakeNode,
+} from "./selfcheck/fakeDom";
 import {
   asWindow,
   FakeMediaQueryList,
@@ -829,6 +837,60 @@ assert.ok(
   "regression: Given a view pinned to a line that stops being sung, When only the echo is left, Then the view moves back to it without waiting for another line to start"
 );
 overlapEngine.destroy();
+
+// A host that keeps playing through a seek, like a looped HTML audio element, never sends the
+// paused tick that would drop a line set up for its lead-in, so the jump itself has to.
+const LEAD_IN_LYRICS: Lyric[] = [
+  {
+    startTimeMs: 3000,
+    durationMs: 1000,
+    words: "Held",
+    parts: [{ startTimeMs: 3000, durationMs: 1000, words: "Held" }],
+  },
+  {
+    startTimeMs: 5000,
+    durationMs: 2000,
+    words: "Next line",
+    parts: [
+      { startTimeMs: 5000, durationMs: 1000, words: "Next " },
+      { startTimeMs: 6000, durationMs: 1000, words: "line" },
+    ],
+  },
+];
+const leadInDocument = new FakeDocument();
+const leadInEngine = createAnimationEngineInstance(
+  asDocument(leadInDocument),
+  asWindow(new FakeWindow(PANEL_STYLE)),
+  new FakeHost(undefined, leadInDocument)
+);
+setLyrics(leadInEngine, asElement<HTMLElement>(leadInDocument.createElement("div")), LEAD_IN_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+placeLines(leadInEngine);
+const [, leadInLine] = getRenderedLines(leadInEngine);
+const leadInAnimations = () => [leadInLine, ...leadInLine.parts].flatMap(part => part.animations);
+
+for (let tenths = 30; tenths <= 43; tenths++) {
+  tickView(leadInEngine, tenths / 10, resolveTickOptions(newTickOptions()));
+}
+const armedForOldClock = leadInAnimations();
+assert.ok(
+  armedForOldClock.length > 0,
+  "Given a line two seconds away, When playback nears it, Then it is set up for its lead-in"
+);
+
+tickView(leadInEngine, 3.3, resolveTickOptions(newTickOptions()));
+assert.ok(
+  armedForOldClock.every(animation => asFakeAnimation(animation).cancelled),
+  "regression: Given a line set up for its lead-in, When playback jumps back but stays inside the lead-in, Then the animations set up against the old clock are cancelled"
+);
+const armedForNewClock = leadInAnimations();
+assert.ok(
+  armedForNewClock.length > 0 && armedForNewClock.every(animation => !armedForOldClock.includes(animation)),
+  "Given a line whose lead-in survived a jump, When the next tick lands, Then it is set up again against the new clock"
+);
+leadInEngine.destroy();
 
 // -- The "no lyrics" message is not unsynced lyrics --------------------------------------------
 // Its own instance, so the pending frame the positive control leaves behind cannot reach the

@@ -3607,6 +3607,9 @@ export function tickView(
           if (isPlaying) lineData.isAnimating = false; // reset the animation against current media time
         }
 
+        // Lead-in animations have no timing sample for the drift check, so a jump while playing must reset them.
+        if (timeJumped && isPlaying && lineData.isAnimating) resetLineAnimationState(lineData);
+
         updateWordStates(lineData, currentTime);
 
         const nativeTimingSample = lineNativeTimingSample(lineData, currentTime);
