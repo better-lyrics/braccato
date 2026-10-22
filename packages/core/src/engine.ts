@@ -3464,6 +3464,13 @@ export function tickView(
   const timeJumped =
     Math.abs(currentTime - playbackClock.lastTime - (eventCreationTime - playbackClock.lastEventCreationTime) / 1000) >
     TIME_JUMP_THRESHOLD;
+  // Without a player snapshot the reading is the media clock, which runs backwards only on a seek, so a
+  // loop shorter than the jump threshold still re-arms lines. A snapshot host's extrapolated clock is
+  // pulled back by every correction, so it is left to the threshold.
+  const mediaSteppedBack =
+    eventCreationTime === NO_PLAYER_SNAPSHOT &&
+    isPlaying &&
+    currentTime < playbackClock.lastTime - CLOCK_RESYNC_THRESHOLD_S;
 
   if (timeJumped) dropPendingLineScroll(engine);
 
@@ -3608,7 +3615,7 @@ export function tickView(
         }
 
         // Lead-in animations have no timing sample for the drift check, so a jump while playing must reset them.
-        if (timeJumped && isPlaying && lineData.isAnimating) resetLineAnimationState(lineData);
+        if (((timeJumped && isPlaying) || mediaSteppedBack) && lineData.isAnimating) resetLineAnimationState(lineData);
 
         updateWordStates(lineData, currentTime);
 
