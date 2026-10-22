@@ -892,6 +892,43 @@ assert.ok(
 );
 leadInEngine.destroy();
 
+// A loop shorter than the jump threshold steps back by less than half a second on every pass. With
+// no player snapshot the reading is the media clock itself, which only runs backwards on a seek.
+function armLeadInAt(tickOptions: () => TickOptions) {
+  const document = new FakeDocument();
+  const engine = createAnimationEngineInstance(
+    asDocument(document),
+    asWindow(new FakeWindow(PANEL_STYLE)),
+    new FakeHost(undefined, document)
+  );
+  setLyrics(engine, asElement<HTMLElement>(document.createElement("div")), LEAD_IN_LYRICS, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  placeLines(engine);
+  const [, line] = getRenderedLines(engine);
+  for (let tenths = 30; tenths <= 43; tenths++) tickView(engine, tenths / 10, resolveTickOptions(tickOptions()));
+  return { engine, armed: [line, ...line.parts].flatMap(part => part.animations) };
+}
+
+const shortLoop = armLeadInAt(newTickOptions);
+tickView(shortLoop.engine, 4.1, resolveTickOptions(newTickOptions()));
+assert.ok(
+  shortLoop.armed.length > 0 && shortLoop.armed.every(animation => asFakeAnimation(animation).cancelled),
+  "regression: Given a line set up for its lead-in and no player snapshot, When a short loop steps playback back by less than the jump threshold, Then the animations set up against the old clock are cancelled"
+);
+shortLoop.engine.destroy();
+
+const snapshotTickOptions = (): TickOptions => ({ ...newTickOptions(), eventCreationTime: Date.now() });
+const snapshotCorrection = armLeadInAt(snapshotTickOptions);
+tickView(snapshotCorrection.engine, 4.1, resolveTickOptions(snapshotTickOptions()));
+assert.ok(
+  snapshotCorrection.armed.length > 0 &&
+    snapshotCorrection.armed.every(animation => !asFakeAnimation(animation).cancelled),
+  "Given a host that sends player snapshots, When a snapshot pulls its extrapolated clock back by less than the jump threshold, Then the lines set up for their lead-in keep running"
+);
+snapshotCorrection.engine.destroy();
+
 // -- The "no lyrics" message is not unsynced lyrics --------------------------------------------
 // Its own instance, so the pending frame the positive control leaves behind cannot reach the
 // destroy assertions below.
