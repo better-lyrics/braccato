@@ -57,6 +57,18 @@ describe("aligner", () => {
 			expect(romajiToHiragana("devil")).toBe("でびる");
 			expect(romajiToHiragana("heart")).toBe("はーと");
 		});
+
+		it("handles Hepburn syllabic m before b, p, m", () => {
+			expect(romajiToHiragana("shimbun")).toBe("しんぶん");
+			expect(romajiToHiragana("kampai")).toBe("かんぱい");
+			expect(romajiToHiragana("sempai")).toBe("せんぱい");
+		});
+
+		it("preserves mimetic and native nya sequences", () => {
+			expect(romajiToHiragana("gunyagunya")).toBe("ぐにゃぐにゃ");
+			expect(romajiToHiragana("munyamunya")).toBe("むにゃむにゃ");
+			expect(romajiToHiragana("honyarara")).toBe("ほにゃらら");
+		});
 	});
 
 	describe("alignWordWithReading", () => {
@@ -84,6 +96,20 @@ describe("aligner", () => {
 		it("preserves jukujikun readings as a single unit", () => {
 			const segments = alignWordWithReading("今日", "kyou");
 			expect(segments).toEqual([{ text: "今日", ruby: "きょう" }]);
+		});
+
+		it("splits long-vowel 2-kanji compounds without dictionary entry", () => {
+			const segments = alignWordWithReading("感情", "kanjou");
+			expect(segments).toEqual([
+				{ text: "感", ruby: "かん" },
+				{ text: "情", ruby: "じょう" },
+			]);
+
+			const fuuSegments = alignWordWithReading("風雨", "fuuu");
+			expect(fuuSegments).toEqual([
+				{ text: "風", ruby: "ふう" },
+				{ text: "雨", ruby: "う" },
+			]);
 		});
 	});
 
@@ -147,6 +173,14 @@ describe("aligner", () => {
 			const segments = alignLineByKanaAnchors(text, implausibleReading);
 			expect(segments).toEqual([{ text: "世界" }]);
 		});
+
+		it("does not match chōonpu ー as a particle anchor", () => {
+			const text = "ルールを守る";
+			const reading = "るーるをまもる";
+			const segments = alignLineByKanaAnchors(text, reading);
+			const mamoruSeg = segments.find((s) => s.text === "守");
+			expect(mamoruSeg).toEqual({ text: "守", ruby: "まも" });
+		});
 	});
 
 	describe("alignLineParts", () => {
@@ -188,10 +222,38 @@ describe("aligner", () => {
 			expect(result[1]).toEqual([{ text: "は", ruby: undefined }]);
 		});
 
+		it("calculates timing offset against first vocal part instead of leading punctuation", () => {
+			const parts = [
+				{ words: "「", startTimeMs: 0, durationMs: 100 },
+				{ words: "君", startTimeMs: 1000, durationMs: 500 },
+				{ words: "」", startTimeMs: 1500, durationMs: 100 },
+			];
+			const timedRom = [{ words: "kimi", startTimeMs: 1100, durationMs: 500 }];
+			const result = alignLineParts(parts, timedRom);
+			expect(result[1]).toEqual([{ text: "君", ruby: "きみ" }]);
+		});
+
+		it("preserves valid timed alignments when global line alignment fails", () => {
+			// Suppose we have a 2-part line where part 0 has valid timed rom and part 1 has something that causes global failure
+			const parts = [
+				{ words: "君", startTimeMs: 1000, durationMs: 500 },
+				{ words: "の瞳", startTimeMs: 1500, durationMs: 500 },
+			];
+			const timedRom = [
+				{ words: "kimi", startTimeMs: 1000, durationMs: 500 },
+				{ words: "nohitomi", startTimeMs: 1500, durationMs: 500 },
+			];
+			const result = alignLineParts(parts, timedRom);
+			expect(result[0]).toEqual([{ text: "君", ruby: "きみ" }]);
+			expect(result[1]).toEqual([{ text: "の" }, { text: "瞳", ruby: "ひとみ" }]);
+		});
+
 		it("rejects implausible ruby assignments", () => {
 			expect(isPlausibleRuby("空", "そら")).toBe(true);
 			expect(isPlausibleRuby("空", "あいうえおかきくけこ")).toBe(false);
 			expect(isPlausibleRuby("空", "")).toBe(false);
+			expect(isPlausibleRuby("100年", "ひゃくねん")).toBe(true);
+			expect(isPlausibleRuby("1人", "ひとり")).toBe(true);
 		});
 	});
 });
