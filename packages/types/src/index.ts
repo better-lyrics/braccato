@@ -37,3 +37,8 @@ export interface Lyric {
 // unambiguously beside a provider's sync quality ("syllable" | "word" | "line" | "unsynced"), which
 // is a different axis measured in the same vocabulary.
 export type LyricSyncType = "richsync" | "synced" | "none";
+
+export interface RubySegment {
+	text: string;
+	ruby?: string;
+}

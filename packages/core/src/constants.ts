@@ -48,6 +48,8 @@ export const HIGHLIGHT_RUN_CLASS = "blyrics-highlight-run" as const;
 export const LINE_SYNCED_WORD_CLASS = "blyrics-line-synced-word" as const;
 export const BIDI_RUN_CLASS = "blyrics-bidi-run" as const;
 export const BIDI_SENSITIVE_CLASS = "blyrics-bidi-sensitive" as const;
+export const RUBY_CLASS = "blyrics-ruby" as const;
+export const RT_CLASS = "blyrics-rt" as const;
 
 // -- Theme --------------------------------------------
 
