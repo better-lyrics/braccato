@@ -169,7 +169,8 @@ function newIntersectionObserverClass(created: IntersectionObserverRecord[]) {
  * @param styleValues - What `getPropertyValue` answers, which is the theme this window's document is
  *   carrying. Anything left out reads as a document with no such declaration.
  * @param options - `intersectionObserver` opts the window into offering one, which the module
- *   feature-detects to decide whether to cull off-screen lines.
+ *   feature-detects to decide whether to cull off-screen lines. `transitionDuration` answers the line
+ *   scroll duration probe per element, which is how a theme's staggered durations reach the planner.
  */
 export class FakeWindow {
   readonly mediaQueryLists = new Map<string, FakeMediaQueryList>();
@@ -195,11 +196,13 @@ export class FakeWindow {
   readonly requestedFrames: FrameRequestCallback[] = [];
   readonly pendingFrames = new Map<number, FrameRequestCallback>();
   readonly cancelledFrames: number[] = [];
+  private readonly transitionDuration?: (element: FakeNode) => string;
 
   constructor(
     readonly styleValues: Record<string, string> = {},
-    options: { intersectionObserver?: boolean } = {}
+    options: { intersectionObserver?: boolean; transitionDuration?: (element: FakeNode) => string } = {}
   ) {
+    this.transitionDuration = options.transitionDuration;
     if (options.intersectionObserver) {
       this.IntersectionObserver = newIntersectionObserverClass(this.intersectionObservers);
     }
@@ -249,7 +252,7 @@ export class FakeWindow {
       transform: "none",
       // The probes the line scroll planner writes and reads back. Answering nothing leaves it on
       // the engine's own defaults, which is what a document carrying no theme resolves to.
-      transitionDuration: "",
+      transitionDuration: this.transitionDuration?.(element) ?? "",
       transitionTimingFunction: "",
       translate: "",
       getPropertyValue: (property: string): string => {
