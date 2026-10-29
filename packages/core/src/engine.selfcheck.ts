@@ -1391,9 +1391,7 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
 
 // -- Line scroll stagger --------------------------------------------
 
-// A leading line slower than the one behind it closes the gap between them by the scroll distance
-// times their progress difference, so on a far jump the theme's stagger piles the lines on top of
-// each other. A natural advance keeps the stagger exactly; anything else keeps it one step's worth.
+// A natural advance keeps the theme's stagger exactly; any other scroll keeps one step's worth of it.
 {
   const STEP_PX = 80;
   const GAP_INDEX = 12;
@@ -1412,27 +1410,32 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
         )}ms`,
     }
   );
+  const mountView = (engine: AnimationEngineInstance) => {
+    setLyrics(
+      engine,
+      asElement<HTMLElement>(document.createElement("div")),
+      Array.from({ length: 24 }, (_, index) => ({
+        startTimeMs: 1000 + index * 400,
+        durationMs: 400,
+        words: `L${index}`,
+      })),
+      { loaderVisible: false, noLyrics: false }
+    );
+    const lines = getRenderedLines(engine);
+    lines.forEach((line, index) => {
+      line.position = 1000 + index * STEP_PX + (index >= GAP_INDEX ? GAP_PX : 0);
+      line.height = LINE_HEIGHT_PX;
+      Object.defineProperty(line.lyricElement, "isConnected", { value: true });
+    });
+    return lines;
+  };
   const host = new FakeHost();
-  const mount = document.createElement("div");
-  const engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
-  setLyrics(
-    engine,
-    asElement<HTMLElement>(mount),
-    Array.from({ length: 24 }, (_, index) => ({
-      startTimeMs: 1000 + index * 400,
-      durationMs: 400,
-      words: `L${index}`,
-    })),
-    { loaderVisible: false, noLyrics: false }
-  );
-  const lines = getRenderedLines(engine);
-  lines.forEach((line, index) => {
-    line.position = 1000 + index * STEP_PX + (index >= GAP_INDEX ? GAP_PX : 0);
-    line.height = LINE_HEIGHT_PX;
-    Object.defineProperty(line.lyricElement, "isConnected", { value: true });
-  });
+  let engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
+  let lines = mountView(engine);
+  let lastTickTime = 0;
 
   const scroll = (time: number) => {
+    lastTickTime = time;
     const before = new Set(engine.lineScrollAnimations);
     const fromScrollTop = host.scrollElement.scrollTop;
     assert.equal(tickView(engine, time, resolveTickOptions(newTickOptions())), "ok");
@@ -1455,6 +1458,10 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   const assertStaggerCappedAtOneStep = (result: ReturnType<typeof scroll>, message: string) => {
     assert.ok(Math.abs(result.deltaPx) > 5 * STEP_PX, `${message}: the scroll is a far one (${result.deltaPx}px)`);
     assert.ok(result.scrolled.length > 0, `${message}: the lines animate`);
+    assert.ok(
+      result.scrolled.some(({ durationMs }) => Math.abs(durationMs - ACTIVE_DURATION_MS) > 1e-6),
+      `${message}: some stagger is kept`
+    );
     for (const { durationMs, themedMs } of result.scrolled) {
       const allowedMs = (Math.abs(themedMs - ACTIVE_DURATION_MS) * STEP_PX) / Math.abs(result.deltaPx);
       assert.ok(
@@ -1466,7 +1473,11 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
 
   let naturalScrolls = 0;
   let farNaturalScrolls = 0;
-  for (let time = 0.8; time <= 9.6; time += 0.2) {
+  assertStaggerCappedAtOneStep(
+    scroll(1.0),
+    "Given lyrics opened at their start, Then the first scroll does not advance naturally"
+  );
+  for (let time = 1.2; time <= 9.6; time += 0.2) {
     const result = scroll(time);
     if (result.scrolled.length === 0) continue;
     naturalScrolls++;
@@ -1479,7 +1490,7 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
       );
     }
   }
-  assert.ok(naturalScrolls > 10, "The natural advances actually scroll");
+  assert.ok(naturalScrolls >= 10, `The natural advances actually scroll (${naturalScrolls})`);
   assert.ok(farNaturalScrolls > 0, "Given a natural advance across a long gap, Then its stagger is kept too");
 
   engine.skipScrolls = 0;
@@ -1504,6 +1515,21 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
     swallowedReturn,
     "Given the view moved by a scroll the engine swallowed, Then the next line does not advance naturally"
   );
+
+  const firstScroll = (message: string) => {
+    host.scrollElement.scrollTop = 0;
+    let result = scroll(lastTickTime + 0.02);
+    for (let frame = 0; result.scrolled.length === 0 && frame < 10; frame++) result = scroll(lastTickTime + 0.02);
+    assertStaggerCappedAtOneStep(result, message);
+  };
+  clearLyrics(engine);
+  lines = mountView(engine);
+  firstScroll("Given lyrics reloaded mid-song, Then their first scroll does not advance naturally");
+  engine.destroy();
+
+  engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
+  lines = mountView(engine);
+  firstScroll("regression: Given lyrics opened mid-song, Then their first scroll does not advance naturally");
   engine.destroy();
 }
 

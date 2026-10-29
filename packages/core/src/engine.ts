@@ -288,7 +288,7 @@ export function createAnimationEngineInstance(
     skipScrolls: 0,
     skipScrollsDecayTimes: [],
     scrollResumeTime: 0,
-    scrollPos: 0,
+    scrollPos: -1,
     selectedElementIndex: 0,
     wasUserScrolling: false,
     lastScrollElements: [],
@@ -2585,8 +2585,7 @@ function measureTrailingItem(lyricsElement: HTMLElement, className: string): Lin
   return { lyricElement: element, position: bounds.y, height: bounds.height };
 }
 
-// A leading line slower than the one behind it closes their gap by the scroll distance times their
-// progress difference, so a far jump keeps only one step's worth of the stagger.
+// A leading line slower than the one behind closes their gap by distance times progress difference.
 function lineScrollStaggerScale(
   lines: LineScrollItem[],
   activeLineIndex: number,
@@ -2595,8 +2594,10 @@ function lineScrollStaggerScale(
 ): number {
   if (naturalAdvance) return 1;
   const active = lines[activeLineIndex];
-  const neighbour = lines[activeLineIndex - 1] ?? lines[activeLineIndex + 1];
-  const stepPx = neighbour ? Math.abs(active.position - neighbour.position) : active.height;
+  const steps = [lines[activeLineIndex - 1], lines[activeLineIndex + 1]]
+    .filter(neighbour => neighbour !== undefined)
+    .map(neighbour => Math.abs(active.position - neighbour.position));
+  const stepPx = steps.length > 0 ? Math.min(...steps) : active.height;
   return Math.min(1, stepPx / scrollDistancePx);
 }
 
@@ -3900,8 +3901,9 @@ export function tickView(
       }
 
       const timeUntilUpcomingScrollMs = (lastActiveLyric.time - lyricScrollTime) * 1000;
-      // Only a scroll from where the engine left the view keeps the theme's full stagger.
-      const naturalAdvance = !timeJumped && !engine.wasUserScrolling && Math.abs(scrollTop - engine.scrollPos) <= 2;
+      // Only a scroll from where the engine itself left the view keeps the theme's full stagger.
+      const naturalAdvance =
+        !timeJumped && !engine.wasUserScrolling && engine.scrollPos >= 0 && Math.abs(scrollTop - engine.scrollPos) <= 2;
       if (
         smoothScroll &&
         animationConfig.enabled.scroll &&
