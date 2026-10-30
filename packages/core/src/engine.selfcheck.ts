@@ -929,6 +929,50 @@ assert.ok(
 );
 snapshotCorrection.engine.destroy();
 
+// A host scrubbing while paused moves the clock a few milliseconds a tick, far under the jump
+// threshold, and every one of those ticks is still a seek.
+const pausedTickOptions = (): TickOptions => ({ ...newTickOptions(), isPlaying: false });
+const scrubDocument = new FakeDocument();
+const scrubEngine = createAnimationEngineInstance(
+  asDocument(scrubDocument),
+  asWindow(new FakeWindow(PANEL_STYLE)),
+  new FakeHost(undefined, scrubDocument)
+);
+setLyrics(scrubEngine, asElement<HTMLElement>(scrubDocument.createElement("div")), LEAD_IN_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+placeLines(scrubEngine);
+const [scrubLine] = getRenderedLines(scrubEngine);
+const scrubWordAnimations = () => scrubLine.parts.flatMap(part => part.animations);
+
+tickView(scrubEngine, 3.2, resolveTickOptions(pausedTickOptions()));
+const seatedAtFirstPosition = scrubWordAnimations();
+tickView(scrubEngine, 3.2, resolveTickOptions(pausedTickOptions()));
+assert.ok(
+  seatedAtFirstPosition.length > 0 &&
+    seatedAtFirstPosition.every(animation => !asFakeAnimation(animation).cancelled) &&
+    scrubWordAnimations().every(animation => seatedAtFirstPosition.includes(animation)),
+  "Given a paused line, When a tick lands at the same time, Then its animations are left alone"
+);
+
+tickView(scrubEngine, 3.3, resolveTickOptions(pausedTickOptions()));
+assert.ok(
+  seatedAtFirstPosition.every(animation => asFakeAnimation(animation).cancelled) &&
+    scrubWordAnimations().length > 0 &&
+    scrubWordAnimations().every(animation => !seatedAtFirstPosition.includes(animation)),
+  "regression: Given a paused line, When the clock moves inside it by less than the jump threshold, Then its animations are set up again at the new time"
+);
+
+const seatedBeforeStepBack = scrubWordAnimations();
+tickView(scrubEngine, 3.1, resolveTickOptions(pausedTickOptions()));
+tickView(scrubEngine, 2.9, resolveTickOptions(pausedTickOptions()));
+assert.ok(
+  seatedBeforeStepBack.every(animation => asFakeAnimation(animation).cancelled) && scrubWordAnimations().length === 0,
+  "regression: Given a paused line, When the clock steps back before it by less than the jump threshold, Then its words are no longer highlighted"
+);
+scrubEngine.destroy();
+
 // -- The "no lyrics" message is not unsynced lyrics --------------------------------------------
 // Its own instance, so the pending frame the positive control leaves behind cannot reach the
 // destroy assertions below.
