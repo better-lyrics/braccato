@@ -65,6 +65,12 @@ export interface SetLyricsOptions {
   noLyrics: boolean;
   /** Who wrote the song, shown after the last line. */
   songwriters?: readonly string[];
+  /**
+   * Which song these lyrics are for. Lyrics given with the key the view on screen was given are
+   * swapped into it, so lines the two share stay as they were; without a key, or with another one,
+   * the view is built anew.
+   */
+  songKey?: string;
 }
 
 function buildInstrumentalLine(doc: Document, lyricElement: HTMLDivElement, lyrics: Lyric[], lineIndex: number): void {
@@ -148,7 +154,21 @@ function decorationKey(item: Lyric): string {
 }
 
 /** What the lines on screen were built against: the mount, the settings and whether they carry time. */
-const builtViews = new WeakMap<AnimationEngineInstance, { mount: HTMLElement; key: string }>();
+const builtViews = new WeakMap<AnimationEngineInstance, { mount: HTMLElement; key: string; songKey?: string }>();
+
+/** A line's own timing as built, so a line whose times a consumer moved since is not kept as it is. */
+const builtTimings = new WeakMap<LineData, number[]>();
+
+function lineTimings(line: LineData, parts: readonly LineData["parts"][number][] = line.parts): number[] {
+  return [line.time, line.duration, ...parts.flatMap(part => [part.time, part.duration])];
+}
+
+function timingsUnchanged(line: LineData): boolean {
+  const built = builtTimings.get(line);
+  if (built === undefined) return false;
+  const now = lineTimings(line, line.parts.slice(0, (built.length - 2) / 2));
+  return now.length === built.length && now.every((value, index) => value === built[index]);
+}
 
 function buildContext(engine: AnimationEngineInstance, lyrics: Lyric[], options: SetLyricsOptions): BuildContext {
   return {
@@ -211,6 +231,7 @@ function buildLine(doc: Document, lyrics: Lyric[], lineIndex: number, context: B
 
   lineSignatures.set(line, lineSignature(lyrics, lineIndex));
   decorationKeys.set(line, decorationKey(lyricItem));
+  builtTimings.set(line, lineTimings(line));
   return line;
 }
 
@@ -294,7 +315,7 @@ export function setLyrics(
 
   engine.lines = lines;
   engine.lyricsContainer = container;
-  builtViews.set(engine, { mount, key: viewKey(context) });
+  builtViews.set(engine, { mount, key: viewKey(context), songKey: options.songKey });
   refreshInstrumentalImages(container, engine.window);
   // Measured last: the container is in the document, filled, and carrying the attributes CSS
   // sizes it by.
@@ -363,6 +384,19 @@ function matchLines(previous: readonly string[], next: readonly string[]): (numb
 const MATCH_SEARCH_LIMIT = 250_000;
 
 /**
+ * Takes the first old line sung over the same time as a new one, so a line rebuilt for a retiming or
+ * a richer source takes over its predecessor's place, and an unrelated line never inherits a sung state.
+ */
+function takeOverlapping(candidates: LineData[], line: LineData): LineData | undefined {
+  const end = line.time + line.duration;
+  const index = candidates.findIndex(old => {
+    const oldEnd = old.time + old.duration;
+    return old.time === line.time || (old.time < end && line.time < oldEnd);
+  });
+  return index === -1 ? undefined : candidates.splice(index, 1)[0];
+}
+
+/**
  * Swaps these lyrics into the view already on screen, rebuilding only the lines that differ, and
  * answers where each line was before so the caller can carry the view across the change. Answers
  * null without touching anything when the view cannot be swapped, and the caller builds it whole.
@@ -381,6 +415,8 @@ export function swapLyrics(
   if (container === null || built === undefined || built.mount !== mount || container.parentElement !== mount) {
     return null;
   }
+  // Another song, or one nobody named, starts from nothing rather than inheriting this one's place.
+  if (options.songKey === undefined || options.songKey !== built.songKey) return null;
   // Lines a consumer took off the screen without dropping the song are not there to keep.
   const previousLines = engine.lines;
   // An empty song is a fresh start rather than a song to carry anything into.
@@ -390,7 +426,10 @@ export function swapLyrics(
   if (built.key !== viewKey(context)) return null;
 
   const doc = engine.document;
-  const previousSignatures = previousLines.map(line => lineSignatures.get(line) ?? "");
+  // A line whose times a consumer moved after it was built is built again, so the move is not applied twice.
+  const previousSignatures = previousLines.map(line =>
+    timingsUnchanged(line) ? (lineSignatures.get(line) ?? "") : `\u0000moved:${lineSignatures.get(line)}`
+  );
   const nextSignatures = lyrics.map((_, lineIndex) => lineSignature(lyrics, lineIndex));
   // Whatever a consumer put after the lines and the credits, such as a footer, stays after them.
   const children = Array.from(container.childNodes);
@@ -416,7 +455,7 @@ export function swapLyrics(
   for (const [lineIndex, match] of matches.entries()) {
     if (match !== null) {
       const line = previousLines[match];
-      collectUnmatchedUntil(match + 1);
+      previousCursor = match + 1;
       unmatchedOld = [];
       kept.add(line);
       line.lyricElement.dataset.lineNumber = String(lineIndex);
@@ -430,7 +469,7 @@ export function swapLyrics(
       collectUnmatchedUntil(nextMatch ?? previousLines.length);
     }
     const line = buildLine(doc, lyrics, lineIndex, context);
-    const standsFor = unmatchedOld.shift();
+    const standsFor = takeOverlapping(unmatchedOld, line);
     if (standsFor !== undefined) {
       replaced.set(line, standsFor);
       positions.set(line, {

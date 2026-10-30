@@ -83,9 +83,11 @@ view.lyrics = parser.parse(text, player.duration * 1000);
 ### Replacing lyrics
 
 Write a new array whenever the song's lyrics change, as often as they change: a better source
-arriving for the song already playing, or an editor handing over every edit. Lyrics given to a view
-that already shows a song are swapped into it rather than built over it, so the only thing that
-changes on screen is what changed in the lyrics.
+arriving for the song already playing, or an editor handing over every edit. Give each update the
+same `songKey` (a `setLyrics` option, or a field of the element's `lyricsOptions`), and lyrics for the
+song already on screen are swapped into it rather than built over it, so the only thing that changes
+on screen is what changed in the lyrics. Lyrics with no `songKey`, or another song's, are built anew,
+so a new song starts at the top with nothing of the last one's scroll.
 
 - A line that builds the same as one already shown, by its words, timing, parts, singer, translation
   and romanization, keeps that element and the animations running on it. The arrays do not need to be the same objects,
@@ -105,9 +107,12 @@ changes on screen is what changed in the lyrics.
 - A swap that lands while the lines are still scrolling to the last line leaves the kept lines to
   finish that scroll, and the new ones start at rest.
 
-Some changes rebuild the whole view: a different mount, a theme setting that changes how lines are
-built, lyrics that gain or lose their timing, and anything written after `clear()` or an empty array.
-To start a song from nothing on purpose, write an empty array first.
+Some changes rebuild the whole view: another `songKey` or none, a different mount, a theme setting
+that changes how lines are built, lyrics that gain or lose their timing, and anything written after
+`clear()` or an empty array. A line whose times you changed after it was built, such as with an
+offset you apply after every build, is built again from the lyrics rather than kept, so the offset is
+not applied twice. A line built in place of another only takes over its place and sung state when
+the two are sung over the same time.
 
 ## Properties
 

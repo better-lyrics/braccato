@@ -319,9 +319,10 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
         loaderVisible: options?.loaderVisible ?? false,
         noLyrics: options?.noLyrics ?? false,
         songwriters: options?.songwriters,
+        songKey: options?.songKey,
       };
-      // A song given to a view already showing one is swapped in, so whatever the two share stays
-      // exactly as it was on screen. Read before the swap: the scroll is where the reader was.
+      // Lyrics for the song already on screen are swapped in, so whatever the two share stays exactly
+      // as it was. Read before the swap: the scroll is where the reader was.
       const scrollTopBefore = host.getScrollElement()?.scrollTop ?? 0;
       const swapped = swapLyricsView(engine, nextMount, lyrics, viewOptions);
       if (swapped === null) {

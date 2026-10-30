@@ -135,8 +135,9 @@ export interface LyricsRendererOptions {
  */
 export interface LyricsRenderer {
   /**
-   * Replaces whatever this renderer last built. Every option has a default, so a consumer with an
-   * opinion about only one of them says only that one. The mount rides along with the CSS flags
+   * Replaces whatever this renderer last built, or, given the `songKey` of the song on screen, swaps
+   * these lyrics into it so the lines the two share stay as they were. Every option has a default, so a
+   * consumer with an opinion about only one of them says only that one. The mount rides along with the CSS flags
    * rather than taking a parameter of its own: it is an option of this call like the others, and a
    * third parameter would have every caller that only wants to move the mount pass over the two in
    * front of it.

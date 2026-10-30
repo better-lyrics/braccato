@@ -665,7 +665,7 @@ assert.equal(
   "Given a tick that named no player snapshot, When the view is asked to render that snapshot again, Then it is one that says nothing about when it was sampled"
 );
 
-// -- A second song replaces the first's lines, rather than joining them ----------------------------
+// -- A second song replaces the first, rather than joining it ----------------------------------
 
 const firstSongLines = panelRenderer.lines;
 const firstSongAnimations = startedAnimations(firstSongLines);
@@ -684,16 +684,10 @@ assert.equal(
   "Given a second song built into the same mount, When the mount is read, Then it holds the new container alone"
 );
 
-// Swapped into the view already on screen: the container stays, and with it the scroll it sits in.
-assert.equal(
+assert.notEqual(
   panelRenderer.container,
   firstSongContainer,
-  "Given a second song in the same mount, When the view is asked, Then it swapped the song into the container already there"
-);
-
-assert.ok(
-  firstSongLines.every(line => !panelRenderer.lines.includes(line) && line.lyricElement.parentNode === null),
-  "Given a second song that shares no line with the first, When the view is read, Then every one of the first song's lines left it"
+  "Given a second song, When the view is asked, Then it holds the container it built for that song"
 );
 
 assert.deepEqual(
@@ -710,8 +704,8 @@ assert.deepEqual(
 
 assert.equal(
   panelObserver.disconnected,
-  false,
-  "Given a second song swapped into the same container, When the observers are read, Then the one watching it goes on watching"
+  true,
+  "Given a second song, When the observers are read, Then the one watching the container the first song built stopped"
 );
 
 // -- Clearing takes the container off the screen with it ----------------------------------------

@@ -674,24 +674,24 @@ export function settleSwappedLines(
 
   const followedWas = followed === undefined ? undefined : before.get(followed)?.position;
   // A line that has not been measured, because the view is not on screen, has nowhere to hold still.
-  if (followed !== undefined && followedWas !== undefined && followed.position >= 0) {
+  if (followed !== undefined && followedWas !== undefined && followedWas >= 0 && followed.position >= 0) {
     const moved = followed.position - followedWas;
-    if (Math.abs(moved) >= DECORATION_MIN_SHIFT_PX) {
-      scrollElement.scrollTop = scrollTopBefore + moved;
-      // The engine moved the scroll, and the event that follows is not the reader's.
-      engine.skipScrolls += 1;
-      engine.skipScrollsDecayTimes.push(Date.now() + 2000);
-    }
+    if (Math.abs(moved) >= DECORATION_MIN_SHIFT_PX) scrollElement.scrollTop = scrollTopBefore + moved;
   }
-  // Read back rather than assumed: a song that got shorter may have had the browser clamp the scroll
-  // before anything here wrote it.
+  // Read back rather than assumed: the browser may have clamped the write, or clamped the scroll for
+  // a song that got shorter before anything here wrote it. Either way the event that follows is not
+  // the reader's, and a write the browser clamped to nothing sends none.
   const shift = scrollElement.scrollTop - scrollTopBefore;
-  if (shift !== 0 && engine.scrollPos >= 0) engine.scrollPos += shift;
+  if (shift !== 0) {
+    engine.skipScrolls += 1;
+    engine.skipScrollsDecayTimes.push(Date.now() + 2000);
+    if (engine.scrollPos >= 0) engine.scrollPos += shift;
+  }
 
   if (!decorationSlideAllowed(engine, container)) return;
   for (const line of engine.lines) {
     const was = before.get(line);
-    if (was === undefined || line.position < 0) continue;
+    if (was === undefined || was.position < 0 || line.position < 0) continue;
     // From where it is on screen, which a line scroll still running carries away from its place.
     const onScreenShift = was.position + was.offset - line.position + shift;
     if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, onScreenShift);
@@ -717,6 +717,20 @@ function resetStage(engine: AnimationEngineInstance): void {
     engine.stageBox = null;
     engine.host.onStageLayout?.(null);
   }
+}
+
+/**
+ * Lets go of a part moving to another line or leaving the view: its animations stop, back to the pool
+ * they came from, and it shows no sung state until a line that is being sung sets it up again.
+ */
+export function releasePart(part: PartData): void {
+  resetPartAnimations(part);
+  togglePartClass(part, PAUSED_CLASS, false);
+  togglePartClass(part, ANIMATING_CLASS, false);
+  part.wordState = WORD_STATE_UPCOMING;
+  part.lyricElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
+  part.highlightElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
+  part.imageLayers?.highlight?.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
 }
 
 function resetPartAnimations(part: AnimationData): void {

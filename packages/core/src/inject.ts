@@ -12,6 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
+import { releasePart } from "./engine";
 import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
@@ -610,8 +611,7 @@ function rearmLineAnimations(lineData: LineData): void {
 function removeDecoration(lineData: LineData, decoration: HTMLElement): void {
   lineData.parts = lineData.parts.filter(part => {
     if (!decoration.contains(part.lyricElement)) return true;
-    for (const animation of part.animations) animation.cancel();
-    part.animations = [];
+    releasePart(part);
     return false;
   });
   decoration.remove();
@@ -643,7 +643,7 @@ export function removeTranslation(lyricElement: HTMLElement): boolean {
 /**
  * Moves the translation and romanization hung on one line onto the line built in its place, with any
  * timed parts they brought, so a line rebuilt for its timing keeps what the consumer hung on it. The
- * parts' animations stop; the new line sets them up again with its own.
+ * parts are let go of whatever the old line was showing; the new line sets them up again with its own.
  */
 export function moveDecorations(from: LineData, to: LineData): void {
   const decorations = Array.from(from.lyricElement.childNodes).filter(
@@ -654,8 +654,7 @@ export function moveDecorations(from: LineData, to: LineData): void {
   for (const decoration of decorations) {
     from.parts = from.parts.filter(part => {
       if (!decoration.contains(part.lyricElement)) return true;
-      for (const animation of part.animations) animation.cancel();
-      part.animations = [];
+      releasePart(part);
       to.parts.push(part);
       return false;
     });

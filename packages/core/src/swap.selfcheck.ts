@@ -13,8 +13,8 @@ import { asDocument, asElement, asFakeAnimation, asFakeNode, FakeDocument, type 
 import { asWindow, FakeWindow, installFakeDOMRect } from "./selfcheck/fakeWindow";
 import type { Lyric, LyricsRenderer } from "./types";
 
-// A song given to a view that already shows one is swapped into it. Everything here is about what a
-// reader would see across that swap: the lines both songs share, and where the view is, stay put.
+// Lyrics given with the key of the song a view already shows are swapped into it. Everything here is
+// about what a reader would see across that swap: the lines both share, and where the view is, stay put.
 
 installFakeDOMRect();
 
@@ -36,6 +36,7 @@ function song(...words: string[]): Lyric[] {
 }
 
 const FIRST_SONG = ["First line", "Second line", "Third line", "Fourth line"];
+const SONG_KEY = "song";
 
 interface Fixture {
   renderer: LyricsRenderer;
@@ -66,6 +67,9 @@ function newFixture(layout: "scroll" | "stage" = "scroll"): Fixture {
       log: () => {},
     },
   });
+  // Every update here is to the same song unless a test names another.
+  const setLyrics = renderer.setLyrics.bind(renderer);
+  renderer.setLyrics = (lyrics, options) => setLyrics(lyrics, { songKey: SONG_KEY, ...options });
   return { renderer, scrollContainer, mount, document, resumeAffordanceCalls };
 }
 
@@ -576,6 +580,75 @@ function playingView(): Fixture {
     replacement.lyricElement.dataset.stageRole,
     role,
     "Given a stage whose sung line changed, When the new line is read, Then it took over the role of the line it replaced"
+  );
+}
+
+// -- Another song starts from nothing --------------------------------------------
+
+{
+  const { renderer } = playingView();
+  const container = renderer.container;
+  const lines = renderer.lines;
+
+  renderer.setLyrics(song("Another song", "Its second line"), { songKey: "another song" });
+  assert.notEqual(
+    renderer.container,
+    container,
+    "Given lyrics for another song, When the view is asked, Then it built a new container rather than swapping"
+  );
+  assert.ok(
+    lines.every(line => !renderer.lines.includes(line)),
+    "Given lyrics for another song, When the view is read, Then none of the first song's lines carried over"
+  );
+
+  const { renderer: unnamed } = playingView();
+  const unnamedContainer = unnamed.container;
+  unnamed.setLyrics(song(...FIRST_SONG), { songKey: undefined });
+  assert.notEqual(
+    unnamed.container,
+    unnamedContainer,
+    "Given lyrics with no song key, When the view is asked, Then it was built anew, as before swaps existed"
+  );
+}
+
+// -- A rewritten line elsewhere in the song inherits nothing --------------------------------------------
+
+{
+  const { renderer } = playingView();
+  const sung = renderer.lines[1];
+
+  // The sung line drops out, and a line sung at another time takes its place in the list.
+  renderer.setLyrics([...song("First line"), { startTimeMs: 15000, durationMs: 5000, words: "Late new line" }]);
+
+  const unrelated = renderer.lines[1];
+  assert.notEqual(unrelated, sung, "Given a sung line rewritten away, When the view is asked, Then it is gone");
+  assert.ok(
+    !unrelated.isSelected && !unrelated.lyricElement.classList.contains(CURRENT_LYRICS_CLASS),
+    "Given a new line sung at another time, When it is read, Then it did not inherit the sung state of the line it followed"
+  );
+}
+
+// -- A line a consumer retimed is built again rather than retimed twice --------------------------------------------
+
+{
+  const { renderer } = playingView();
+  const [first, second] = renderer.lines;
+  // What a consumer applying an offset after each build does to the lines it was handed.
+  second.time += 1;
+  second.lyricElement.dataset.time = String(second.time);
+
+  renderer.setLyrics(song(...FIRST_SONG));
+
+  assert.equal(renderer.lines[0], first, "Given an untouched line, When the same song is swapped in, Then it is kept");
+  assert.notEqual(
+    renderer.lines[1],
+    second,
+    "Given a line a consumer retimed, When the same song is swapped in, Then it is built again from the lyrics"
+  );
+  assert.equal(
+    renderer.lines[1].time,
+    5,
+    "Given a rebuilt line, When its time is read, Then it is the lyrics' own, ready for the consumer's offset once"
   );
 }
 
