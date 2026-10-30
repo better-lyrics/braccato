@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.16.14
+
+### Patch Changes
+
+- d8dfd45: Keep lines from piling on top of each other when the view scrolls far, such as clicking an older line, seeking, opening lyrics mid-song, or returning from a manual scroll. Natural line-to-line advances keep the theme's stagger exactly.
+
 ## 1.16.13
 
 ### Patch Changes
