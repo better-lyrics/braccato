@@ -590,6 +590,23 @@ function repeatsLine(lyricElement: HTMLElement, text: string): boolean {
   return mainRun?.textContent != null && isSameText(mainRun.textContent, text);
 }
 
+/**
+ * What each injected decoration was made from. A line a swap kept still carries what was hung on it,
+ * so injecting the same again is nothing to do and injecting something else replaces it.
+ */
+const decorationSources = new WeakMap<HTMLElement, string>();
+
+/** Takes a decoration off its line, along with any timed parts it brought, and stops their animations. */
+function removeDecoration(lineData: LineData, decoration: HTMLElement): void {
+  lineData.parts = lineData.parts.filter(part => {
+    if (!decoration.contains(part.lyricElement)) return true;
+    for (const animation of part.animations) animation.cancel();
+    part.animations = [];
+    return false;
+  });
+  decoration.remove();
+}
+
 export function injectRomanization(
   doc: Document,
   lyricElement: HTMLElement,
@@ -597,7 +614,13 @@ export function injectRomanization(
   text: string,
   timedRomanization: LyricPart[] | null = null
 ) {
-  if (lyricElement.querySelector(`.${ROMANIZED_LYRICS_CLASS}`) || repeatsLine(lyricElement, text)) return;
+  const source = JSON.stringify([text, timedRomanization ?? null]);
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${ROMANIZED_LYRICS_CLASS}`);
+  if (existing !== null) {
+    if (decorationSources.get(existing) === source) return;
+    removeDecoration(lineData, existing);
+  }
+  if (repeatsLine(lyricElement, text)) return;
 
   const romanizedLine = doc.createElement("div");
   romanizedLine.classList.add(ROMANIZED_LYRICS_CLASS, CONTENT_LINE_CLASS);
@@ -611,12 +634,19 @@ export function injectRomanization(
   } else {
     romanizedLine.textContent = text;
   }
+  decorationSources.set(romanizedLine, source);
   const translation = lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`);
   lyricElement.insertBefore(romanizedLine, translation);
 }
 
 export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string, language?: string | null) {
-  if (lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`) || repeatsLine(lyricElement, text)) return;
+  const source = JSON.stringify([text, normalizeLanguage(language)]);
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${TRANSLATED_LYRICS_CLASS}`);
+  if (existing !== null) {
+    if (decorationSources.get(existing) === source) return;
+    existing.remove();
+  }
+  if (repeatsLine(lyricElement, text)) return;
 
   const translatedLine = doc.createElement("div");
   translatedLine.classList.add(TRANSLATED_LYRICS_CLASS, CONTENT_LINE_CLASS);
@@ -624,5 +654,6 @@ export function injectTranslation(doc: Document, lyricElement: HTMLElement, text
   translatedLine.lang = normalizeLanguage(language);
   applyDirection(translatedLine, text);
   translatedLine.textContent = text;
+  decorationSources.set(translatedLine, source);
   lyricElement.appendChild(translatedLine);
 }

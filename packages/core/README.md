@@ -80,6 +80,31 @@ view.lyricsOptions = { songwriters: parser.metadata(text).songwriters };
 view.lyrics = parser.parse(text, player.duration * 1000);
 ```
 
+### Replacing lyrics
+
+Write a new array whenever the song's lyrics change, as often as they change: a better source
+arriving for the song already playing, or an editor handing over every edit. Lyrics given to a view
+that already shows a song are swapped into it rather than built over it, so the only thing that
+changes on screen is what changed in the lyrics.
+
+- A line that builds the same as one already shown, by its words, timing, parts, singer and language,
+  keeps that element and the animations running on it. The arrays do not need to be the same objects,
+  so a consumer that parses its source again on every change loses nothing.
+- Lines that differ are built again in place. A line built where another one stood takes over that
+  line's place in the scroll, and on the stage its role and position, so a retimed line being sung
+  does not fade in again.
+- The scroll stays where it was. When lines above the one being followed grow, shrink, arrive or go,
+  the scroll moves by however far that line moved, so it holds still on screen, and the lines that
+  moved relative to it slide there. A reader who scrolled away stays scrolled away.
+- Translations and romanizations hung on a kept line stay. Injecting the same one again does nothing,
+  and injecting a different one replaces it.
+- A swap that lands while the lines are still scrolling to the last line leaves the kept lines to
+  finish that scroll, and the new ones start at rest.
+
+Some changes rebuild the whole view: a different mount, a theme setting that changes how lines are
+built, lyrics that gain or lose their timing, and anything written after `clear()` or an empty array.
+To start a song from nothing on purpose, write an empty array first.
+
 ## Properties
 
 Every one of these may be written before the element is in a document. The renderer is built when it

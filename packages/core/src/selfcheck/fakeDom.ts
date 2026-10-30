@@ -206,6 +206,13 @@ export class FakeNode {
     return this.generatesBox ? [this.getBoundingClientRect()] : [];
   }
 
+  contains(other: FakeNode | null): boolean {
+    for (let node = other; node !== null; node = node.parentNode) {
+      if (node === this) return true;
+    }
+    return false;
+  }
+
   animate(keyframes?: unknown, options?: KeyframeAnimationOptions): FakeAnimation {
     const animation = new FakeAnimation(options, keyframes);
     this.animations.push(animation);

@@ -508,6 +508,145 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   resetStage(engine);
 }
 
+/**
+ * Hands the engine the lines of a song swapped into the view it already holds. A kept line is the
+ * same record and keeps everything; a dropped line's animations stop and nothing goes on holding it;
+ * a line built in place of one is handed what the engine held for that one, so the scroll does not
+ * see a line it has not met and the stage does not fade in a line that was already up.
+ *
+ * @param lines - The new song's records, kept ones included, in order
+ * @param dropped - Records of the song before that the new one no longer has
+ * @param replaced - Each new record built in place of a dropped one, to the one it replaced
+ */
+export function replaceRenderedLines(
+  engine: AnimationEngineInstance,
+  lines: LineData[],
+  dropped: readonly LineData[],
+  replaced: ReadonlyMap<LineData, LineData>
+): void {
+  const successors = new Map<LineData, LineData>();
+  for (const [line, previous] of replaced) successors.set(previous, line);
+  const droppedElements = new Set(dropped.map(line => line.lyricElement));
+  const carry = (line: LineData): LineData | null =>
+    successors.get(line) ?? (droppedElements.has(line.lyricElement) ? null : line);
+  const carryAll = (from: readonly LineData[]): LineData[] =>
+    from.map(carry).filter((line): line is LineData => line !== null);
+
+  // A planned scroll was planned against lines and places this swap is about to change.
+  dropPendingLineScroll(engine);
+  for (const record of [...engine.lineScrollAnimations]) {
+    if (!droppedElements.has(record.lineElement)) continue;
+    record.animation.cancel();
+    removeLineScrollAnimation(engine, record);
+  }
+  for (const line of dropped) {
+    resetLineAnimationState(line);
+    line.isSelected = false;
+    engine.visibleWillChangeElements.delete(line.lyricElement);
+    engine.culledLineElements.delete(line.lyricElement);
+  }
+
+  engine.lastScrollElements = carryAll(engine.lastScrollElements);
+  engine.lastScrollDebugContext.activeElms = carryAll(engine.lastScrollDebugContext.activeElms);
+  engine.pinnedScrollLine = engine.pinnedScrollLine === null ? null : carry(engine.pinnedScrollLine);
+  engine.lines = lines;
+
+  if (engine.layout === "stage") replaceStageElements(engine, dropped, replaced);
+}
+
+/**
+ * Moves what the stage held for each replaced line onto the line built in its place, and lets go of
+ * every dropped line. A replacement starts exactly where and as visible as the line it replaced, so
+ * placing the stage afterwards only moves it if the new song puts it somewhere else.
+ */
+function replaceStageElements(
+  engine: AnimationEngineInstance,
+  dropped: readonly LineData[],
+  replaced: ReadonlyMap<LineData, LineData>
+): void {
+  for (const [line, previous] of replaced) {
+    const element = line.lyricElement;
+    const role = previous.lyricElement.dataset.stageRole;
+    const y = engine.stageY.get(previous.lyricElement);
+    if (role === undefined || y === undefined) continue;
+    element.dataset.stageRole = role;
+    const visible = previous.lyricElement.dataset.stageVisible !== undefined;
+    if (visible) element.dataset.stageVisible = "";
+    snapStageElement(engine, element, y);
+    engine.stageFades.set(
+      element,
+      element.animate([{ [STAGE_OPACITY_PROPERTY]: isStageRoleVisible(role) ? 1 : 0 }], {
+        duration: 0,
+        fill: "forwards",
+      })
+    );
+  }
+  for (const line of dropped) {
+    const element = line.lyricElement;
+    for (const animations of [engine.stageMoves, engine.stageFades, engine.stageBlurs]) {
+      animations.get(element)?.cancel();
+      animations.delete(element);
+    }
+    engine.stageY.delete(element);
+    engine.stageMetrics.delete(element);
+  }
+  // The roles are planned again against the new lines, even where they come out the same.
+  engine.stageKey = "";
+}
+
+/**
+ * Carries a swapped view across the layout change it caused. The line the reader is following holds
+ * still on screen: the scroll moves by however far that line moved in the container. Every other
+ * line that moved, relative to it, slides from where it was rather than jumping.
+ *
+ * Which line is followed depends on who owns the scroll. While the engine does, it is the line the
+ * last scroll aimed at; while the reader does, it is the first line they could see.
+ *
+ * @param before - Where each line was in the container before the swap and how tall, from `swapLyrics`
+ * @param scrollTopBefore - The scroll position the swap began at
+ */
+export function settleSwappedLines(
+  engine: AnimationEngineInstance,
+  before: ReadonlyMap<LineData, { position: number; height: number }>,
+  scrollTopBefore: number
+): void {
+  const container = engine.lyricsContainer;
+  const scrollElement = engine.host.getScrollElement();
+  if (container === null || scrollElement === null || engine.layout === "stage") return;
+
+  const readerOwnsScroll = engine.scrollResumeTime > Date.now();
+  const followed = readerOwnsScroll
+    ? engine.lines.find(line => {
+        const was = before.get(line);
+        return was !== undefined && was.position + was.height > scrollTopBefore;
+      })
+    : (engine.lastScrollElements.findLast(line => before.has(line)) ??
+      engine.lines.find(line => before.has(line) && line.isScrolled));
+
+  const followedWas = followed === undefined ? undefined : before.get(followed)?.position;
+  if (followed !== undefined && followedWas !== undefined) {
+    const moved = followed.position - followedWas;
+    if (Math.abs(moved) >= DECORATION_MIN_SHIFT_PX) {
+      scrollElement.scrollTop = scrollTopBefore + moved;
+      // The engine moved the scroll, and the event that follows is not the reader's.
+      engine.skipScrolls += 1;
+      engine.skipScrollsDecayTimes.push(Date.now() + 2000);
+    }
+  }
+  // Read back rather than assumed: a song that got shorter may have had the browser clamp the scroll
+  // before anything here wrote it.
+  const shift = scrollElement.scrollTop - scrollTopBefore;
+  if (shift !== 0 && engine.scrollPos >= 0) engine.scrollPos += shift;
+
+  if (!decorationSlideAllowed(engine, container)) return;
+  for (const line of engine.lines) {
+    const was = before.get(line);
+    if (was === undefined) continue;
+    const onScreenShift = was.position - line.position + shift;
+    if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, onScreenShift);
+  }
+}
+
 function resetStage(engine: AnimationEngineInstance): void {
   for (const animation of [
     ...engine.stageMoves.values(),
