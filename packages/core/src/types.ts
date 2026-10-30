@@ -1,6 +1,6 @@
 // The renderer's own contract composes the rest of the module's, so this file reaches back into it.
 // Every one of those imports is type only, so nothing here is part of any bundle's dependency graph.
-import type { Lyric, LyricPart, LyricSyncType } from "@braccato/types";
+import type { Lyric, LyricPart, LyricSyncType, RubySegment } from "@braccato/types";
 import type { AnimationTickStatus } from "./engine";
 import type { LineData } from "./inject";
 import type { StageBox } from "./stage";
@@ -12,7 +12,7 @@ import type { SetLyricsOptions } from "./view";
 // pass them to each other: `@braccato/parsers` produces them and this package renders them, so a
 // copy on each side is a copy that can drift. Re-exported here because this is the file the rest of
 // the module, and every consumer, has always read them from.
-export type { Lyric, LyricPart, LyricSyncType };
+export type { Lyric, LyricPart, LyricSyncType, RubySegment };
 
 // -- Ticking --------------------------------------------
 

@@ -1,7 +1,7 @@
 // Builds what goes inside a lyric line: the main and background content lines, the bidi runs inside
-// them, the word groups and the timed word spans the sweep animates, and the two decorators that
-// hang a translation or a romanization off a line that is already built. `view.ts` builds the line
-// and the container around it.
+// them, the word groups and the timed word spans the sweep animates, and the three decorators that
+// hang a translation, a romanization, or furigana (ruby annotations) off a line that is already built.
+// `view.ts` builds the line and the container around it.
 //
 // The structure emitted here is as much published contract as the names written into it.
 // `constants.ts` says why a class name cannot be renamed; the nesting is under the same rule,
@@ -12,7 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
-import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
+import { alignImageGlowRun, imageHighlights, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
   BACKGROUND_LINE_CLASS,
@@ -27,7 +27,9 @@ import {
   LINE_SYNCED_WORD_CLASS,
   LONG_WORD_GROUP_CLASS,
   ROMANIZED_LYRICS_CLASS,
+  RT_CLASS,
   RTL_CLASS,
+  RUBY_CLASS,
   TRANSLATED_LYRICS_CLASS,
   WORD_CLASS,
   WORD_GROUP_CLASS,
@@ -41,7 +43,7 @@ import {
 import { getSeekTimeFromClick } from "./seek";
 import { isSameText, testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
-import type { Lyric, LyricPart, LyricSyncType } from "./types";
+import type { Lyric, LyricPart, LyricSyncType, RubySegment } from "./types";
 
 export let disableRichsync = registerThemeSetting("blyrics-disable-richsync", false, true);
 let lineSyncedAnimationDelay = registerThemeSetting("blyrics-line-synced-animation-delay", 50, true);
@@ -625,4 +627,135 @@ export function injectTranslation(doc: Document, lyricElement: HTMLElement, text
   applyDirection(translatedLine, text);
   translatedLine.textContent = text;
   lyricElement.appendChild(translatedLine);
+}
+
+export function injectFurigana(
+  doc: Document,
+  lineData: LineData,
+  segments: Record<number, RubySegment[]> | Map<number, RubySegment[]>
+): boolean {
+  if (!lineData.parts || lineData.parts.length === 0) return false;
+
+  let injectedAny = false;
+
+  lineData.parts.forEach((part, partIdx) => {
+    if (part.lyricElement?.dataset.hasFurigana === "true") {
+      return;
+    }
+
+    const partSegments = segments instanceof Map ? segments.get(partIdx) : segments[partIdx];
+    if (!partSegments || !partSegments.some(s => Boolean(s.ruby))) {
+      return;
+    }
+
+    const segText = partSegments.map(s => s.text).join("");
+    const perLetter =
+      Boolean(part.letterElements && part.letterElements.length > 0) ||
+      part.lyricElement.classList.contains("blyrics-word--lettered");
+
+    const buildRubyChildren = (element: HTMLElement, isHighlight: boolean): HTMLElement[] | undefined => {
+      element.replaceChildren();
+      if (perLetter) {
+        const collectedLetters: HTMLElement[] = [];
+        for (const seg of partSegments) {
+          if (seg.ruby) {
+            const letter = doc.createElement("span");
+            letter.classList.add(LETTER_CLASS);
+            const ruby = doc.createElement("ruby");
+            ruby.classList.add(RUBY_CLASS);
+            ruby.appendChild(doc.createTextNode(seg.text));
+            const rt = doc.createElement("rt");
+            rt.classList.add(RT_CLASS);
+            rt.textContent = seg.ruby;
+            ruby.appendChild(rt);
+            letter.appendChild(ruby);
+            element.appendChild(letter);
+            collectedLetters.push(letter);
+          } else {
+            const chars = [...graphemeSegmenter.segment(seg.text)].map(s => s.segment);
+            for (const char of chars) {
+              const letter = doc.createElement("span");
+              letter.classList.add(LETTER_CLASS);
+              letter.textContent = char;
+              element.appendChild(letter);
+              collectedLetters.push(letter);
+            }
+          }
+        }
+        element.style.setProperty("--letters", String(collectedLetters.length));
+        element.style.setProperty("--mask-fade", `${(10 * collectedLetters.length) / (collectedLetters.length + 2)}%`);
+        element.classList.add("blyrics-word--lettered");
+        if (isHighlight) {
+          element.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
+        }
+        return collectedLetters;
+      }
+
+      for (const seg of partSegments) {
+        if (seg.ruby) {
+          const ruby = doc.createElement("ruby");
+          ruby.classList.add(RUBY_CLASS);
+          ruby.appendChild(doc.createTextNode(seg.text));
+          const rt = doc.createElement("rt");
+          rt.classList.add(RT_CLASS);
+          rt.textContent = seg.ruby;
+          ruby.appendChild(rt);
+          element.appendChild(ruby);
+        } else {
+          element.appendChild(doc.createTextNode(seg.text));
+        }
+      }
+      return undefined;
+    };
+
+    if (part.lyricElement) {
+      part.lyricElement.dataset.hasFurigana = "true";
+      part.lyricElement.dataset.content = segText;
+      const newLetters = buildRubyChildren(part.lyricElement, false);
+      if (newLetters) {
+        part.letterElements = newLetters;
+      }
+      injectedAny = true;
+    }
+
+    if (part.highlightElement) {
+      part.highlightElement.dataset.hasFurigana = "true";
+      part.highlightElement.dataset.content = segText;
+      const hadImageHighlight = Boolean(part.imageLayers || imageHighlights.getBooleanValue());
+      const existingHighlightCopy = part.imageLayers?.highlight;
+
+      if (hadImageHighlight) {
+        part.highlightElement.classList.remove("blyrics-image-highlight");
+        const newHighlightLetters = buildRubyChildren(part.highlightElement, true);
+        if (newHighlightLetters) {
+          part.highlightLetterElements = newHighlightLetters;
+        }
+        const newLayers = wrapImageHighlight(part.highlightElement);
+        if (newLayers) {
+          if (existingHighlightCopy) {
+            existingHighlightCopy.dataset.hasFurigana = "true";
+            existingHighlightCopy.dataset.content = segText;
+            if (newHighlightLetters) {
+              existingHighlightCopy.style.setProperty("--letters", String(newHighlightLetters.length));
+              existingHighlightCopy.style.setProperty(
+                "--mask-fade",
+                `${(10 * newHighlightLetters.length) / (newHighlightLetters.length + 2)}%`
+              );
+              existingHighlightCopy.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
+            }
+            existingHighlightCopy.replaceChildren(newLayers.glow);
+            newLayers.highlight = existingHighlightCopy;
+          }
+          part.imageLayers = newLayers;
+        }
+      } else {
+        const newHighlightLetters = buildRubyChildren(part.highlightElement, true);
+        if (newHighlightLetters) {
+          part.highlightLetterElements = newHighlightLetters;
+        }
+      }
+    }
+  });
+
+  return injectedAny;
 }

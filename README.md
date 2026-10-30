@@ -34,6 +34,7 @@
 | Package | Description |
 |---------|-------------|
 | `@braccato/core` | The `<braccato-lyrics>` element: synchronized lyrics, word by word |
+| `@braccato/furigana` | Japanese Kanji furigana (ruby annotation) alignment engine |
 | `@braccato/parsers` | Format parsers: TTML, LRC, SRT, QRC, Plain |
 | `@braccato/highlight` | Syntax highlighting for raw lyric files, plus a textarea overlay for editing them |
 | `@braccato/provider-blyrics` | Lyrics provider chain with priority and validation |
