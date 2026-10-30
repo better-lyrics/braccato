@@ -26,6 +26,7 @@ import {
   relayout,
   resetScrollResume,
   resolveTickOptions,
+  settleSwappedLines,
   retickFromPlaybackClock as retickEngineFromPlaybackClock,
   scheduleLyricPositionUpdate as scheduleEngineLyricPositionUpdate,
   tickView,
@@ -34,7 +35,7 @@ import type { LineData } from "./inject";
 import { parseThemeConfig, setThemeSettings } from "./themeSettings";
 import type { Lyric, LyricsRenderer, LyricsRendererHost, LyricsRendererOptions } from "./types";
 import { applyLyricLanguage, normalizeLanguage, resolveLyricLanguages } from "./language";
-import { setLyrics as buildLyricsView } from "./view";
+import { setLyrics as buildLyricsView, swapLyrics as swapLyricsView } from "./view";
 
 /**
  * What the default `seek` dispatches at the mount. A consumer that gave the renderer no way to
@@ -313,22 +314,33 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
       if (!nextMount) {
         throw new Error("A lyrics renderer needs a mount: give one to createLyricsRenderer or to setLyrics");
       }
-      // Before the mount moves, so a second song built somewhere else takes the first one's
-      // container with it rather than orphaning it in the mount it was built in.
-      clearBuiltView();
-      mount = nextMount;
-
-      buildLyricsView(engine, nextMount, lyrics, {
+      const viewOptions = {
         language: options?.language,
         loaderVisible: options?.loaderVisible ?? false,
         noLyrics: options?.noLyrics ?? false,
         songwriters: options?.songwriters,
-      });
+        songKey: options?.songKey,
+      };
+      // Lyrics for the song already on screen are swapped in, so whatever the two share stays exactly
+      // as it was. Read before the swap: the scroll is where the reader was.
+      const scrollTopBefore = host.getScrollElement()?.scrollTop ?? 0;
+      const swapped = swapLyricsView(engine, nextMount, lyrics, viewOptions);
+      if (swapped === null) {
+        // Before the mount moves, so a second song built somewhere else takes the first one's
+        // container with it rather than orphaning it in the mount it was built in.
+        clearBuiltView();
+        mount = nextMount;
+        buildLyricsView(engine, nextMount, lyrics, viewOptions);
+      }
       syncImagePaint();
       currentLyrics = lyrics;
       currentLanguage = normalizeLanguage(options?.language);
       measure();
-      if (engine.lyricsContainer) observeContainer(engine.lyricsContainer);
+      if (swapped !== null) {
+        settleSwappedLines(engine, swapped, scrollTopBefore);
+      } else if (engine.lyricsContainer) {
+        observeContainer(engine.lyricsContainer);
+      }
     },
     setLanguage(language) {
       const normalized = normalizeLanguage(language);

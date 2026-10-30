@@ -508,6 +508,196 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   resetStage(engine);
 }
 
+/**
+ * How far a scroll still running has carried a line from its place, or zero with none running on it.
+ */
+export function lineScrollOffset(engine: AnimationEngineInstance, element: HTMLElement): number {
+  if (!engine.lineScrollAnimations.some(record => record.lineElement === element)) return 0;
+  return currentTranslateY(engine, element, 0);
+}
+
+/**
+ * Hands the engine the lines of a song swapped into the view it already holds. A kept line is the
+ * same record and keeps everything; a dropped line's animations stop and nothing goes on holding it;
+ * a line built in place of one is handed what the engine held for that one, so the scroll does not
+ * see a line it has not met and the stage does not fade in a line that was already up.
+ *
+ * @param lines - The new song's records, kept ones included, in order
+ * @param dropped - Records of the song before that the new one no longer has
+ * @param replaced - Each new record built in place of a dropped one, to the one it replaced
+ */
+export function replaceRenderedLines(
+  engine: AnimationEngineInstance,
+  lines: LineData[],
+  dropped: readonly LineData[],
+  replaced: ReadonlyMap<LineData, LineData>
+): void {
+  const successors = new Map<LineData, LineData>();
+  for (const [line, previous] of replaced) successors.set(previous, line);
+  const droppedElements = new Set(dropped.map(line => line.lyricElement));
+  const carry = (line: LineData): LineData | null =>
+    successors.get(line) ?? (droppedElements.has(line.lyricElement) ? null : line);
+  const carryAll = (from: readonly LineData[]): LineData[] =>
+    from.map(carry).filter((line): line is LineData => line !== null);
+
+  // The line being sung is still the line being sung, so a theme keyed on those classes does not dim it
+  // and bring it back. Its animations are set up again from the new timing on the next tick. Read
+  // before the dropped lines are let go, which clears their selection.
+  for (const [line, previous] of replaced) {
+    line.isScrolled = previous.isScrolled;
+    line.isSelected = previous.isSelected;
+    togglePartClass(line, CURRENT_LYRICS_CLASS, previous.lyricElement.classList.contains(CURRENT_LYRICS_CLASS));
+    togglePartClass(line, ANIMATING_CLASS, previous.lyricElement.classList.contains(ANIMATING_CLASS));
+  }
+
+  // A planned scroll was planned against lines and places this swap is about to change.
+  dropPendingLineScroll(engine);
+  for (const record of [...engine.lineScrollAnimations]) {
+    if (!droppedElements.has(record.lineElement)) continue;
+    record.animation.cancel();
+    removeLineScrollAnimation(engine, record);
+  }
+  for (const line of dropped) {
+    resetLineAnimationState(line);
+    line.isSelected = false;
+    engine.visibleWillChangeElements.delete(line.lyricElement);
+    engine.culledLineElements.delete(line.lyricElement);
+  }
+
+  engine.lastScrollElements = carryAll(engine.lastScrollElements);
+  engine.lastScrollDebugContext.activeElms = carryAll(engine.lastScrollDebugContext.activeElms);
+  engine.pinnedScrollLine = engine.pinnedScrollLine === null ? null : carry(engine.pinnedScrollLine);
+  engine.lines = lines;
+
+  if (engine.layout === "stage") replaceStageElements(engine, dropped, replaced);
+}
+
+/**
+ * Starts the same animation on another element at the point the first one has reached, or answers
+ * null when there is nothing left of it to carry on.
+ */
+function continueAnimation(animation: Animation | undefined, element: HTMLElement): Animation | null {
+  const effect = animation?.effect as KeyframeEffect | null | undefined;
+  if (!animation || !effect || typeof effect.getKeyframes !== "function" || animation.playState === "finished") {
+    return null;
+  }
+  if (animation.playState === "idle") return null;
+  const continued = element.animate(effect.getKeyframes(), { ...effect.getTiming(), composite: effect.composite });
+  continued.playbackRate = animation.playbackRate;
+  continued.currentTime = animation.currentTime;
+  if (animation.playState === "paused") continued.pause();
+  return continued;
+}
+
+/**
+ * Moves what the stage held for each replaced line onto the line built in its place, and lets go of
+ * every dropped line. A replacement starts exactly where and as visible as the line it replaced, so
+ * placing the stage afterwards only moves it if the new song puts it somewhere else.
+ */
+function replaceStageElements(
+  engine: AnimationEngineInstance,
+  dropped: readonly LineData[],
+  replaced: ReadonlyMap<LineData, LineData>
+): void {
+  for (const [line, previous] of replaced) {
+    const element = line.lyricElement;
+    const role = previous.lyricElement.dataset.stageRole;
+    const y = engine.stageY.get(previous.lyricElement);
+    if (role === undefined || y === undefined) continue;
+    element.dataset.stageRole = role;
+    const visible = previous.lyricElement.dataset.stageVisible !== undefined;
+    if (visible) element.dataset.stageVisible = "";
+    // A line replaced mid-glide carries on gliding from wherever the one it replaced had got to.
+    const move = continueAnimation(engine.stageMoves.get(previous.lyricElement), element);
+    if (move === null) {
+      snapStageElement(engine, element, y);
+    } else {
+      engine.stageMoves.set(element, move);
+      engine.stageY.set(element, y);
+    }
+    const fade =
+      continueAnimation(engine.stageFades.get(previous.lyricElement), element) ??
+      element.animate([{ [STAGE_OPACITY_PROPERTY]: isStageRoleVisible(role) ? 1 : 0 }], {
+        duration: 0,
+        fill: "forwards",
+      });
+    if (!isStageRoleVisible(role)) {
+      fade.onfinish = () => {
+        if (engine.stageFades.get(element) === fade) delete element.dataset.stageVisible;
+      };
+    }
+    engine.stageFades.set(element, fade);
+    const blur = continueAnimation(engine.stageBlurs.get(previous.lyricElement), element);
+    if (blur !== null) engine.stageBlurs.set(element, blur);
+  }
+  for (const line of dropped) {
+    const element = line.lyricElement;
+    for (const animations of [engine.stageMoves, engine.stageFades, engine.stageBlurs]) {
+      animations.get(element)?.cancel();
+      animations.delete(element);
+    }
+    engine.stageY.delete(element);
+    engine.stageMetrics.delete(element);
+  }
+  // The roles are planned again against the new lines, even where they come out the same.
+  engine.stageKey = "";
+}
+
+/**
+ * Carries a swapped view across the layout change it caused. The line the reader is following holds
+ * still on screen: the scroll moves by however far that line moved in the container. Every other
+ * line that moved, relative to it, slides from where it was rather than jumping.
+ *
+ * Which line is followed depends on who owns the scroll. While the engine does, it is the line the
+ * last scroll aimed at; while the reader does, it is the first line they could see.
+ *
+ * @param before - Where each line was in the container before the swap and how tall, from `swapLyrics`
+ * @param scrollTopBefore - The scroll position the swap began at
+ */
+export function settleSwappedLines(
+  engine: AnimationEngineInstance,
+  before: ReadonlyMap<LineData, { position: number; height: number; offset: number }>,
+  scrollTopBefore: number
+): void {
+  const container = engine.lyricsContainer;
+  const scrollElement = engine.host.getScrollElement();
+  if (container === null || scrollElement === null || engine.layout === "stage") return;
+
+  const readerOwnsScroll = engine.scrollResumeTime > Date.now();
+  const followed = readerOwnsScroll
+    ? engine.lines.find(line => {
+        const was = before.get(line);
+        return was !== undefined && was.position + was.height > scrollTopBefore;
+      })
+    : (engine.lastScrollElements.findLast(line => before.has(line)) ??
+      engine.lines.find(line => before.has(line) && line.isScrolled));
+
+  const followedWas = followed === undefined ? undefined : before.get(followed)?.position;
+  // A line that has not been measured, because the view is not on screen, has nowhere to hold still.
+  if (followed !== undefined && followedWas !== undefined && followedWas >= 0 && followed.position >= 0) {
+    const moved = followed.position - followedWas;
+    if (Math.abs(moved) >= DECORATION_MIN_SHIFT_PX) scrollElement.scrollTop = scrollTopBefore + moved;
+  }
+  // Read back rather than assumed: the browser may have clamped the write, or clamped the scroll for
+  // a song that got shorter before anything here wrote it. Either way the event that follows is not
+  // the reader's, and a write the browser clamped to nothing sends none.
+  const shift = scrollElement.scrollTop - scrollTopBefore;
+  if (shift !== 0) {
+    engine.skipScrolls += 1;
+    engine.skipScrollsDecayTimes.push(Date.now() + 2000);
+    if (engine.scrollPos >= 0) engine.scrollPos += shift;
+  }
+
+  if (!decorationSlideAllowed(engine, container)) return;
+  for (const line of engine.lines) {
+    const was = before.get(line);
+    if (was === undefined || was.position < 0 || line.position < 0) continue;
+    // From where it is on screen, which a line scroll still running carries away from its place.
+    const onScreenShift = was.position + was.offset - line.position + shift;
+    if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, onScreenShift);
+  }
+}
+
 function resetStage(engine: AnimationEngineInstance): void {
   for (const animation of [
     ...engine.stageMoves.values(),
@@ -527,6 +717,20 @@ function resetStage(engine: AnimationEngineInstance): void {
     engine.stageBox = null;
     engine.host.onStageLayout?.(null);
   }
+}
+
+/**
+ * Lets go of a part moving to another line or leaving the view: its animations stop, back to the pool
+ * they came from, and it shows no sung state until a line that is being sung sets it up again.
+ */
+export function releasePart(part: PartData): void {
+  resetPartAnimations(part);
+  togglePartClass(part, PAUSED_CLASS, false);
+  togglePartClass(part, ANIMATING_CLASS, false);
+  part.wordState = WORD_STATE_UPCOMING;
+  part.lyricElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
+  part.highlightElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
+  part.imageLayers?.highlight?.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
 }
 
 function resetPartAnimations(part: AnimationData): void {

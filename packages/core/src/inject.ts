@@ -12,6 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
+import { releasePart } from "./engine";
 import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
@@ -590,6 +591,77 @@ function repeatsLine(lyricElement: HTMLElement, text: string): boolean {
   return mainRun?.textContent != null && isSameText(mainRun.textContent, text);
 }
 
+/**
+ * What each injected decoration was made from. A line a swap kept still carries what was hung on it,
+ * so injecting the same again is nothing to do and injecting something else replaces it.
+ */
+const decorationSources = new WeakMap<HTMLElement, string>();
+
+/**
+ * Has the next tick set a line's animations up again, the parts just added to it included. A line
+ * already being sung sets its parts up once, so parts added after that would stay still until the
+ * line came round again. Its running animations are left alone: the setup replaces each one, so
+ * nothing on the line goes still in between.
+ */
+function rearmLineAnimations(lineData: LineData): void {
+  lineData.isAnimating = false;
+}
+
+/** Takes a decoration off its line, along with any timed parts it brought, and stops their animations. */
+function removeDecoration(lineData: LineData, decoration: HTMLElement): void {
+  lineData.parts = lineData.parts.filter(part => {
+    if (!decoration.contains(part.lyricElement)) return true;
+    releasePart(part);
+    return false;
+  });
+  decoration.remove();
+}
+
+/**
+ * Takes the romanization off a line, along with any timed parts it brought. A line a swap kept goes on
+ * carrying what was hung on it, so this is how a consumer drops one it no longer wants. Answers
+ * whether there was one to take off.
+ */
+export function removeRomanization(lyricElement: HTMLElement, lineData: LineData): boolean {
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${ROMANIZED_LYRICS_CLASS}`);
+  if (existing === null) return false;
+  removeDecoration(lineData, existing);
+  return true;
+}
+
+/**
+ * Takes the translation off a line. A line a swap kept goes on carrying what was hung on it, so this is
+ * how a consumer drops one it no longer wants. Answers whether there was one to take off.
+ */
+export function removeTranslation(lyricElement: HTMLElement): boolean {
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${TRANSLATED_LYRICS_CLASS}`);
+  if (existing === null) return false;
+  existing.remove();
+  return true;
+}
+
+/**
+ * Moves the translation and romanization hung on one line onto the line built in its place, with any
+ * timed parts they brought, so a line rebuilt for its timing keeps what the consumer hung on it. The
+ * parts are let go of whatever the old line was showing; the new line sets them up again with its own.
+ */
+export function moveDecorations(from: LineData, to: LineData): void {
+  const decorations = Array.from(from.lyricElement.childNodes).filter(
+    (node): node is HTMLElement =>
+      (node as HTMLElement).classList?.contains(ROMANIZED_LYRICS_CLASS) === true ||
+      (node as HTMLElement).classList?.contains(TRANSLATED_LYRICS_CLASS) === true
+  );
+  for (const decoration of decorations) {
+    from.parts = from.parts.filter(part => {
+      if (!decoration.contains(part.lyricElement)) return true;
+      releasePart(part);
+      to.parts.push(part);
+      return false;
+    });
+    to.lyricElement.appendChild(decoration);
+  }
+}
+
 export function injectRomanization(
   doc: Document,
   lyricElement: HTMLElement,
@@ -597,7 +669,13 @@ export function injectRomanization(
   text: string,
   timedRomanization: LyricPart[] | null = null
 ) {
-  if (lyricElement.querySelector(`.${ROMANIZED_LYRICS_CLASS}`) || repeatsLine(lyricElement, text)) return;
+  const source = JSON.stringify([text, timedRomanization ?? null]);
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${ROMANIZED_LYRICS_CLASS}`);
+  if (existing !== null) {
+    if (decorationSources.get(existing) === source) return;
+    removeDecoration(lineData, existing);
+  }
+  if (repeatsLine(lyricElement, text)) return;
 
   const romanizedLine = doc.createElement("div");
   romanizedLine.classList.add(ROMANIZED_LYRICS_CLASS, CONTENT_LINE_CLASS);
@@ -608,15 +686,23 @@ export function injectRomanization(
 
   if (timedRomanization && timedRomanization.length > 0 && !disableRichsync.getBooleanValue()) {
     createLyricsLine(doc, timedRomanization, lineData, romanizedLine, { splitBackgroundLine: false });
+    rearmLineAnimations(lineData);
   } else {
     romanizedLine.textContent = text;
   }
+  decorationSources.set(romanizedLine, source);
   const translation = lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`);
   lyricElement.insertBefore(romanizedLine, translation);
 }
 
 export function injectTranslation(doc: Document, lyricElement: HTMLElement, text: string, language?: string | null) {
-  if (lyricElement.querySelector(`.${TRANSLATED_LYRICS_CLASS}`) || repeatsLine(lyricElement, text)) return;
+  const source = JSON.stringify([text, normalizeLanguage(language)]);
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${TRANSLATED_LYRICS_CLASS}`);
+  if (existing !== null) {
+    if (decorationSources.get(existing) === source) return;
+    existing.remove();
+  }
+  if (repeatsLine(lyricElement, text)) return;
 
   const translatedLine = doc.createElement("div");
   translatedLine.classList.add(TRANSLATED_LYRICS_CLASS, CONTENT_LINE_CLASS);
@@ -624,5 +710,6 @@ export function injectTranslation(doc: Document, lyricElement: HTMLElement, text
   translatedLine.lang = normalizeLanguage(language);
   applyDirection(translatedLine, text);
   translatedLine.textContent = text;
+  decorationSources.set(translatedLine, source);
   lyricElement.appendChild(translatedLine);
 }

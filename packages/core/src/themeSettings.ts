@@ -150,3 +150,16 @@ export function setThemeSettings(map: Map<string, string>): boolean {
 
   return needsLyricReload;
 }
+
+/**
+ * The values of every setting that changes how lines are built, as one comparable string. Two builds
+ * that answer the same here built their lines the same way, so a line built under one can stand in
+ * for the same line built under the other.
+ */
+export function lyricBuildSettingsKey(): string {
+  const values: string[] = [];
+  for (const [key, setting] of keyToSettingMap) {
+    if (setting.requiresLyricReload) values.push(`${key}=${String(setting.value)}`);
+  }
+  return values.join(";");
+}

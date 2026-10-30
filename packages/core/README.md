@@ -80,6 +80,40 @@ view.lyricsOptions = { songwriters: parser.metadata(text).songwriters };
 view.lyrics = parser.parse(text, player.duration * 1000);
 ```
 
+### Replacing lyrics
+
+Write a new array whenever the song's lyrics change, as often as they change: a better source
+arriving for the song already playing, or an editor handing over every edit. Give each update the
+same `songKey` (a `setLyrics` option, or a field of the element's `lyricsOptions`), and lyrics for the
+song already on screen are swapped into it rather than built over it, so the only thing that changes
+on screen is what changed in the lyrics. Lyrics with no `songKey`, or another song's, are built anew,
+so a new song starts at the top with nothing of the last one's scroll.
+
+- A line that builds the same as one already shown, by its words, timing, parts, singer, translation
+  and romanization, keeps that element and the animations running on it. The arrays do not need to be the same objects,
+  so a consumer that parses its source again on every change loses nothing.
+- Lines that differ are built again in place. A line built where another one stood takes over that
+  line's place in the scroll, and on the stage its role and position, so a retimed line being sung
+  does not fade in again. A stage line replaced mid-glide finishes the glide it was in, unless the
+  new line is a different height, which moves it straight to its new place.
+- The scroll stays where it was. When lines above the one being followed grow, shrink, arrive or go,
+  the scroll moves by however far that line moved, so it holds still on screen, and the lines that
+  moved relative to it slide there. A reader who scrolled away stays scrolled away.
+- Translations and romanizations hung on a kept line stay, and so do those on a line rebuilt only for
+  its timing. Injecting the same one again does nothing, and injecting a different one replaces it. A
+  line whose `translation`, `translations`, `romanization` or `timedRomanization` changed is rebuilt
+  bare, ready to be decorated again. To drop one a consumer no longer wants, such as a translation
+  the listener turned off, call `removeTranslation` or `removeRomanization` (see Entry points).
+- A swap that lands while the lines are still scrolling to the last line leaves the kept lines to
+  finish that scroll, and the new ones start at rest.
+
+Some changes rebuild the whole view: another `songKey` or none, a different mount, a theme setting
+that changes how lines are built, lyrics that gain or lose their timing, and anything written after
+`clear()` or an empty array. A line whose times you changed after it was built, such as with an
+offset you apply after every build, is built again from the lyrics rather than kept, so the offset is
+not applied twice. A line built in place of another only takes over its place and sung state when
+the two are sung over the same time.
+
 ## Properties
 
 Every one of these may be written before the element is in a document. The renderer is built when it
@@ -408,12 +442,15 @@ package's stylesheets are yours to load for the same reason.
 
 `@braccato/core` is the facade and registers nothing. `createLyricsRenderer(options)` returns one
 `LyricsRenderer`: give it lyrics, tick it, and it owns the DOM it builds and every re-measurement
-that DOM needs. `resetPlaybackClock`, `resumeAllAutoscroll`, `injectRomanization` and
-`injectTranslation` are published beside it, for what one instance cannot answer for on its own. Hang
-one onto a built line and call `renderer.scheduleLyricPositionUpdate` the way you already would to
-catch the layout up: the hung line floats into place while the lines around it slide to make room,
-rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-entry` set to `0` drops
-both for an instant insert, and reduced-motion does the same.
+that DOM needs. `resetPlaybackClock`, `resumeAllAutoscroll`, `injectRomanization`,
+`injectTranslation`, `removeRomanization` and `removeTranslation` are published beside it, for what
+one instance cannot answer for on its own. Hang one onto a built line and call
+`renderer.scheduleLyricPositionUpdate` the way you already would to catch the layout up: the hung line
+floats into place while the lines around it slide to make room, rather than the rest of the lyric
+jumping down. `--blyrics-animate-decoration-entry` set to `0` drops both for an instant insert, and
+reduced-motion does the same. Taking one off with `removeTranslation(lineElement)` or
+`removeRomanization(lineElement, line)` is the same: call `scheduleLyricPositionUpdate` after, and the
+lines below slide up into the space.
 
 `createLyricsRenderer({ layout: "stage" })` builds a view for subtitles over a video: one line at a
 time, and only while it is being sung. It fills its nearest positioned ancestor. There is no scroll
