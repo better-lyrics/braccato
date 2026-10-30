@@ -577,6 +577,23 @@ export function replaceRenderedLines(
  * every dropped line. A replacement starts exactly where and as visible as the line it replaced, so
  * placing the stage afterwards only moves it if the new song puts it somewhere else.
  */
+/**
+ * Starts the same animation on another element at the point the first one has reached, or answers
+ * null when there is nothing left of it to carry on.
+ */
+function continueAnimation(animation: Animation | undefined, element: HTMLElement): Animation | null {
+  const effect = animation?.effect as KeyframeEffect | null | undefined;
+  if (!animation || !effect || typeof effect.getKeyframes !== "function" || animation.playState === "finished") {
+    return null;
+  }
+  if (animation.playState === "idle") return null;
+  const continued = element.animate(effect.getKeyframes(), { ...effect.getTiming(), composite: effect.composite });
+  continued.playbackRate = animation.playbackRate;
+  continued.currentTime = animation.currentTime;
+  if (animation.playState === "paused") continued.pause();
+  return continued;
+}
+
 function replaceStageElements(
   engine: AnimationEngineInstance,
   dropped: readonly LineData[],
@@ -590,14 +607,28 @@ function replaceStageElements(
     element.dataset.stageRole = role;
     const visible = previous.lyricElement.dataset.stageVisible !== undefined;
     if (visible) element.dataset.stageVisible = "";
-    snapStageElement(engine, element, y);
-    engine.stageFades.set(
-      element,
+    // A line replaced mid-glide carries on gliding from wherever the one it replaced had got to.
+    const move = continueAnimation(engine.stageMoves.get(previous.lyricElement), element);
+    if (move === null) {
+      snapStageElement(engine, element, y);
+    } else {
+      engine.stageMoves.set(element, move);
+      engine.stageY.set(element, y);
+    }
+    const fade =
+      continueAnimation(engine.stageFades.get(previous.lyricElement), element) ??
       element.animate([{ [STAGE_OPACITY_PROPERTY]: isStageRoleVisible(role) ? 1 : 0 }], {
         duration: 0,
         fill: "forwards",
-      })
-    );
+      });
+    if (!isStageRoleVisible(role)) {
+      fade.onfinish = () => {
+        if (engine.stageFades.get(element) === fade) delete element.dataset.stageVisible;
+      };
+    }
+    engine.stageFades.set(element, fade);
+    const blur = continueAnimation(engine.stageBlurs.get(previous.lyricElement), element);
+    if (blur !== null) engine.stageBlurs.set(element, blur);
   }
   for (const line of dropped) {
     const element = line.lyricElement;

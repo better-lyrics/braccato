@@ -439,6 +439,21 @@ function playingView(): Fixture {
   );
 }
 
+{
+  const { renderer, document } = playingView();
+  const sung = renderer.lines[1];
+  const ownParts = sung.parts.length;
+  injectRomanization(asDocument(document), sung.lyricElement, sung, "sekando rain", [
+    { startTimeMs: 5000, durationMs: 2500, words: "sekando " },
+    { startTimeMs: 7500, durationMs: 2500, words: "rain" },
+  ]);
+  renderer.tick(PLAYBACK_TIME_S + 0.1, { isPlaying: true, eventCreationTime: Date.now() });
+  assert.ok(
+    sung.parts.slice(ownParts).every(part => part.animations.length > 0),
+    "Given a timed romanization hung on the line being sung, When the view ticks, Then its syllables are highlighting now rather than when the line comes round again"
+  );
+}
+
 // -- What still builds the whole view --------------------------------------------
 
 {
