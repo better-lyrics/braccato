@@ -1,5 +1,13 @@
 # @braccato/core
 
+## 1.17.0
+
+### Minor Changes
+
+- 2df6a9c: Lyrics given with the `songKey` of the song a view already shows are swapped into it instead of rebuilding it. Lines that did not change keep their elements, animations and decorations, and only the changed lines are built again. The scroll and a reader's manual scroll carry over. When lines above the followed line change height, that line holds still and the others slide into place, so a source upgrade or a live edit only shows what changed in the lyrics. Lyrics with no `songKey`, or another song's, still rebuild the view as before. A timed romanization hung on the line being sung now highlights straight away instead of waiting for the line to come round again. New `removeTranslation` and `removeRomanization` take a decoration off a line, for a consumer that no longer wants one a kept line still carries.
+  
+  Behaviour change: `injectTranslation` and `injectRomanization` now replace an existing decoration that differs, instead of keeping the first one. Injecting the same one again still does nothing.
+
 ## 1.16.14
 
 ### Patch Changes
