@@ -29,8 +29,8 @@ the workspace once.
 
 The release workflow applies pending changesets and publishes to npm on every push to `master`.
 Better Lyrics pins `@braccato/core`, `@braccato/highlight` and `@braccato/parsers` exactly and auto-merges
-minor and patch Dependabot bumps once its CI passes, so a merged change lands in Better Lyrics
-without anyone reviewing it there.
+minor and patch Dependabot bumps once its CI passes and a maintainer approves. That approval sees
+only the version bump, so review here is the only review the code gets.
 
 - Every change to a published package under `packages/` needs a `.changeset/*.md`. Write the body as
   user-facing prose about the behaviour, like the existing ones. Root files, tooling and `demo/`
@@ -57,7 +57,7 @@ straight into the extension, so check them against it, not only against the demo
   only their siblings, with extensionless relative specifiers (the build adds the extensions), plus
   `import type` from `@braccato/types`. The published leaves `constants`, `text`, `themeSettings`
   and `util` import nothing at all. Only self-checks may import `node:*` or `typescript`.
-  `boundary.selfcheck.ts` enforces these. The emit uses `types: []`, so
+  `boundary.selfcheck.ts` enforces the import rules. The emit uses `types: []`, so
   ambient `chrome` or `node` types do not exist there.
 - `packages/core/tsconfig.json` and `tooling/tsconfig.package.json` are deliberately self-contained.
   Do not make them extend the root config; `useDefineForClassFields` changes what `element.ts` does.
