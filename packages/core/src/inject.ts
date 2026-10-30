@@ -618,6 +618,29 @@ function removeDecoration(lineData: LineData, decoration: HTMLElement): void {
 }
 
 /**
+ * Takes the romanization off a line, along with any timed parts it brought. A line a swap kept goes on
+ * carrying what was hung on it, so this is how a consumer drops one it no longer wants. Answers
+ * whether there was one to take off.
+ */
+export function removeRomanization(lyricElement: HTMLElement, lineData: LineData): boolean {
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${ROMANIZED_LYRICS_CLASS}`);
+  if (existing === null) return false;
+  removeDecoration(lineData, existing);
+  return true;
+}
+
+/**
+ * Takes the translation off a line. A line a swap kept goes on carrying what was hung on it, so this is
+ * how a consumer drops one it no longer wants. Answers whether there was one to take off.
+ */
+export function removeTranslation(lyricElement: HTMLElement): boolean {
+  const existing = lyricElement.querySelector<HTMLElement>(`:scope > .${TRANSLATED_LYRICS_CLASS}`);
+  if (existing === null) return false;
+  existing.remove();
+  return true;
+}
+
+/**
  * Moves the translation and romanization hung on one line onto the line built in its place, with any
  * timed parts they brought, so a line rebuilt for its timing keeps what the consumer hung on it. The
  * parts' animations stop; the new line sets them up again with its own.

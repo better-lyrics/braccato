@@ -100,7 +100,8 @@ changes on screen is what changed in the lyrics.
 - Translations and romanizations hung on a kept line stay, and so do those on a line rebuilt only for
   its timing. Injecting the same one again does nothing, and injecting a different one replaces it. A
   line whose `translation`, `translations`, `romanization` or `timedRomanization` changed is rebuilt
-  bare, ready to be decorated again.
+  bare, ready to be decorated again. To drop one a consumer no longer wants, such as a translation
+  the listener turned off, call `removeTranslation` or `removeRomanization` (see Entry points).
 - A swap that lands while the lines are still scrolling to the last line leaves the kept lines to
   finish that scroll, and the new ones start at rest.
 
@@ -436,12 +437,15 @@ package's stylesheets are yours to load for the same reason.
 
 `@braccato/core` is the facade and registers nothing. `createLyricsRenderer(options)` returns one
 `LyricsRenderer`: give it lyrics, tick it, and it owns the DOM it builds and every re-measurement
-that DOM needs. `resetPlaybackClock`, `resumeAllAutoscroll`, `injectRomanization` and
-`injectTranslation` are published beside it, for what one instance cannot answer for on its own. Hang
-one onto a built line and call `renderer.scheduleLyricPositionUpdate` the way you already would to
-catch the layout up: the hung line floats into place while the lines around it slide to make room,
-rather than the rest of the lyric jumping down. `--blyrics-animate-decoration-entry` set to `0` drops
-both for an instant insert, and reduced-motion does the same.
+that DOM needs. `resetPlaybackClock`, `resumeAllAutoscroll`, `injectRomanization`,
+`injectTranslation`, `removeRomanization` and `removeTranslation` are published beside it, for what
+one instance cannot answer for on its own. Hang one onto a built line and call
+`renderer.scheduleLyricPositionUpdate` the way you already would to catch the layout up: the hung line
+floats into place while the lines around it slide to make room, rather than the rest of the lyric
+jumping down. `--blyrics-animate-decoration-entry` set to `0` drops both for an instant insert, and
+reduced-motion does the same. Taking one off with `removeTranslation(lineElement)` or
+`removeRomanization(lineElement, line)` is the same: call `scheduleLyricPositionUpdate` after, and the
+lines below slide up into the space.
 
 `createLyricsRenderer({ layout: "stage" })` builds a view for subtitles over a video: one line at a
 time, and only while it is being sung. It fills its nearest positioned ancestor. There is no scroll

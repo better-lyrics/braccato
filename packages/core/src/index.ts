@@ -8,7 +8,13 @@
 // injection helpers decorate lines that are already built.
 
 export { resetPlaybackClock, resumeAllAutoscroll } from "./engine";
-export { injectRomanization, injectTranslation, type LineData } from "./inject";
+export {
+  injectRomanization,
+  injectTranslation,
+  type LineData,
+  removeRomanization,
+  removeTranslation,
+} from "./inject";
 export { createLyricsRenderer } from "./renderer";
 export type { Lyric, LyricsRenderer, LyricsRendererHost, TickOptions } from "./types";
 

@@ -7,7 +7,7 @@ import {
   ROMANIZED_LYRICS_CLASS,
   TRANSLATED_LYRICS_CLASS,
 } from "./constants";
-import { injectRomanization, injectTranslation, type LineData } from "./inject";
+import { injectRomanization, injectTranslation, type LineData, removeRomanization, removeTranslation } from "./inject";
 import { createLyricsRenderer } from "./renderer";
 import { asDocument, asElement, asFakeAnimation, asFakeNode, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
 import { asWindow, FakeWindow, installFakeDOMRect } from "./selfcheck/fakeWindow";
@@ -451,6 +451,38 @@ function playingView(): Fixture {
   assert.ok(
     sung.parts.slice(ownParts).every(part => part.animations.length > 0),
     "Given a timed romanization hung on the line being sung, When the view ticks, Then its syllables are highlighting now rather than when the line comes round again"
+  );
+}
+
+{
+  const { renderer, document } = playingView();
+  const doc = asDocument(document);
+  const sung = renderer.lines[1];
+  const ownParts = sung.parts.length;
+  const decorations = (className: string): FakeNode[] =>
+    asFakeNode(sung.lyricElement).childNodes.filter(child => child.classList.contains(className));
+  injectTranslation(doc, sung.lyricElement, "Zweite Zeile", "de");
+  injectRomanization(doc, sung.lyricElement, sung, "sekando rain", [
+    { startTimeMs: 5000, durationMs: 2500, words: "sekando " },
+    { startTimeMs: 7500, durationMs: 2500, words: "rain" },
+  ]);
+
+  // A listener who turns translations and romanizations off, with the song swapped in rather than rebuilt.
+  renderer.setLyrics(song(...FIRST_SONG));
+  assert.deepEqual(
+    [removeTranslation(sung.lyricElement), removeRomanization(sung.lyricElement, sung)],
+    [true, true],
+    "Given a kept line carrying both decorations, When a consumer takes them off, Then each one was there to take"
+  );
+  assert.deepEqual(
+    [decorations(TRANSLATED_LYRICS_CLASS).length, decorations(ROMANIZED_LYRICS_CLASS).length, sung.parts.length],
+    [0, 0, ownParts],
+    "Given decorations taken off a kept line, When it is read, Then neither is left and the romanization took its timed parts with it"
+  );
+  assert.deepEqual(
+    [removeTranslation(sung.lyricElement), removeRomanization(sung.lyricElement, sung)],
+    [false, false],
+    "Given a line with nothing hung on it, When a consumer takes decorations off, Then it answers that there was nothing to take"
   );
 }
 
