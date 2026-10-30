@@ -1426,6 +1426,150 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   engine.destroy();
 }
 
+// -- Line scroll stagger --------------------------------------------
+
+// A natural advance keeps the theme's stagger exactly; any other scroll keeps one step's worth of it.
+{
+  const STEP_PX = 80;
+  const GAP_INDEX = 12;
+  const GAP_PX = 900;
+  const ACTIVE_DURATION_MS = 825;
+  const expectedDurationMs = (side: string, distance: number) =>
+    side === "above" ? 750 + Math.min(distance, 6) * 20 : ACTIVE_DURATION_MS + distance * 40;
+  const document = new FakeDocument();
+  const window = new FakeWindow(
+    { [ANIMATE_SCROLL_PROPERTY]: "1" },
+    {
+      transitionDuration: element =>
+        `${expectedDurationMs(
+          element.style.getPropertyValue("--blyrics-line-scroll-side"),
+          Number(element.style.getPropertyValue("--blyrics-line-scroll-abs-relative-index"))
+        )}ms`,
+    }
+  );
+  const mountView = (engine: AnimationEngineInstance) => {
+    setLyrics(
+      engine,
+      asElement<HTMLElement>(document.createElement("div")),
+      Array.from({ length: 24 }, (_, index) => ({
+        startTimeMs: 1000 + index * 400,
+        durationMs: 400,
+        words: `L${index}`,
+      })),
+      { loaderVisible: false, noLyrics: false }
+    );
+    const lines = getRenderedLines(engine);
+    lines.forEach((line, index) => {
+      line.position = 1000 + index * STEP_PX + (index >= GAP_INDEX ? GAP_PX : 0);
+      line.height = LINE_HEIGHT_PX;
+      Object.defineProperty(line.lyricElement, "isConnected", { value: true });
+    });
+    return lines;
+  };
+  const host = new FakeHost();
+  let engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
+  let lines = mountView(engine);
+  let lastTickTime = 0;
+
+  const scroll = (time: number) => {
+    lastTickTime = time;
+    const before = new Set(engine.lineScrollAnimations);
+    const fromScrollTop = host.scrollElement.scrollTop;
+    assert.equal(tickView(engine, time, resolveTickOptions(newTickOptions())), "ok");
+    const deltaPx = host.scrollElement.scrollTop - fromScrollTop;
+    const activeIndex = lines.indexOf(engine.lastScrollElements[engine.lastScrollElements.length - 1]);
+    const scrolled = engine.lineScrollAnimations
+      .filter(record => !before.has(record))
+      .map(record => {
+        const relativeIndex = lines.findIndex(line => line.lyricElement === record.lineElement) - activeIndex;
+        const leading = relativeIndex !== 0 && relativeIndex > 0 === deltaPx < 0;
+        const side = relativeIndex === 0 ? "active" : leading ? "above" : "below";
+        return {
+          durationMs: asFakeAnimation(record.animation).options.duration as number,
+          themedMs: expectedDurationMs(side, Math.abs(relativeIndex)),
+        };
+      });
+    return { deltaPx, scrolled };
+  };
+
+  const assertStaggerCappedAtOneStep = (result: ReturnType<typeof scroll>, message: string) => {
+    assert.ok(Math.abs(result.deltaPx) > 5 * STEP_PX, `${message}: the scroll is a far one (${result.deltaPx}px)`);
+    assert.ok(result.scrolled.length > 0, `${message}: the lines animate`);
+    assert.ok(
+      result.scrolled.some(({ durationMs }) => Math.abs(durationMs - ACTIVE_DURATION_MS) > 1e-6),
+      `${message}: some stagger is kept`
+    );
+    for (const { durationMs, themedMs } of result.scrolled) {
+      const allowedMs = (Math.abs(themedMs - ACTIVE_DURATION_MS) * STEP_PX) / Math.abs(result.deltaPx);
+      assert.ok(
+        Math.abs(durationMs - ACTIVE_DURATION_MS) <= allowedMs + 1e-9,
+        `${message}: a ${themedMs}ms line runs ${durationMs}ms, more than one step of stagger`
+      );
+    }
+  };
+
+  let naturalScrolls = 0;
+  let farNaturalScrolls = 0;
+  assertStaggerCappedAtOneStep(
+    scroll(1.0),
+    "Given lyrics opened at their start, Then the first scroll does not advance naturally"
+  );
+  for (let time = 1.2; time <= 9.6; time += 0.2) {
+    const result = scroll(time);
+    if (result.scrolled.length === 0) continue;
+    naturalScrolls++;
+    if (Math.abs(result.deltaPx) > GAP_PX) farNaturalScrolls++;
+    for (const { durationMs, themedMs } of result.scrolled) {
+      assert.equal(
+        durationMs,
+        themedMs,
+        `Given a natural advance at ${time.toFixed(1)}s, Then the theme's stagger is kept`
+      );
+    }
+  }
+  assert.ok(naturalScrolls >= 10, `The natural advances actually scroll (${naturalScrolls})`);
+  assert.ok(farNaturalScrolls > 0, "Given a natural advance across a long gap, Then its stagger is kept too");
+
+  engine.skipScrolls = 0;
+  host.scrollElement.scrollTop = 0;
+  noteUserScroll(engine, false);
+  engine.scrollResumeTime = 0;
+  assertStaggerCappedAtOneStep(scroll(9.8), "Given a return from a user scroll far away");
+
+  assertStaggerCappedAtOneStep(scroll(1.2), "regression: Given a click on a line far back");
+  assertStaggerCappedAtOneStep(scroll(9.4), "Given a seek far ahead");
+
+  // Ticked a frame at a time, so the next line's scroll is prepared ahead of it as in a browser.
+  host.scrollElement.scrollTop = 0;
+  let swallowedReturn = scroll(9.8);
+  let prepared = false;
+  for (let time = 9.82; swallowedReturn.scrolled.length === 0 && time < 10.4; time += 0.02) {
+    swallowedReturn = scroll(time);
+    prepared ||= engine.pendingLineScroll !== null;
+  }
+  assert.ok(prepared, "The next line's scroll was prepared before it committed");
+  assertStaggerCappedAtOneStep(
+    swallowedReturn,
+    "Given the view moved by a scroll the engine swallowed, Then the next line does not advance naturally"
+  );
+
+  const firstScroll = (message: string) => {
+    host.scrollElement.scrollTop = 0;
+    let result = scroll(lastTickTime + 0.02);
+    for (let frame = 0; result.scrolled.length === 0 && frame < 10; frame++) result = scroll(lastTickTime + 0.02);
+    assertStaggerCappedAtOneStep(result, message);
+  };
+  clearLyrics(engine);
+  lines = mountView(engine);
+  firstScroll("Given lyrics reloaded mid-song, Then their first scroll does not advance naturally");
+  engine.destroy();
+
+  engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
+  lines = mountView(engine);
+  firstScroll("regression: Given lyrics opened mid-song, Then their first scroll does not advance naturally");
+  engine.destroy();
+}
+
 // -- A stepped media clock --------------------------------------------
 
 {

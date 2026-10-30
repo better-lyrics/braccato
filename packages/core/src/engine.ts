@@ -288,7 +288,7 @@ export function createAnimationEngineInstance(
     skipScrolls: 0,
     skipScrollsDecayTimes: [],
     scrollResumeTime: 0,
-    scrollPos: 0,
+    scrollPos: -1,
     selectedElementIndex: 0,
     wasUserScrolling: false,
     lastScrollElements: [],
@@ -2585,6 +2585,22 @@ function measureTrailingItem(lyricsElement: HTMLElement, className: string): Lin
   return { lyricElement: element, position: bounds.y, height: bounds.height };
 }
 
+// A leading line slower than the one behind closes their gap by distance times progress difference.
+function lineScrollStaggerScale(
+  lines: LineScrollItem[],
+  activeLineIndex: number,
+  scrollDistancePx: number,
+  naturalAdvance: boolean
+): number {
+  if (naturalAdvance) return 1;
+  const active = lines[activeLineIndex];
+  const steps = [lines[activeLineIndex - 1], lines[activeLineIndex + 1]]
+    .filter(neighbour => neighbour !== undefined)
+    .map(neighbour => Math.abs(active.position - neighbour.position));
+  const stepPx = steps.length > 0 ? Math.min(...steps) : active.height;
+  return Math.min(1, stepPx / scrollDistancePx);
+}
+
 function prepareLineScrollOffsets(
   engine: AnimationEngineInstance,
   lines: LineScrollItem[],
@@ -2593,7 +2609,8 @@ function prepareLineScrollOffsets(
   fromScrollTop: number,
   toScrollTop: number,
   viewportHeight: number,
-  config: AnimationConfig
+  config: AnimationConfig,
+  naturalAdvance: boolean
 ): LineScrollPlan | null {
   if (!config.enabled.scroll || activeLineIndex < 0) {
     return null;
@@ -2702,12 +2719,18 @@ function prepareLineScrollOffsets(
     );
   }
 
+  const staggerScale = lineScrollStaggerScale(lines, activeLineIndex, scrollDistancePx, naturalAdvance);
+  const activeDurationMs = requests.find(request => request.relativeIndex === 0)?.timing?.durationMs;
+
   return {
     items: requests.map((request, requestIndex) => {
       const timing = request.timing as LineScrollTiming;
       return {
         ...request.item,
-        durationMs: timing.durationMs,
+        durationMs:
+          activeDurationMs === undefined
+            ? timing.durationMs
+            : activeDurationMs + (timing.durationMs - activeDurationMs) * staggerScale,
         startEasing: timing.startEasing,
         endEasing: timing.endEasing,
         startTranslate: startTranslates ? startTranslates[requestIndex] : defaultStartTranslate,
@@ -2772,7 +2795,8 @@ function commitOrPrepareLineScroll(
   fromScrollTop: number,
   toScrollTop: number,
   viewportHeight: number,
-  config: AnimationConfig
+  config: AnimationConfig,
+  naturalAdvance: boolean
 ): void {
   if (pendingLineScrollMatches(engine, activeLine, fromScrollTop, toScrollTop)) {
     const pending = engine.pendingLineScroll!;
@@ -2790,7 +2814,8 @@ function commitOrPrepareLineScroll(
     fromScrollTop,
     toScrollTop,
     viewportHeight,
-    config
+    config,
+    naturalAdvance
   );
   if (plan) startPreparedLineScroll(engine, plan);
 }
@@ -2803,7 +2828,8 @@ function prepareUpcomingLineScroll(
   fromScrollTop: number,
   toScrollTop: number,
   viewportHeight: number,
-  config: AnimationConfig
+  config: AnimationConfig,
+  naturalAdvance: boolean
 ): void {
   if (pendingLineScrollMatches(engine, activeLine, fromScrollTop, toScrollTop)) return;
 
@@ -2817,7 +2843,8 @@ function prepareUpcomingLineScroll(
     fromScrollTop,
     toScrollTop,
     viewportHeight,
-    config
+    config,
+    naturalAdvance
   );
   if (plan) {
     engine.pendingLineScroll = {
@@ -3881,6 +3908,9 @@ export function tickView(
       }
 
       const timeUntilUpcomingScrollMs = (lastActiveLyric.time - lyricScrollTime) * 1000;
+      // Only a scroll from where the engine itself left the view keeps the theme's full stagger.
+      const naturalAdvance =
+        !timeJumped && !engine.wasUserScrolling && engine.scrollPos >= 0 && Math.abs(scrollTop - engine.scrollPos) <= 2;
       if (
         smoothScroll &&
         animationConfig.enabled.scroll &&
@@ -3900,7 +3930,8 @@ export function tickView(
           scrollTop,
           scrollPos,
           tabRendererHeight,
-          animationConfig
+          animationConfig,
+          naturalAdvance
         );
       }
 
@@ -3926,7 +3957,8 @@ export function tickView(
               scrollTop,
               scrollPos,
               tabRendererHeight,
-              animationConfig
+              animationConfig,
+              naturalAdvance
             );
           }
         } else {
