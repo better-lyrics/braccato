@@ -3702,6 +3702,9 @@ export function tickView(
     eventCreationTime === NO_PLAYER_SNAPSHOT &&
     isPlaying &&
     currentTime < playbackClock.lastTime - CLOCK_RESYNC_THRESHOLD_S;
+  // A clock that was already paused only moves when the host seeks it, however small the step, as a
+  // scrub does. The tick that pauses lands a moment past the last playing one and is not a seek.
+  const pausedSeek = !isPlaying && !playbackClock.lastPlayState && currentTime !== playbackClock.lastTime;
 
   if (timeJumped) dropPendingLineScroll(engine);
 
@@ -3846,7 +3849,8 @@ export function tickView(
         }
 
         // Lead-in animations have no timing sample for the drift check, so a jump while playing must reset them.
-        if (((timeJumped && isPlaying) || mediaSteppedBack) && lineData.isAnimating) resetLineAnimationState(lineData);
+        if (((timeJumped && isPlaying) || mediaSteppedBack || pausedSeek) && lineData.isAnimating)
+          resetLineAnimationState(lineData);
 
         updateWordStates(lineData, currentTime);
 
@@ -3909,7 +3913,7 @@ export function tickView(
       } else {
         const staleAnimationEndTime = effectiveEndTime + animationConfig.highlight.fadeOutDurationMs / 1000 + 0.05;
         if (lineData.isSelected) {
-          if (isPlaying || timeJumped) {
+          if (isPlaying || timeJumped || pausedSeek) {
             if (currentTime > staleAnimationEndTime) {
               logAnimationCleanup(engine, "selected-stale-reset", lineData, index, currentTime, staleAnimationEndTime);
               resetLineAnimationState(lineData);
