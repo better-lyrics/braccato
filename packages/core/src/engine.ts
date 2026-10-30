@@ -3702,8 +3702,9 @@ export function tickView(
     eventCreationTime === NO_PLAYER_SNAPSHOT &&
     isPlaying &&
     currentTime < playbackClock.lastTime - CLOCK_RESYNC_THRESHOLD_S;
-  // A paused clock only moves when the host seeks it, however small the step, as a scrub does.
-  const pausedSeek = !isPlaying && currentTime !== playbackClock.lastTime;
+  // A clock that was already paused only moves when the host seeks it, however small the step, as a
+  // scrub does. The tick that pauses lands a moment past the last playing one and is not a seek.
+  const pausedSeek = !isPlaying && !playbackClock.lastPlayState && currentTime !== playbackClock.lastTime;
 
   if (timeJumped) dropPendingLineScroll(engine);
 

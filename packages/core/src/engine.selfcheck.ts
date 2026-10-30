@@ -973,6 +973,14 @@ assert.ok(
 );
 scrubEngine.destroy();
 
+const pausing = armLeadInAt(newTickOptions);
+tickView(pausing.engine, 4.31, resolveTickOptions(pausedTickOptions()));
+assert.ok(
+  pausing.armed.length > 0 && pausing.armed.every(animation => !asFakeAnimation(animation).cancelled),
+  "Given a line set up for its lead-in, When playback pauses a moment after the last playing tick, Then its animations are paused rather than torn down"
+);
+pausing.engine.destroy();
+
 // -- The "no lyrics" message is not unsynced lyrics --------------------------------------------
 // Its own instance, so the pending frame the positive control leaves behind cannot reach the
 // destroy assertions below.
