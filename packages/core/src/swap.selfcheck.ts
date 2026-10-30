@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import {
+  ANIMATING_CLASS,
   CREDITS_CLASS,
   CURRENT_LYRICS_CLASS,
   LINE_CLASS,
@@ -417,6 +418,24 @@ function playingView(): Fixture {
     [tail[0].classList.contains(LINE_CLASS), tail[1].classList.contains(CREDITS_CLASS), tail[2]],
     [true, true, footer],
     "Given a consumer's footer after the lines, When a line and credits are added, Then both go before the footer"
+  );
+}
+
+{
+  const { renderer } = playingView();
+  assert.ok(
+    renderer.lines[1].lyricElement.classList.contains(ANIMATING_CLASS),
+    "Given a playing view, When the sung line is read, Then it is animating"
+  );
+  // A source that puts the sung line well before where playback is.
+  const retimed = song(...FIRST_SONG);
+  retimed[1] = { startTimeMs: 1000, durationMs: 1000, words: "Second line" };
+  retimed[2] = { ...retimed[2], startTimeMs: 3000 };
+  renderer.setLyrics(retimed);
+  renderer.tick(PLAYBACK_TIME_S, { isPlaying: true, eventCreationTime: Date.now() });
+  assert.ok(
+    !renderer.lines[1].lyricElement.classList.contains(ANIMATING_CLASS),
+    "Given a sung line retimed into the past, When the view ticks, Then it stops animating rather than keeping the class it took over"
   );
 }
 

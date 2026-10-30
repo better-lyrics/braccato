@@ -540,6 +540,16 @@ export function replaceRenderedLines(
   const carryAll = (from: readonly LineData[]): LineData[] =>
     from.map(carry).filter((line): line is LineData => line !== null);
 
+  // The line being sung is still the line being sung, so a theme keyed on those classes does not dim it
+  // and bring it back. Its animations are set up again from the new timing on the next tick. Read
+  // before the dropped lines are let go, which clears their selection.
+  for (const [line, previous] of replaced) {
+    line.isScrolled = previous.isScrolled;
+    line.isSelected = previous.isSelected;
+    togglePartClass(line, CURRENT_LYRICS_CLASS, previous.lyricElement.classList.contains(CURRENT_LYRICS_CLASS));
+    togglePartClass(line, ANIMATING_CLASS, previous.lyricElement.classList.contains(ANIMATING_CLASS));
+  }
+
   // A planned scroll was planned against lines and places this swap is about to change.
   dropPendingLineScroll(engine);
   for (const record of [...engine.lineScrollAnimations]) {
@@ -557,14 +567,6 @@ export function replaceRenderedLines(
   engine.lastScrollElements = carryAll(engine.lastScrollElements);
   engine.lastScrollDebugContext.activeElms = carryAll(engine.lastScrollDebugContext.activeElms);
   engine.pinnedScrollLine = engine.pinnedScrollLine === null ? null : carry(engine.pinnedScrollLine);
-  // The line being sung is still the line being sung, so a theme keyed on those classes does not dim it
-  // and bring it back. Its animations are set up again from the new timing on the next tick.
-  for (const [line, previous] of replaced) {
-    line.isScrolled = previous.isScrolled;
-    line.isSelected = previous.isSelected;
-    togglePartClass(line, CURRENT_LYRICS_CLASS, previous.lyricElement.classList.contains(CURRENT_LYRICS_CLASS));
-    togglePartClass(line, ANIMATING_CLASS, previous.lyricElement.classList.contains(ANIMATING_CLASS));
-  }
   engine.lines = lines;
 
   if (engine.layout === "stage") replaceStageElements(engine, dropped, replaced);
@@ -623,7 +625,7 @@ function replaceStageElements(
  */
 export function settleSwappedLines(
   engine: AnimationEngineInstance,
-  before: ReadonlyMap<LineData, { position: number; height: number }>,
+  before: ReadonlyMap<LineData, { position: number; height: number; offset: number }>,
   scrollTopBefore: number
 ): void {
   const container = engine.lyricsContainer;
@@ -659,7 +661,8 @@ export function settleSwappedLines(
   for (const line of engine.lines) {
     const was = before.get(line);
     if (was === undefined || line.position < 0) continue;
-    const onScreenShift = was.position - line.position + shift;
+    // From where it is on screen, which a line scroll still running carries away from its place.
+    const onScreenShift = was.position + was.offset - line.position + shift;
     if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, onScreenShift);
   }
 }
