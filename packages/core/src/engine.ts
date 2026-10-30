@@ -509,6 +509,14 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
 }
 
 /**
+ * How far a scroll still running has carried a line from its place, or zero with none running on it.
+ */
+export function lineScrollOffset(engine: AnimationEngineInstance, element: HTMLElement): number {
+  if (!engine.lineScrollAnimations.some(record => record.lineElement === element)) return 0;
+  return currentTranslateY(engine, element, 0);
+}
+
+/**
  * Hands the engine the lines of a song swapped into the view it already holds. A kept line is the
  * same record and keeps everything; a dropped line's animations stop and nothing goes on holding it;
  * a line built in place of one is handed what the engine held for that one, so the scroll does not
@@ -549,6 +557,14 @@ export function replaceRenderedLines(
   engine.lastScrollElements = carryAll(engine.lastScrollElements);
   engine.lastScrollDebugContext.activeElms = carryAll(engine.lastScrollDebugContext.activeElms);
   engine.pinnedScrollLine = engine.pinnedScrollLine === null ? null : carry(engine.pinnedScrollLine);
+  // The line being sung is still the line being sung, so a theme keyed on those classes does not dim it
+  // and bring it back. Its animations are set up again from the new timing on the next tick.
+  for (const [line, previous] of replaced) {
+    line.isScrolled = previous.isScrolled;
+    line.isSelected = previous.isSelected;
+    togglePartClass(line, CURRENT_LYRICS_CLASS, previous.lyricElement.classList.contains(CURRENT_LYRICS_CLASS));
+    togglePartClass(line, ANIMATING_CLASS, previous.lyricElement.classList.contains(ANIMATING_CLASS));
+  }
   engine.lines = lines;
 
   if (engine.layout === "stage") replaceStageElements(engine, dropped, replaced);
@@ -624,7 +640,8 @@ export function settleSwappedLines(
       engine.lines.find(line => before.has(line) && line.isScrolled));
 
   const followedWas = followed === undefined ? undefined : before.get(followed)?.position;
-  if (followed !== undefined && followedWas !== undefined) {
+  // A line that has not been measured, because the view is not on screen, has nowhere to hold still.
+  if (followed !== undefined && followedWas !== undefined && followed.position >= 0) {
     const moved = followed.position - followedWas;
     if (Math.abs(moved) >= DECORATION_MIN_SHIFT_PX) {
       scrollElement.scrollTop = scrollTopBefore + moved;
@@ -641,7 +658,7 @@ export function settleSwappedLines(
   if (!decorationSlideAllowed(engine, container)) return;
   for (const line of engine.lines) {
     const was = before.get(line);
-    if (was === undefined) continue;
+    if (was === undefined || line.position < 0) continue;
     const onScreenShift = was.position - line.position + shift;
     if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, onScreenShift);
   }

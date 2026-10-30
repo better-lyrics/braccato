@@ -23,6 +23,7 @@ import {
 } from "./constants";
 import {
   type AnimationEngineInstance,
+  lineScrollOffset,
   playerTimeForLyricTime,
   replaceRenderedLines,
   setupLineCullObserver,
@@ -38,6 +39,7 @@ import {
   hideCredits,
   isNearestLyricRtl,
   type LineData,
+  moveDecorations,
   newLineData,
 } from "./inject";
 import { refreshInstrumentalImages } from "./imageHighlights";
@@ -129,6 +131,22 @@ interface BuildContext {
 /** Everything a line's element is built from, so two lines that answer the same build the same. */
 const lineSignatures = new WeakMap<LineData, string>();
 
+/**
+ * A line's words and what a consumer decorates it from. A line rebuilt for its timing alone answers
+ * the same, so the translation and romanization hung on the line it replaced still belong to it.
+ */
+const decorationKeys = new WeakMap<LineData, string>();
+
+function decorationKey(item: Lyric): string {
+  return JSON.stringify([
+    item.words,
+    item.translation ?? null,
+    item.translations ?? null,
+    item.romanization ?? null,
+    item.timedRomanization ?? null,
+  ]);
+}
+
 /** What the lines on screen were built against: the mount, the settings and whether they carry time. */
 const builtViews = new WeakMap<AnimationEngineInstance, { mount: HTMLElement; key: string }>();
 
@@ -144,7 +162,9 @@ function viewKey(context: BuildContext): string {
   return `${context.allZero}|${lyricBuildSettingsKey()}`;
 }
 
-function lineSignature(lyrics: Lyric[], lineIndex: number, context: BuildContext): string {
+// The language is left out: it is an attribute rather than anything built, and a swap writes it onto
+// every kept line instead.
+function lineSignature(lyrics: Lyric[], lineIndex: number): string {
   const item = lyrics[lineIndex];
   const parts = item.parts?.map(part => [
     part.startTimeMs,
@@ -164,8 +184,8 @@ function lineSignature(lyrics: Lyric[], lineIndex: number, context: BuildContext
     item.isInstrumental === true,
     item.agent ?? null,
     parts ?? null,
-    context.languages[lineIndex] ?? null,
     neighbours,
+    decorationKey(item),
   ]);
 }
 
@@ -189,7 +209,8 @@ function buildLine(doc: Document, lyrics: Lyric[], lineIndex: number, context: B
     if (!lyricItem.words?.trim()) lyricElement.dataset.blank = "true";
   }
 
-  lineSignatures.set(line, lineSignature(lyrics, lineIndex, context));
+  lineSignatures.set(line, lineSignature(lyrics, lineIndex));
+  decorationKeys.set(line, decorationKey(lyricItem));
   return line;
 }
 
@@ -201,7 +222,8 @@ function writeContainerState(
   engine: AnimationEngineInstance,
   container: HTMLElement,
   lyrics: Lyric[],
-  options: SetLyricsOptions
+  options: SetLyricsOptions,
+  creditsBefore: Node | null = null
 ): void {
   const doc = engine.document;
   const syncType = deriveSyncType(lyrics);
@@ -224,17 +246,12 @@ function writeContainerState(
     delete container.dataset.noLyrics;
   }
 
+  // Built again on every song, even the same names: consumers hang their own things off the credits
+  // once per build, and a kept one would collect them.
+  container.querySelector(`:scope > .${CREDITS_CLASS}`)?.remove();
   const songwriters = options.songwriters ?? [];
-  const showCredits = songwriters.length > 0 && !options.noLyrics && !hideCredits.getBooleanValue();
-  const existingCredits = container.querySelector<HTMLElement>(`:scope > .${CREDITS_CLASS}`);
-  const creditsText = showCredits ? formatSongwriters(songwriters) : null;
-  const existingText = existingCredits?.querySelector(`.${CREDITS_NAMES_CLASS}`)?.textContent ?? null;
-  if (existingCredits && existingText === creditsText) {
-    // Kept where it is, but after every line, which a swap may have added behind it.
-    if (container.lastElementChild !== existingCredits) container.appendChild(existingCredits);
-  } else {
-    existingCredits?.remove();
-    if (showCredits) container.appendChild(buildCredits(doc, songwriters));
+  if (songwriters.length > 0 && !options.noLyrics && !hideCredits.getBooleanValue()) {
+    container.insertBefore(buildCredits(doc, songwriters), creditsBefore);
   }
 
   engine.syncType = syncType;
@@ -366,13 +383,20 @@ export function swapLyrics(
   }
   // Lines a consumer took off the screen without dropping the song are not there to keep.
   const previousLines = engine.lines;
+  // An empty song is a fresh start rather than a song to carry anything into.
+  if (lyrics.length === 0 || previousLines.length === 0) return null;
   if (previousLines.some(line => line.lyricElement.parentNode !== container)) return null;
   const context = buildContext(engine, lyrics, options);
   if (built.key !== viewKey(context)) return null;
 
   const doc = engine.document;
   const previousSignatures = previousLines.map(line => lineSignatures.get(line) ?? "");
-  const nextSignatures = lyrics.map((_, lineIndex) => lineSignature(lyrics, lineIndex, context));
+  const nextSignatures = lyrics.map((_, lineIndex) => lineSignature(lyrics, lineIndex));
+  // Whatever a consumer put after the lines and the credits, such as a footer, stays after them.
+  const children = Array.from(container.childNodes);
+  const oldCredits = container.querySelector(`:scope > .${CREDITS_CLASS}`);
+  const lastOwned = oldCredits ?? previousLines[previousLines.length - 1].lyricElement;
+  const trailing = children[children.indexOf(lastOwned) + 1] ?? null;
   const matches = matchLines(previousSignatures, nextSignatures);
 
   const kept = new Set<LineData>();
@@ -396,6 +420,7 @@ export function swapLyrics(
       unmatchedOld = [];
       kept.add(line);
       line.lyricElement.dataset.lineNumber = String(lineIndex);
+      applyLyricLanguage(line.lyricElement, context.languages[lineIndex]);
       lines.push(line);
       positions.set(line, { position: line.position, height: line.height });
       continue;
@@ -408,7 +433,12 @@ export function swapLyrics(
     const standsFor = unmatchedOld.shift();
     if (standsFor !== undefined) {
       replaced.set(line, standsFor);
-      positions.set(line, { position: standsFor.position, height: standsFor.height });
+      // From where it is on screen, which a scroll still running carries away from its place.
+      positions.set(line, {
+        position: standsFor.position + lineScrollOffset(engine, standsFor.lyricElement),
+        height: standsFor.height,
+      });
+      if (decorationKeys.get(standsFor) === decorationKeys.get(line)) moveDecorations(standsFor, line);
     }
     lines.push(line);
   }
@@ -416,7 +446,7 @@ export function swapLyrics(
   const dropped = previousLines.filter(line => !kept.has(line));
   // In order, each new line before whichever kept line follows it, so a kept element never leaves the
   // document and never loses the animations running against it.
-  let following: Element | null = container.querySelector(`:scope > .${CREDITS_CLASS}`);
+  let following: Node | null = oldCredits ?? trailing;
   for (let index = lines.length - 1; index >= 0; index--) {
     const element = lines[index].lyricElement;
     if (!kept.has(lines[index])) container.insertBefore(element, following);
@@ -425,7 +455,7 @@ export function swapLyrics(
   replaceRenderedLines(engine, lines, dropped, replaced);
   for (const line of dropped) line.lyricElement.remove();
 
-  writeContainerState(engine, container, lyrics, options);
+  writeContainerState(engine, container, lyrics, options, trailing);
   refreshInstrumentalImages(container, engine.window);
   return positions;
 }

@@ -607,6 +607,29 @@ function removeDecoration(lineData: LineData, decoration: HTMLElement): void {
   decoration.remove();
 }
 
+/**
+ * Moves the translation and romanization hung on one line onto the line built in its place, with any
+ * timed parts they brought, so a line rebuilt for its timing keeps what the consumer hung on it. The
+ * parts' animations stop; the new line sets them up again with its own.
+ */
+export function moveDecorations(from: LineData, to: LineData): void {
+  const decorations = Array.from(from.lyricElement.childNodes).filter(
+    (node): node is HTMLElement =>
+      (node as HTMLElement).classList?.contains(ROMANIZED_LYRICS_CLASS) === true ||
+      (node as HTMLElement).classList?.contains(TRANSLATED_LYRICS_CLASS) === true
+  );
+  for (const decoration of decorations) {
+    from.parts = from.parts.filter(part => {
+      if (!decoration.contains(part.lyricElement)) return true;
+      for (const animation of part.animations) animation.cancel();
+      part.animations = [];
+      to.parts.push(part);
+      return false;
+    });
+    to.lyricElement.appendChild(decoration);
+  }
+}
+
 export function injectRomanization(
   doc: Document,
   lyricElement: HTMLElement,

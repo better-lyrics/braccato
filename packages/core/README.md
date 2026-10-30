@@ -87,8 +87,8 @@ arriving for the song already playing, or an editor handing over every edit. Lyr
 that already shows a song are swapped into it rather than built over it, so the only thing that
 changes on screen is what changed in the lyrics.
 
-- A line that builds the same as one already shown, by its words, timing, parts, singer and language,
-  keeps that element and the animations running on it. The arrays do not need to be the same objects,
+- A line that builds the same as one already shown, by its words, timing, parts, singer, translation
+  and romanization, keeps that element and the animations running on it. The arrays do not need to be the same objects,
   so a consumer that parses its source again on every change loses nothing.
 - Lines that differ are built again in place. A line built where another one stood takes over that
   line's place in the scroll, and on the stage its role and position, so a retimed line being sung
@@ -96,8 +96,10 @@ changes on screen is what changed in the lyrics.
 - The scroll stays where it was. When lines above the one being followed grow, shrink, arrive or go,
   the scroll moves by however far that line moved, so it holds still on screen, and the lines that
   moved relative to it slide there. A reader who scrolled away stays scrolled away.
-- Translations and romanizations hung on a kept line stay. Injecting the same one again does nothing,
-  and injecting a different one replaces it.
+- Translations and romanizations hung on a kept line stay, and so do those on a line rebuilt only for
+  its timing. Injecting the same one again does nothing, and injecting a different one replaces it. A
+  line whose `translation`, `translations`, `romanization` or `timedRomanization` changed is rebuilt
+  bare, ready to be decorated again.
 - A swap that lands while the lines are still scrolling to the last line leaves the kept lines to
   finish that scroll, and the new ones start at rest.
 

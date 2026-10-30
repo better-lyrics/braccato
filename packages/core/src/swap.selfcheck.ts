@@ -1,5 +1,11 @@
 import { strict as assert } from "node:assert";
-import { LINE_CLASS, ROMANIZED_LYRICS_CLASS, TRANSLATED_LYRICS_CLASS } from "./constants";
+import {
+  CREDITS_CLASS,
+  CURRENT_LYRICS_CLASS,
+  LINE_CLASS,
+  ROMANIZED_LYRICS_CLASS,
+  TRANSLATED_LYRICS_CLASS,
+} from "./constants";
 import { injectRomanization, injectTranslation, type LineData } from "./inject";
 import { createLyricsRenderer } from "./renderer";
 import { asDocument, asElement, asFakeAnimation, asFakeNode, FakeDocument, type FakeNode } from "./selfcheck/fakeDom";
@@ -331,6 +337,86 @@ function playingView(): Fixture {
     kept.parts.length,
     ownParts + 2,
     "Given a different timed romanization, When the line is read, Then the parts of the one it replaced went with it"
+  );
+}
+
+// -- A source upgrade that only retimes --------------------------------------------
+
+{
+  const { renderer, document } = playingView();
+  const doc = asDocument(document);
+  const sung = renderer.lines[1];
+  injectTranslation(doc, sung.lyricElement, "Zweite Zeile", "de");
+  assert.ok(
+    sung.lyricElement.classList.contains(CURRENT_LYRICS_CLASS),
+    "Given a playing view, When the sung line is read, Then it is the active one"
+  );
+
+  // The same words a few milliseconds later: what a better source for the same song looks like.
+  renderer.setLyrics(FIRST_SONG.map((words, index) => ({ startTimeMs: index * 5000 + 40, durationMs: 4900, words })));
+
+  const replacement = renderer.lines[1];
+  assert.notEqual(replacement, sung, "Given retimed lines, When the view is asked, Then the sung line was built again");
+  assert.ok(
+    replacement.lyricElement.classList.contains(CURRENT_LYRICS_CLASS),
+    "Given a retimed sung line, When its replacement is read, Then it is already the active one rather than coming back to it"
+  );
+  const carried = asFakeNode(replacement.lyricElement).childNodes.filter(child =>
+    child.classList.contains(TRANSLATED_LYRICS_CLASS)
+  );
+  assert.equal(
+    carried[0]?.textContent,
+    "Zweite Zeile",
+    "Given a line rebuilt for its timing alone, When it is read, Then it still carries the translation hung on the line it replaced"
+  );
+}
+
+{
+  const { renderer, document } = playingView();
+  const doc = asDocument(document);
+  const withTranslation = song(...FIRST_SONG).map((lyric, index) =>
+    index === 0 ? { ...lyric, translation: { text: "Première ligne", lang: "fr" } } : lyric
+  );
+  renderer.setLyrics(withTranslation);
+  injectTranslation(doc, renderer.lines[0].lyricElement, "Première ligne", "fr");
+
+  // An editor that deletes the translation hands over the line without it, and injects nothing.
+  renderer.setLyrics(song(...FIRST_SONG));
+  assert.equal(
+    asFakeNode(renderer.lines[0].lyricElement).childNodes.filter(child =>
+      child.classList.contains(TRANSLATED_LYRICS_CLASS)
+    ).length,
+    0,
+    "Given a line whose translation was deleted, When the view is read, Then the translation went with it"
+  );
+}
+
+{
+  const { renderer, document } = playingView();
+  const lines = renderer.lines;
+  renderer.setLyrics(song(...FIRST_SONG), { language: "en" });
+  assert.deepEqual(
+    renderer.lines,
+    lines,
+    "Given the same song tagged with a language, When the view is asked, Then every line was kept"
+  );
+  assert.ok(
+    lines.every(line => line.lyricElement.lang === "en"),
+    "Given the same song tagged with a language, When the kept lines are read, Then each one carries it"
+  );
+
+  // A consumer that hangs its own footer after the lines.
+  const container = asFakeNode(renderer.container!);
+  const footer = document.createElement("div");
+  container.appendChild(footer);
+  renderer.setLyrics([...song(...FIRST_SONG), { startTimeMs: 20000, durationMs: 5000, words: "Fifth line" }], {
+    songwriters: ["Someone"],
+  });
+  const tail = container.childNodes.slice(-3);
+  assert.deepEqual(
+    [tail[0].classList.contains(LINE_CLASS), tail[1].classList.contains(CREDITS_CLASS), tail[2]],
+    [true, true, footer],
+    "Given a consumer's footer after the lines, When a line and credits are added, Then both go before the footer"
   );
 }
 
