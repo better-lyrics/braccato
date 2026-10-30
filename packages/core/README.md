@@ -92,7 +92,7 @@ changes on screen is what changed in the lyrics.
   so a consumer that parses its source again on every change loses nothing.
 - Lines that differ are built again in place. A line built where another one stood takes over that
   line's place in the scroll, and on the stage its role and position, so a retimed line being sung
-  does not fade in again. A stage line replaced mid-glide finishes the glide it was in.
+  does not fade in again. A stage line replaced mid-glide finishes the glide it was in, unless the new line is a different height, which moves it straight to its new place.
 - The scroll stays where it was. When lines above the one being followed grow, shrink, arrive or go,
   the scroll moves by however far that line moved, so it holds still on screen, and the lines that
   moved relative to it slide there. A reader who scrolled away stays scrolled away.

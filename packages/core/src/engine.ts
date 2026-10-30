@@ -573,11 +573,6 @@ export function replaceRenderedLines(
 }
 
 /**
- * Moves what the stage held for each replaced line onto the line built in its place, and lets go of
- * every dropped line. A replacement starts exactly where and as visible as the line it replaced, so
- * placing the stage afterwards only moves it if the new song puts it somewhere else.
- */
-/**
  * Starts the same animation on another element at the point the first one has reached, or answers
  * null when there is nothing left of it to carry on.
  */
@@ -594,6 +589,11 @@ function continueAnimation(animation: Animation | undefined, element: HTMLElemen
   return continued;
 }
 
+/**
+ * Moves what the stage held for each replaced line onto the line built in its place, and lets go of
+ * every dropped line. A replacement starts exactly where and as visible as the line it replaced, so
+ * placing the stage afterwards only moves it if the new song puts it somewhere else.
+ */
 function replaceStageElements(
   engine: AnimationEngineInstance,
   dropped: readonly LineData[],

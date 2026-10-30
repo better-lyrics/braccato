@@ -599,17 +599,11 @@ const decorationSources = new WeakMap<HTMLElement, string>();
 /**
  * Has the next tick set a line's animations up again, the parts just added to it included. A line
  * already being sung sets its parts up once, so parts added after that would stay still until the
- * line came round again.
+ * line came round again. Its running animations are left alone: the setup replaces each one, so
+ * nothing on the line goes still in between.
  */
 function rearmLineAnimations(lineData: LineData): void {
-  if (!lineData.isAnimating) return;
-  for (const part of [lineData, ...lineData.parts]) {
-    for (const animation of part.animations) animation.cancel();
-    part.animations = [];
-  }
   lineData.isAnimating = false;
-  lineData.isAnimationPlayStatePlaying = false;
-  lineData.accumulatedOffsetMs = 0;
 }
 
 /** Takes a decoration off its line, along with any timed parts it brought, and stops their animations. */
