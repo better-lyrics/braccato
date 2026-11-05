@@ -3,21 +3,15 @@ import type { ResolvedTickOptions } from "../types";
 import type { AnimationEngineInstance } from "./instance";
 import { getCSSDurationInMs } from "./cssValues";
 
-// Gecko steps media time every ~40ms, so reads lag by a random amount (never lead) that reseeks lines as drift.
+// Gecko has been seen to step media time about every 40 ms, so a read can lag by up to one step (never
+// lead), and that lag would reseek lines as drift. A read off by more than a step plus margin is treated as
+// a seek or a timer spike.
 export const SMOOTH_PLAYBACK_CLOCK = isGecko();
-// One Gecko step (~45ms) plus margin: a read further off is a seek or a timer spike, not media lag.
 export const CLOCK_RESYNC_THRESHOLD_S = 0.06;
 const CLOCK_SLEW_PER_S = 0.1;
 
-/**
- * Stands where a snapshot's wall clock timestamp would be when the time did not come from a live
- * player, and so says nothing about how long ago it was sampled.
- */
 export const NO_PLAYER_SNAPSHOT = -1;
 
-/**
- * The last player snapshot. It describes the media, not a view, so every instance reads the same one.
- */
 interface PlaybackClock {
   lastTime: number;
   lastPlayState: boolean;
@@ -35,8 +29,7 @@ export const playbackClock: PlaybackClock = {
 };
 
 /**
- * Forgets the last player snapshot, so the next tick is treated as the first one of a new song
- * rather than as a jump away from the previous one.
+ * Clears the shared playback history when switching songs.
  */
 export function resetPlaybackClock(): void {
   playbackClock.lastTime = 0;
@@ -99,10 +92,6 @@ export function advancePlaybackClock(
   return { timeS, isPlaying, jumped, mediaClockRanBackwards, seekedWhilePaused };
 }
 
-/**
- * Seconds to add to the player time to get the lyric time this view renders: the theme's offset
- * and the trim for its sync type, less the global and per-song offsets.
- */
 export function lyricClockShiftS(
   engine: AnimationEngineInstance,
   lyricsElement: HTMLElement,
@@ -116,9 +105,6 @@ export function lyricClockShiftS(
   return syncTypeShiftS - options.globalLyricOffset - options.lyricOffset;
 }
 
-/**
- * The player time at which a lyric time plays, under the offsets of the last tick.
- */
 export function playerTimeForLyricTime(engine: AnimationEngineInstance, lyricTimeS: number): number {
   const options = engine.lastTickOptions;
   const lyricsElement = engine.lyricsContainer;

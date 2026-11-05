@@ -1,11 +1,7 @@
 import type { LineData } from "../inject";
 import { INSTRUMENTAL_WAVE_PATH_HIGH, INSTRUMENTAL_WAVE_PATH_LOW } from "../instrumental";
 import type { AnimationConfig } from "./animationConfig";
-import {
-  correctedAnimationTimeMs,
-  correctedWrappedAnimationTimeMs,
-  trackLyricAnimationTiming,
-} from "./animationTiming";
+import { correctedAnimationTimeMs, correctedWrappedAnimationTimeMs, followSongClock } from "./animationTiming";
 import type { AnimationEngineInstance } from "./instance";
 
 const FILL_SELECTOR = ".blyrics--instrumental-fill";
@@ -28,7 +24,7 @@ export function startInstrumentalAnimations(
   const { instrumental } = config;
   const followSong = (animation: Animation | null, currentTimeMs: number, wrapDurationMs?: number) => {
     if (!animation) return;
-    trackLyricAnimationTiming(engine, animation, { appliedTimingOffsetMs, offsetMs: 0, wrapDurationMs });
+    followSongClock(engine, animation, { appliedTimingOffsetMs, offsetMs: 0, wrapDurationMs });
     animation.currentTime = currentTimeMs;
   };
   const scheduled = (durationMs: number) => correctedAnimationTimeMs(elapsedMs, appliedTimingOffsetMs, durationMs);
