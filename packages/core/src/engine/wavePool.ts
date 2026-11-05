@@ -1,8 +1,6 @@
 import type { AnimationEngineInstance } from "./instance";
 
-// Finished per-letter wave animations are pooled and retargeted onto new letters, since recreating
-// ~150 identical ones per line activation is pure churn.
-export const pooledWaveAnimations = new WeakMap<Animation, Animation[]>();
+export const waveAnimationPools = new WeakMap<Animation, Animation[]>();
 const pooledWaveKeyframeSignatures = new WeakMap<Animation, string>();
 
 export function acquireWaveAnimation(
@@ -27,7 +25,7 @@ export function acquireWaveAnimation(
     return pooled;
   }
   const animation = letterElement.animate(keyframes, timing);
-  pooledWaveAnimations.set(animation, pool);
+  waveAnimationPools.set(animation, pool);
   pooledWaveKeyframeSignatures.set(animation, keyframeSignature);
   return animation;
 }
