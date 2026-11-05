@@ -584,7 +584,7 @@ const TAIL_SPACE_DEMANDED = VIEWPORT_HEIGHT_FULLSCREEN * (1 - TARGET_SCROLL_RATI
 const renderedMeasurements = {
   viewportHeight: VIEWPORT_HEIGHT_FULLSCREEN,
   targetScrollRatio: TARGET_SCROLL_RATIO,
-  contentHeight: 5939,
+  contentHeightWithoutBottomPadding: 5939,
   firstLineHeight: 100,
   lastLineCentre: 5543,
   lastLineHeight: 120,
@@ -594,7 +594,8 @@ const renderedMeasurements = {
 const rendered = computeScrollPadding(renderedMeasurements);
 
 assert.ok(
-  rendered.bottom + (renderedMeasurements.contentHeight - renderedMeasurements.lastLineCentre) >= TAIL_SPACE_DEMANDED,
+  rendered.bottom + (renderedMeasurements.contentHeightWithoutBottomPadding - renderedMeasurements.lastLineCentre) >=
+    TAIL_SPACE_DEMANDED,
   "Given a rendering view, When its padding is sized, Then the last line can reach the target scroll position"
 );
 
@@ -602,7 +603,7 @@ assert.ok(
 const unrendered = computeScrollPadding({
   viewportHeight: VIEWPORT_HEIGHT_FULLSCREEN,
   targetScrollRatio: TARGET_SCROLL_RATIO,
-  contentHeight: 0,
+  contentHeightWithoutBottomPadding: 0,
   firstLineHeight: 0,
   lastLineCentre: 0,
   lastLineHeight: 0,
@@ -618,7 +619,7 @@ assert.equal(
   computeScrollPadding({
     viewportHeight: VIEWPORT_HEIGHT_FULLSCREEN,
     targetScrollRatio: TARGET_SCROLL_RATIO,
-    contentHeight: 99999,
+    contentHeightWithoutBottomPadding: 99999,
     firstLineHeight: 0,
     lastLineCentre: null,
     lastLineHeight: 0,
