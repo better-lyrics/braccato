@@ -490,18 +490,33 @@ function pendingLineScrollMatches(
   );
 }
 
-export function commitOrPrepareLineScroll(
-  engine: AnimationEngineInstance,
-  lines: LineScrollItem[],
-  activeLine: LineData,
-  scrollDeltaPx: number,
-  fromScrollTop: number,
-  toScrollTop: number,
-  viewportHeight: number,
-  config: AnimationConfig,
-  naturalAdvance: boolean
-): void {
-  if (pendingLineScrollMatches(engine, activeLine, fromScrollTop, toScrollTop)) {
+export interface LineScrollRequest {
+  lines: LineScrollItem[];
+  activeLine: LineData;
+  fromScrollTop: number;
+  toScrollTop: number;
+  viewportHeight: number;
+  config: AnimationConfig;
+  continuesEngineScroll: boolean;
+}
+
+function planLineScroll(engine: AnimationEngineInstance, request: LineScrollRequest): LineScrollPlan | null {
+  const { lines, activeLine, fromScrollTop, toScrollTop } = request;
+  return prepareLineScrollOffsets(
+    engine,
+    lines,
+    lines.findIndex(line => line.lyricElement === activeLine.lyricElement),
+    toScrollTop - fromScrollTop,
+    fromScrollTop,
+    toScrollTop,
+    request.viewportHeight,
+    request.config,
+    request.continuesEngineScroll
+  );
+}
+
+export function commitOrPrepareLineScroll(engine: AnimationEngineInstance, request: LineScrollRequest): void {
+  if (pendingLineScrollMatches(engine, request.activeLine, request.fromScrollTop, request.toScrollTop)) {
     const pending = engine.pendingLineScroll!;
     engine.pendingLineScroll = null;
     startPreparedLineScroll(engine, pending.plan);
@@ -509,52 +524,17 @@ export function commitOrPrepareLineScroll(
   }
 
   dropPendingLineScroll(engine);
-  const plan = prepareLineScrollOffsets(
-    engine,
-    lines,
-    lines.findIndex(line => line.lyricElement === activeLine.lyricElement),
-    scrollDeltaPx,
-    fromScrollTop,
-    toScrollTop,
-    viewportHeight,
-    config,
-    naturalAdvance
-  );
+  const plan = planLineScroll(engine, request);
   if (plan) startPreparedLineScroll(engine, plan);
 }
 
-export function prepareUpcomingLineScroll(
-  engine: AnimationEngineInstance,
-  lines: LineScrollItem[],
-  activeLine: LineData,
-  scrollDeltaPx: number,
-  fromScrollTop: number,
-  toScrollTop: number,
-  viewportHeight: number,
-  config: AnimationConfig,
-  naturalAdvance: boolean
-): void {
+export function prepareUpcomingLineScroll(engine: AnimationEngineInstance, request: LineScrollRequest): void {
+  const { activeLine, fromScrollTop, toScrollTop } = request;
   if (pendingLineScrollMatches(engine, activeLine, fromScrollTop, toScrollTop)) return;
 
   dropPendingLineScroll(engine);
-  const activeLineIndex = lines.findIndex(line => line.lyricElement === activeLine.lyricElement);
-  const plan = prepareLineScrollOffsets(
-    engine,
-    lines,
-    activeLineIndex,
-    scrollDeltaPx,
-    fromScrollTop,
-    toScrollTop,
-    viewportHeight,
-    config,
-    naturalAdvance
-  );
+  const plan = planLineScroll(engine, request);
   if (plan) {
-    engine.pendingLineScroll = {
-      plan,
-      activeLineElement: activeLine.lyricElement,
-      fromScrollTop,
-      toScrollTop,
-    };
+    engine.pendingLineScroll = { plan, activeLineElement: activeLine.lyricElement, fromScrollTop, toScrollTop };
   }
 }

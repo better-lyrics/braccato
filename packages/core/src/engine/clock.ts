@@ -60,6 +60,45 @@ export function smoothedPlaybackTime(
   return predictedTime + errorS * Math.min(1, elapsedS * CLOCK_SLEW_PER_S);
 }
 
+const TIME_JUMP_THRESHOLD_S = 0.5;
+
+export interface Playhead {
+  timeS: number;
+  isPlaying: boolean;
+  jumped: boolean;
+  mediaClockRanBackwards: boolean;
+  seekedWhilePaused: boolean;
+}
+
+export function advancePlaybackClock(
+  reportedTimeS: number,
+  { isPlaying, eventCreationTime }: ResolvedTickOptions,
+  playbackRate: number,
+  now: number
+): Playhead {
+  const snapshotGapS = (eventCreationTime - playbackClock.lastEventCreationTime) / 1000;
+  const jumped = Math.abs(reportedTimeS - playbackClock.lastTime - snapshotGapS) > TIME_JUMP_THRESHOLD_S;
+  const readsMediaClockDirectly = eventCreationTime === NO_PLAYER_SNAPSHOT;
+  const mediaClockRanBackwards =
+    readsMediaClockDirectly && isPlaying && reportedTimeS < playbackClock.lastTime - CLOCK_RESYNC_THRESHOLD_S;
+  const seekedWhilePaused = !isPlaying && !playbackClock.lastPlayState && reportedTimeS !== playbackClock.lastTime;
+
+  playbackClock.lastTime = reportedTimeS;
+  playbackClock.lastPlayState = isPlaying;
+  playbackClock.lastEventCreationTime = eventCreationTime;
+
+  const snapshotAgeS = isPlaying && !readsMediaClockDirectly ? (now - eventCreationTime) / 1000 : 0;
+  let timeS = reportedTimeS + snapshotAgeS;
+  if (SMOOTH_PLAYBACK_CLOCK) {
+    if (isPlaying && !jumped) {
+      timeS = smoothedPlaybackTime(playbackClock.smoothedTime, playbackClock.smoothedAt, timeS, now, playbackRate);
+    }
+    playbackClock.smoothedTime = timeS;
+    playbackClock.smoothedAt = isPlaying ? now : NO_PLAYER_SNAPSHOT;
+  }
+  return { timeS, isPlaying, jumped, mediaClockRanBackwards, seekedWhilePaused };
+}
+
 /**
  * Seconds to add to the player time to get the lyric time this view renders: the theme's offset
  * and the trim for its sync type, less the global and per-song offsets.
