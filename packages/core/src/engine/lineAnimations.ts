@@ -1,7 +1,7 @@
 import type { LineData, PartData } from "../inject";
 import type { AnimationConfig } from "./animationConfig";
 import { correctedAnimationTimeMs, trackLyricAnimationTiming } from "./animationTiming";
-import { resolveLineGlowSuppression } from "./glow";
+import { suppressInvisibleWordGlows } from "./glow";
 import type { AnimationEngineInstance } from "./instance";
 import { startInstrumentalAnimations, startInstrumentalExitAnimations } from "./instrumentalAnimations";
 import { resetPartAnimations } from "./lineAnimationState";
@@ -19,7 +19,7 @@ export function startLineAnimations(
     startInstrumentalAnimations(engine, line, config, lyricTimeS, appliedTimingOffsetMs);
     return;
   }
-  resolveLineGlowSuppression(engine, line, config);
+  suppressInvisibleWordGlows(engine, line, config);
   for (const part of line.parts) startWordAnimations(engine, part, config, lyricTimeS, appliedTimingOffsetMs);
 }
 
