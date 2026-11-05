@@ -1,6 +1,14 @@
-import { toMs } from "../util";
+import { clamp, toMs } from "../util";
 import type { AnimationEngineInstance } from "./instance";
 import { dropPendingLineScroll } from "./lineScroll";
+
+export interface ThemeReader {
+  string(property: string, fallback: string): string;
+  durationMs(property: string, fallback: string): number;
+  number(property: string, fallback: number): number;
+  fraction(property: string, fallback: number): number;
+  flag(property: string, fallback: boolean): boolean;
+}
 
 export function clearStyleCaches(engine: AnimationEngineInstance): void {
   dropPendingLineScroll(engine);
@@ -10,6 +18,7 @@ export function clearStyleCaches(engine: AnimationEngineInstance): void {
   engine.cachedLineScrollTiming.clear();
 }
 
+// Property-only caching assumes every lookup for this engine uses its lyrics container.
 export function getCSSValue(
   engine: AnimationEngineInstance,
   lyricsElement: HTMLElement,
@@ -24,16 +33,6 @@ export function getCSSValue(
   return value;
 }
 
-/**
- * Gets and caches a css duration.
- * The cache belongs to one engine instance, which resolves every lookup against its own lyrics
- * container, so this function does not key its cache on the element provided -- it assumes that
- * it isn't relevant to the calling code
- *
- * @param lyricsElement - the element to look up against
- * @param property - the css property to look up
- * @return - in ms
- */
 export function getCSSDurationInMs(
   engine: AnimationEngineInstance,
   lyricsElement: HTMLElement,
@@ -44,17 +43,7 @@ export function getCSSDurationInMs(
     duration = toMs(getCSSValue(engine, lyricsElement, property, "0ms"));
     engine.cachedDurations.set(property, duration);
   }
-
   return duration;
-}
-
-export function getCSSDurationWithFallback(
-  engine: AnimationEngineInstance,
-  lyricsElement: HTMLElement,
-  property: string,
-  fallback: string
-): number {
-  return Math.max(toMs(getCSSValue(engine, lyricsElement, property, fallback)), 1);
 }
 
 export function getCSSNumber(
@@ -67,24 +56,19 @@ export function getCSSNumber(
   return Number.isFinite(value) ? value : fallback;
 }
 
-export function getCSSBoolean(
-  engine: AnimationEngineInstance,
-  lyricsElement: HTMLElement,
-  property: string,
-  fallback: boolean
-): boolean {
-  const value = getCSSValue(engine, lyricsElement, property, fallback ? "1" : "0").toLowerCase();
-  if (value === "false" || value === "off" || value === "none") return false;
-  const numericValue = Number.parseFloat(value);
-  if (Number.isFinite(numericValue)) return numericValue > 0;
-  return fallback;
-}
-
-export function getCSSOffset(
-  engine: AnimationEngineInstance,
-  lyricsElement: HTMLElement,
-  property: string,
-  fallback: number
-): number {
-  return Math.max(0, Math.min(1, getCSSNumber(engine, lyricsElement, property, fallback)));
+export function createThemeReader(engine: AnimationEngineInstance, lyricsElement: HTMLElement): ThemeReader {
+  const string = (property: string, fallback: string) => getCSSValue(engine, lyricsElement, property, fallback);
+  const number = (property: string, fallback: number) => getCSSNumber(engine, lyricsElement, property, fallback);
+  return {
+    string,
+    number,
+    durationMs: (property, fallback) => Math.max(toMs(string(property, fallback)), 1),
+    fraction: (property, fallback) => clamp(number(property, fallback), 0, 1),
+    flag: (property, fallback) => {
+      const value = string(property, fallback ? "1" : "0").toLowerCase();
+      if (value === "false" || value === "off" || value === "none") return false;
+      const numeric = Number.parseFloat(value);
+      return Number.isFinite(numeric) ? numeric > 0 : fallback;
+    },
+  };
 }
