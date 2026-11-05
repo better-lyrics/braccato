@@ -1,367 +1,317 @@
-import { registerThemeSetting } from "../themeSettings";
-import type { PartData } from "../inject";
 import { RTL_CLASS } from "../constants";
-import type { AnimationEngineInstance } from "./instance";
+import type { PartData } from "../inject";
+import { registerThemeSetting } from "../themeSettings";
 import type { AnimationConfig } from "./animationConfig";
 import { correctedAnimationTimeMs, mirrorImageHighlightAnimations, trackLyricAnimationTiming } from "./animationTiming";
+import {
+  fadeInFullySweptKeyframes,
+  fadeOutKeyframes,
+  glowKeyframes,
+  shownFullySweptKeyframes,
+  shownKeyframes,
+  swipeKeyframes,
+} from "./highlightKeyframes";
+import type { AnimationEngineInstance } from "./instance";
 import {
   GECKO_REDRAW,
   GECKO_REDRAW_KEYFRAMES,
   GECKO_REDRAW_PERIOD_MS,
   LETTER_WAVE_CREST_OFFSET,
+  type LetterWaveTiming,
   planLetterMaskSweep,
   planLetterWave,
   swipeRamp,
 } from "./letterPlans";
-import {
-  activeTextGlowKeyframes,
-  activeTextGradientKeyframes,
-  activeTextInstantKeyframes,
-  activeTextVisibleKeyframes,
-  fadeOutTextKeyframes,
-  lineSyncedTextKeyframes,
-} from "./textKeyframes";
 import { resetPartAnimations } from "./lineAnimationState";
 import { acquireWaveAnimation } from "./wavePool";
 
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
 const SWIPE_DURATION_RATIO = registerThemeSetting("blyrics-swipe-duration-ratio", 1.6);
-
 const LINE_SYNCED_WORD_CLASS = "blyrics-line-synced-word";
+const INSTANT_MS = 1;
 
-interface HighlightAnimations {
-  animations: Animation[];
-  swipe?: Animation;
-  fade?: Animation;
-  glow?: Animation;
+export interface HeldPaint {
+  target: HTMLElement;
+  frame: Keyframe;
 }
 
-function startRichSyncedHighlightAnimations(
-  engine: AnimationEngineInstance,
-  part: PartData,
-  config: AnimationConfig,
-  swipeTimeMs: number,
-  wordTimeMs: number,
-  swipeDurationMs: number,
-  glowDurationMs: number,
-  appliedTimingOffsetMs: number
-): HighlightAnimations {
-  const animations: Animation[] = [];
-  const highlight = part.highlightElement;
-
-  let swipeAnimation: Animation | undefined;
-  if (config.enabled.highlightSwipe) {
-    const swipeTiming = { appliedTimingOffsetMs, offsetMs: swipeTimeMs - wordTimeMs };
-    const swipeCurrentTimeMs = correctedAnimationTimeMs(swipeTimeMs, appliedTimingOffsetMs, swipeDurationMs);
-    const highlightLetters = part.highlightLetterElements;
-    if (highlightLetters && highlightLetters.length > 0) {
-      const sweeps = planLetterMaskSweep(
-        swipeRamp(config),
-        highlightLetters.length,
-        swipeDurationMs,
-        part.highlightElement.classList.contains(RTL_CLASS)
-      );
-      sweeps.forEach((sweep, index) => {
-        const targets = [highlightLetters[index], part.imageLayers?.glowLetters[index]].filter(
-          (target): target is HTMLElement => target !== undefined
-        );
-        for (const target of targets) {
-          const animation = trackLyricAnimationTiming(
-            engine,
-            target.animate(
-              sweep.keyframes.map(frame => ({
-                offset: frame.offset,
-                maskPosition: frame.maskPosition,
-                WebkitMaskPosition: frame.maskPosition,
-              })) as Keyframe[],
-              { duration: sweep.durationMs, delay: sweep.delayMs, easing: sweep.easing, fill: "both" }
-            ),
-            // The last letter's sweep ends last, so it alone covers the whole word.
-            index === sweeps.length - 1 && target === highlightLetters[index]
-              ? swipeTiming
-              : { ...swipeTiming, skipDriftSample: true }
-          );
-          animation.currentTime = swipeCurrentTimeMs;
-          if (index === 0) swipeAnimation = animation;
-          animations.push(animation);
-        }
-      });
-    } else {
-      swipeAnimation = trackLyricAnimationTiming(
-        engine,
-        highlight.animate(activeTextGradientKeyframes(config), {
-          duration: swipeDurationMs,
-          easing: config.highlight.swipeEasing,
-          fill: "forwards",
-        }),
-        swipeTiming
-      );
-      swipeAnimation.currentTime = swipeCurrentTimeMs;
-      animations.push(swipeAnimation);
-    }
-  }
-
-  const opacityAnimation = trackLyricAnimationTiming(
-    engine,
-    highlight.animate(
-      config.enabled.highlightSwipe ? activeTextVisibleKeyframes() : activeTextInstantKeyframes(config),
-      {
-        duration: 1,
-        easing: "linear",
-        fill: "forwards",
-      }
-    ),
-    { appliedTimingOffsetMs, offsetMs: 0 }
-  );
-  opacityAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, 1);
-  animations.push(opacityAnimation);
-
-  let glowAnimation: Animation | undefined;
-  if (config.enabled.highlightGlow && !part.glowSuppressed) {
-    glowAnimation = trackLyricAnimationTiming(
-      engine,
-      (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
-        duration: glowDurationMs,
-        easing: config.highlight.glowEasing,
-        fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: 0 }
-    );
-    glowAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, glowDurationMs);
-    animations.push(glowAnimation);
-  }
-
-  return { animations, swipe: swipeAnimation, fade: opacityAnimation, glow: glowAnimation };
+interface WordTimeline {
+  engine: AnimationEngineInstance;
+  part: PartData;
+  config: AnimationConfig;
+  appliedTimingOffsetMs: number;
+  elapsedMs: number;
+  durationMs: number;
+  swipeLeadMs: number;
+  swipeDurationMs: number;
+  glowDurationMs: number;
 }
 
-function startLineSyncedHighlightAnimations(
-  engine: AnimationEngineInstance,
-  part: PartData,
-  config: AnimationConfig,
-  wordTimeMs: number,
-  glowDurationMs: number,
-  appliedTimingOffsetMs: number
-): HighlightAnimations {
-  const animations: Animation[] = [];
-  const fadeInDuration = config.enabled.highlightFade ? config.highlight.fadeInDurationMs : 1;
-  const highlight = part.highlightElement;
-
-  const opacityAnimation = trackLyricAnimationTiming(
-    engine,
-    highlight.animate(lineSyncedTextKeyframes(config), {
-      duration: fadeInDuration,
-      easing: config.enabled.highlightFade ? config.highlight.fadeInEasing : "linear",
-      fill: "forwards",
-    }),
-    { appliedTimingOffsetMs, offsetMs: 0 }
-  );
-  opacityAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, fadeInDuration);
-  animations.push(opacityAnimation);
-
-  let glowAnimation: Animation | undefined;
-  if (config.enabled.highlightGlow && !part.glowSuppressed) {
-    glowAnimation = trackLyricAnimationTiming(
-      engine,
-      (part.imageLayers?.glow ?? highlight).animate(activeTextGlowKeyframes(config, part), {
-        duration: glowDurationMs,
-        easing: config.highlight.glowEasing,
-        fill: part.imageLayers ? "forwards" : config.highlight.glowRestingInvisible ? "none" : "forwards",
-      }),
-      { appliedTimingOffsetMs, offsetMs: 0 }
-    );
-    glowAnimation.currentTime = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, glowDurationMs);
-    animations.push(glowAnimation);
-  }
-
-  return { animations, fade: opacityAnimation, glow: glowAnimation };
+interface LetterWaveRun {
+  waves: LetterWaveTiming[];
+  keyframes: Keyframe[];
+  signature: string;
+  headStartMs: number;
+  lastEndingWaveIndex: number;
+  startAtMs: number;
 }
 
 export function startWordAnimations(
   engine: AnimationEngineInstance,
   part: PartData,
   config: AnimationConfig,
-  currentTime: number,
+  lyricTimeS: number,
   appliedTimingOffsetMs: number
 ): void {
   resetPartAnimations(part);
-
-  const rawElapsedMs = (currentTime - part.time) * 1000;
-  // Providers do ship words that end before they start: one -0.01s word in a Musixmatch richsync
-  // was enough to make animate() throw here, and the throw took the rest of the tick with it, so
-  // the line never finished setting up and the engine tried it again on every frame.
-  const timedDurationMs = Math.max(0, part.duration * 1000);
-  const isLineSyncedWord = part.lyricElement.classList.contains(LINE_SYNCED_WORD_CLASS);
-  const swipeLeadMs = timedDurationMs * SWIPE_LEAD_RATIO.getNumberValue();
-  const swipeTimeMs = rawElapsedMs + swipeLeadMs;
-  const wordTimeMs = rawElapsedMs;
-  const swipeDurationMs = timedDurationMs * SWIPE_DURATION_RATIO.getNumberValue();
-  const glowDurationMs = Math.max(
-    timedDurationMs * config.highlight.glowDurationRatio,
-    config.highlight.glowMinDurationMs
-  );
-
-  const highlightAnimations = isLineSyncedWord
-    ? startLineSyncedHighlightAnimations(
-        engine,
-        part,
-        config,
-        wordTimeMs,
-        config.highlight.glowMinDurationMs,
-        appliedTimingOffsetMs
-      )
-    : startRichSyncedHighlightAnimations(
-        engine,
-        part,
-        config,
-        swipeTimeMs,
-        wordTimeMs,
-        swipeDurationMs,
-        glowDurationMs,
-        appliedTimingOffsetMs
-      );
-
-  const wobbleAnimations: Animation[] = [];
-  if (config.enabled.wordWobble) {
-    const wobbleKeyframes: Keyframe[] = [
-      { transform: config.word.wobbleFrom },
-      {
-        transform: config.word.wobblePeak,
-        offset: config.word.wobblePeakOffset,
-        easing: config.word.wobblePeakEasing,
-      },
-      {
-        transform: config.word.wobbleSettle,
-        offset: Math.max(config.word.wobblePeakOffset, config.word.wobbleSettleOffset),
-      },
-      { transform: config.word.wobbleTo, easing: config.word.wobbleEndEasing },
-    ];
-    const wobbleOptions: KeyframeAnimationOptions = {
-      duration: config.word.wobbleDurationMs,
-      easing: config.word.wobbleEasing,
-      fill: "forwards",
-    };
-    const wobbleStartMs = correctedAnimationTimeMs(wordTimeMs, appliedTimingOffsetMs, config.word.wobbleDurationMs);
-    for (const wordElement of part.wobbleElements) {
-      const animation = trackLyricAnimationTiming(engine, wordElement.animate(wobbleKeyframes, wobbleOptions), {
-        appliedTimingOffsetMs,
-        offsetMs: 0,
-      });
-      animation.currentTime = wobbleStartMs;
-      wobbleAnimations.push(animation);
-    }
-
-    const letters = part.letterElements;
-    if (letters && letters.length > 0) {
-      const emphasise = part.lyricElement?.dataset.longWord === "true";
-      const emphasisPeak = emphasise ? ` scale(${config.letterWave.emphasisScale})` : "";
-      const emphasisRest = emphasise ? " scale(1)" : "";
-      const floatKeyframes: Keyframe[] = [
-        { transform: `translateY(0)${emphasisRest}`, easing: config.letterWave.riseEasing },
-        {
-          transform: `${config.letterWave.transform}${emphasisPeak}`,
-          offset: LETTER_WAVE_CREST_OFFSET,
-          easing: config.letterWave.fallEasing,
-        },
-        { transform: `${config.letterWave.settle}${emphasisRest}` },
-      ];
-      const letterCount = letters.length;
-      const waves = planLetterWave(
-        swipeRamp(config),
-        letterCount,
-        timedDurationMs,
-        swipeDurationMs,
-        swipeLeadMs,
-        config.letterWave.durationMs
-      );
-      // A letter that starts before the word would have a negative delay, which the drift check reads
-      // as the wave running behind once it finishes. Run the wave's clock ahead by the head start
-      // instead, the way the swipe carries its lead, so every delay stays at zero or above.
-      const waveLeadMs = Math.max(0, -Math.min(...waves.map(wave => wave.delayMs)));
-      const waveEndsMs = waves.map(wave => wave.delayMs + wave.durationMs);
-      const lastWaveEndMs = Math.max(...waveEndsMs);
-      const lastEndingWaveIndex = waveEndsMs.lastIndexOf(lastWaveEndMs);
-      const cascadeDurationMs = waveLeadMs + lastWaveEndMs;
-      const floatStartMs = correctedAnimationTimeMs(wordTimeMs + waveLeadMs, appliedTimingOffsetMs, cascadeDurationMs);
-      const floatKeyframeSignature = JSON.stringify(floatKeyframes);
-      // Glow letters only show while the glow does: never when it is off or renders nothing for this
-      // word, and not once it has faded out. Their waves stop there instead of running to the end.
-      const glowLetters =
-        config.enabled.highlightGlow && !part.glowSuppressed ? part.imageLayers?.glowLetters : undefined;
-      const glowEndMs =
-        Number.parseFloat(config.highlight.imageGlowOpacityTo) === 0 ? waveLeadMs + glowDurationMs : Infinity;
-      const animateLetters = (letters: HTMLElement[] | undefined, endMs: number, sampled: boolean) => {
-        letters?.forEach((letterElement, index) => {
-          const delayMs = waves[index].delayMs + waveLeadMs;
-          if (delayMs >= endMs) return;
-          const endDelayMs = Math.min(0, endMs - delayMs - waves[index].durationMs);
-          const animation = trackLyricAnimationTiming(
-            engine,
-            acquireWaveAnimation(engine, letterElement, floatKeyframes, floatKeyframeSignature, {
-              duration: waves[index].durationMs,
-              delay: delayMs,
-              endDelay: endDelayMs,
-              fill: "forwards",
-            }),
-            {
-              appliedTimingOffsetMs,
-              offsetMs: waveLeadMs,
-              // The wave that ends last covers the whole word. A theme's swipe ramp can make that an early letter.
-              skipDriftSample: !sampled || index !== lastEndingWaveIndex,
-            }
-          );
-          animation.currentTime = floatStartMs;
-          wobbleAnimations.push(animation);
-          if (!GECKO_REDRAW || !sampled) return;
-          const redraw = trackLyricAnimationTiming(
-            engine,
-            letterElement.animate(GECKO_REDRAW_KEYFRAMES, {
-              duration: GECKO_REDRAW_PERIOD_MS,
-              iterations: waves[index].durationMs / GECKO_REDRAW_PERIOD_MS,
-              delay: delayMs,
-              composite: "add",
-            }),
-            { appliedTimingOffsetMs, offsetMs: waveLeadMs, skipDriftSample: true }
-          );
-          redraw.currentTime = floatStartMs;
-          wobbleAnimations.push(redraw);
-        });
-      };
-      animateLetters(part.letterElements, Infinity, true);
-      animateLetters(part.highlightLetterElements, Infinity, false);
-      animateLetters(glowLetters, glowEndMs, false);
-    }
-  }
-  part.animations = [
-    ...highlightAnimations.animations,
-    ...mirrorImageHighlightAnimations(part, highlightAnimations.animations),
-    ...wobbleAnimations,
-  ];
+  const word = wordTimeline(engine, part, config, lyricTimeS, appliedTimingOffsetMs);
+  const highlight = part.lyricElement.classList.contains(LINE_SYNCED_WORD_CLASS)
+    ? lineSyncedHighlight(word)
+    : richSyncedHighlight(word);
+  const motion = config.enabled.wordWobble ? [...wobble(word), ...letterWave(word)] : [];
+  part.animations = [...highlight, ...mirrorImageHighlightAnimations(part, highlight), ...motion];
 }
 
-export function startWordExitAnimation(
-  part: PartData,
-  config: AnimationConfig,
-  imagePaint: { target: HTMLElement; frame: Keyframe }[] = []
-): void {
+export function startWordExitAnimation(part: PartData, config: AnimationConfig, heldPaint: HeldPaint[] = []): void {
   resetPartAnimations(part);
-
-  const fadeDuration = config.enabled.highlightFade ? config.highlight.fadeOutDurationMs : 1;
-  const animation = part.highlightElement.animate(fadeOutTextKeyframes(config, part), {
-    duration: fadeDuration,
-    easing: config.enabled.highlightFade ? config.highlight.fadeOutEasing : "linear",
+  const fades = config.enabled.highlightFade;
+  const durationMs = fades ? config.highlight.fadeOutDurationMs : INSTANT_MS;
+  const fadeOut = part.highlightElement.animate(fadeOutKeyframes(config, part), {
+    duration: durationMs,
+    easing: fades ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
   });
-
-  part.animations = [animation, ...mirrorImageHighlightAnimations(part, [animation])];
-  // Keep the current blur, letter masks and motion visible until the parent fade ends.
-  for (const { target, frame } of imagePaint) {
-    part.animations.push(target.animate([frame, frame], { duration: fadeDuration, fill: "none" }));
-  }
-  animation.addEventListener(
-    "finish",
-    () => {
-      resetPartAnimations(part);
-    },
-    { once: true }
+  const mirrors = mirrorImageHighlightAnimations(part, [fadeOut]);
+  const holds = heldPaint.map(({ target, frame }) =>
+    target.animate([frame, frame], { duration: durationMs, fill: "none" })
   );
+  part.animations = [fadeOut, ...mirrors, ...holds];
+  fadeOut.addEventListener("finish", () => resetPartAnimations(part), { once: true });
+}
+
+function wordTimeline(
+  engine: AnimationEngineInstance,
+  part: PartData,
+  config: AnimationConfig,
+  lyricTimeS: number,
+  appliedTimingOffsetMs: number
+): WordTimeline {
+  const durationMs = Math.max(0, part.duration * 1000);
+  return {
+    engine,
+    part,
+    config,
+    appliedTimingOffsetMs,
+    elapsedMs: (lyricTimeS - part.time) * 1000,
+    durationMs,
+    swipeLeadMs: durationMs * SWIPE_LEAD_RATIO.getNumberValue(),
+    swipeDurationMs: durationMs * SWIPE_DURATION_RATIO.getNumberValue(),
+    glowDurationMs: Math.max(durationMs * config.highlight.glowDurationRatio, config.highlight.glowMinDurationMs),
+  };
+}
+
+function scheduledTimeMs(word: WordTimeline, elapsedMs: number, durationMs: number): number {
+  return correctedAnimationTimeMs(elapsedMs, word.appliedTimingOffsetMs, durationMs);
+}
+
+interface SongClockOptions {
+  offsetMs?: number;
+  skipDriftSample?: boolean;
+}
+
+function followSong(
+  word: WordTimeline,
+  animation: Animation,
+  currentTimeMs: number,
+  { offsetMs = 0, skipDriftSample = false }: SongClockOptions = {}
+): Animation {
+  const { appliedTimingOffsetMs } = word;
+  trackLyricAnimationTiming(word.engine, animation, { appliedTimingOffsetMs, offsetMs, skipDriftSample });
+  animation.currentTime = currentTimeMs;
+  return animation;
+}
+
+function glowShows(part: PartData, config: AnimationConfig): boolean {
+  return config.enabled.highlightGlow && !part.glowSuppressed;
+}
+
+function richSyncedHighlight(word: WordTimeline): Animation[] {
+  const { part, config } = word;
+  const animations = config.enabled.highlightSwipe ? swipe(word) : [];
+  const shown = config.enabled.highlightSwipe ? shownKeyframes() : shownFullySweptKeyframes(config);
+  const show = part.highlightElement.animate(shown, { duration: INSTANT_MS, easing: "linear", fill: "forwards" });
+  animations.push(followSong(word, show, scheduledTimeMs(word, word.elapsedMs, INSTANT_MS)));
+  if (glowShows(part, config)) animations.push(glow(word, word.glowDurationMs));
+  return animations;
+}
+
+function lineSyncedHighlight(word: WordTimeline): Animation[] {
+  const { part, config } = word;
+  const fades = config.enabled.highlightFade;
+  const durationMs = fades ? config.highlight.fadeInDurationMs : INSTANT_MS;
+  const fadeIn = part.highlightElement.animate(fadeInFullySweptKeyframes(config), {
+    duration: durationMs,
+    easing: fades ? config.highlight.fadeInEasing : "linear",
+    fill: "forwards",
+  });
+  const animations = [followSong(word, fadeIn, scheduledTimeMs(word, word.elapsedMs, durationMs))];
+  if (glowShows(part, config)) animations.push(glow(word, config.highlight.glowMinDurationMs));
+  return animations;
+}
+
+function swipe(word: WordTimeline): Animation[] {
+  const { part, config, swipeLeadMs, swipeDurationMs } = word;
+  const currentTimeMs = scheduledTimeMs(word, word.elapsedMs + swipeLeadMs, swipeDurationMs);
+  const letters = part.highlightLetterElements;
+  if (!letters || letters.length === 0) {
+    const gradient = part.highlightElement.animate(swipeKeyframes(config), {
+      duration: swipeDurationMs,
+      easing: config.highlight.swipeEasing,
+      fill: "forwards",
+    });
+    return [followSong(word, gradient, currentTimeMs, { offsetMs: swipeLeadMs })];
+  }
+
+  const rtl = part.highlightElement.classList.contains(RTL_CLASS);
+  const sweeps = planLetterMaskSweep(swipeRamp(config), letters.length, swipeDurationMs, rtl);
+  const animations: Animation[] = [];
+  sweeps.forEach((sweep, index) => {
+    const keyframes = sweep.keyframes.map(frame => ({
+      offset: frame.offset,
+      maskPosition: frame.maskPosition,
+      WebkitMaskPosition: frame.maskPosition,
+    })) as Keyframe[];
+    const timing: KeyframeAnimationOptions = {
+      duration: sweep.durationMs,
+      delay: sweep.delayMs,
+      easing: sweep.easing,
+      fill: "both",
+    };
+    const endsLast = index === sweeps.length - 1;
+    const letterSweep = letters[index].animate(keyframes, timing);
+    animations.push(
+      followSong(word, letterSweep, currentTimeMs, { offsetMs: swipeLeadMs, skipDriftSample: !endsLast })
+    );
+    const glowLetter = part.imageLayers?.glowLetters[index];
+    if (glowLetter) {
+      animations.push(
+        followSong(word, glowLetter.animate(keyframes, timing), currentTimeMs, {
+          offsetMs: swipeLeadMs,
+          skipDriftSample: true,
+        })
+      );
+    }
+  });
+  return animations;
+}
+
+function glow(word: WordTimeline, durationMs: number): Animation {
+  const { part, config } = word;
+  const holdsGlow = Boolean(part.imageLayers) || !config.highlight.glowRestingInvisible;
+  const target = part.imageLayers?.glow ?? part.highlightElement;
+  const animation = target.animate(glowKeyframes(config, part), {
+    duration: durationMs,
+    easing: config.highlight.glowEasing,
+    fill: holdsGlow ? "forwards" : "none",
+  });
+  return followSong(word, animation, scheduledTimeMs(word, word.elapsedMs, durationMs));
+}
+
+function wobble(word: WordTimeline): Animation[] {
+  const { wobbleFrom, wobblePeak, wobblePeakOffset, wobblePeakEasing, wobbleSettle, wobbleSettleOffset } =
+    word.config.word;
+  const { wobbleTo, wobbleEndEasing, wobbleDurationMs, wobbleEasing } = word.config.word;
+  const keyframes: Keyframe[] = [
+    { transform: wobbleFrom },
+    { transform: wobblePeak, offset: wobblePeakOffset, easing: wobblePeakEasing },
+    { transform: wobbleSettle, offset: Math.max(wobblePeakOffset, wobbleSettleOffset) },
+    { transform: wobbleTo, easing: wobbleEndEasing },
+  ];
+  const timing: KeyframeAnimationOptions = { duration: wobbleDurationMs, easing: wobbleEasing, fill: "forwards" };
+  const currentTimeMs = scheduledTimeMs(word, word.elapsedMs, wobbleDurationMs);
+  return word.part.wobbleElements.map(element => followSong(word, element.animate(keyframes, timing), currentTimeMs));
+}
+
+function letterWave(word: WordTimeline): Animation[] {
+  const { part, config } = word;
+  const letterCount = part.letterElements?.length ?? 0;
+  if (letterCount === 0) return [];
+
+  const run = planLetterWaveRun(word, letterCount);
+  const glowLetters = glowShows(part, config) ? part.imageLayers?.glowLetters : undefined;
+  const glowFadesOut = Number.parseFloat(config.highlight.imageGlowOpacityTo) === 0;
+  const glowEndMs = glowFadesOut ? run.headStartMs + word.glowDurationMs : Infinity;
+
+  const animations: Animation[] = [];
+  floatLetters(word, run, part.letterElements, Infinity, true, animations);
+  floatLetters(word, run, part.highlightLetterElements, Infinity, false, animations);
+  floatLetters(word, run, glowLetters, glowEndMs, false, animations);
+  return animations;
+}
+
+function planLetterWaveRun(word: WordTimeline, letterCount: number): LetterWaveRun {
+  const { config } = word;
+  const emphasise = word.part.lyricElement.dataset.longWord === "true";
+  const emphasisPeak = emphasise ? ` scale(${config.letterWave.emphasisScale})` : "";
+  const emphasisRest = emphasise ? " scale(1)" : "";
+  const keyframes: Keyframe[] = [
+    { transform: `translateY(0)${emphasisRest}`, easing: config.letterWave.riseEasing },
+    {
+      transform: `${config.letterWave.transform}${emphasisPeak}`,
+      offset: LETTER_WAVE_CREST_OFFSET,
+      easing: config.letterWave.fallEasing,
+    },
+    { transform: `${config.letterWave.settle}${emphasisRest}` },
+  ];
+  const waves = planLetterWave(
+    swipeRamp(config),
+    letterCount,
+    word.durationMs,
+    word.swipeDurationMs,
+    word.swipeLeadMs,
+    config.letterWave.durationMs
+  );
+  // Carry early starts in the clock offset; negative delays make finished waves appear late to drift sampling.
+  const headStartMs = Math.max(0, -Math.min(...waves.map(wave => wave.delayMs)));
+  const waveEndsMs = waves.map(wave => wave.delayMs + wave.durationMs);
+  const lastWaveEndMs = Math.max(...waveEndsMs);
+  return {
+    waves,
+    keyframes,
+    signature: JSON.stringify(keyframes),
+    headStartMs,
+    lastEndingWaveIndex: waveEndsMs.lastIndexOf(lastWaveEndMs),
+    startAtMs: scheduledTimeMs(word, word.elapsedMs + headStartMs, headStartMs + lastWaveEndMs),
+  };
+}
+
+function floatLetters(
+  word: WordTimeline,
+  run: LetterWaveRun,
+  letters: HTMLElement[] | undefined,
+  endMs: number,
+  isBaseText: boolean,
+  animations: Animation[]
+): void {
+  letters?.forEach((letterElement, index) => {
+    const wave = run.waves[index];
+    const delayMs = wave.delayMs + run.headStartMs;
+    if (delayMs >= endMs) return;
+    const float = acquireWaveAnimation(word.engine, letterElement, run.keyframes, run.signature, {
+      duration: wave.durationMs,
+      delay: delayMs,
+      endDelay: Math.min(0, endMs - delayMs - wave.durationMs),
+      fill: "forwards",
+    });
+    const skipDriftSample = !isBaseText || index !== run.lastEndingWaveIndex;
+    animations.push(followSong(word, float, run.startAtMs, { offsetMs: run.headStartMs, skipDriftSample }));
+    if (!GECKO_REDRAW || !isBaseText) return;
+    const redraw = letterElement.animate(GECKO_REDRAW_KEYFRAMES, {
+      duration: GECKO_REDRAW_PERIOD_MS,
+      iterations: wave.durationMs / GECKO_REDRAW_PERIOD_MS,
+      delay: delayMs,
+      composite: "add",
+    });
+    animations.push(followSong(word, redraw, run.startAtMs, { offsetMs: run.headStartMs, skipDriftSample: true }));
+  });
 }

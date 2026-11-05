@@ -14,7 +14,7 @@ import {
   findScrollAnchor,
   resolveScrollInsets,
 } from "./engine/scrollViewport";
-import { computeLetterSwipeWindows, planLetterMaskSweep, planLetterWave } from "./engine/letterPlans";
+import { linearForwardSwipeWindows, planLetterMaskSweep, planLetterWave } from "./engine/letterPlans";
 import { forEveryLiveView } from "./engine/liveViews";
 import { noteUserScroll } from "./engine/userScroll";
 import { parseColorAlpha } from "./engine/glow";
@@ -28,7 +28,7 @@ import {
   asFakeNode,
   collectTree,
   FakeDocument,
-  type FakeNode,
+  FakeNode,
 } from "./selfcheck/fakeDom";
 import {
   asWindow,
@@ -888,6 +888,46 @@ assert.ok(
 );
 leadInEngine.destroy();
 
+const NEGATIVE_WORD_LYRICS: Lyric[] = [
+  {
+    startTimeMs: 1000,
+    durationMs: 2000,
+    words: "Bent word",
+    parts: [
+      { startTimeMs: 1000, durationMs: -10, words: "Bent " },
+      { startTimeMs: 1100, durationMs: 900, words: "word" },
+    ],
+  },
+];
+setThemeSettings(parseThemeConfig("/* blyrics-letter-wave = false; */"));
+const negativeWordDocument = new FakeDocument();
+const negativeWordEngine = createAnimationEngineInstance(
+  asDocument(negativeWordDocument),
+  asWindow(new FakeWindow(PANEL_STYLE)),
+  new FakeHost(undefined, negativeWordDocument)
+);
+setLyrics(negativeWordEngine, asElement<HTMLElement>(negativeWordDocument.createElement("div")), NEGATIVE_WORD_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+placeLines(negativeWordEngine);
+const fakeAnimate = FakeNode.prototype.animate;
+FakeNode.prototype.animate = function (this: FakeNode, keyframes?: unknown, options?: KeyframeAnimationOptions) {
+  if (typeof options?.duration === "number" && options.duration < 0) throw new TypeError("negative duration");
+  return fakeAnimate.call(this, keyframes, options);
+};
+try {
+  tickView(negativeWordEngine, 1.5, resolveTickOptions(newTickOptions()));
+} finally {
+  FakeNode.prototype.animate = fakeAnimate;
+}
+assert.ok(
+  getRenderedLines(negativeWordEngine)[0].parts[1].animations.length > 0,
+  "regression: Given a provider word with a negative duration, When its line sets up, Then the word after it still animates"
+);
+negativeWordEngine.destroy();
+setThemeSettings(new Map());
+
 // A loop shorter than the jump threshold steps back by less than half a second on every pass. With
 // no player snapshot the reading is the media clock itself, which only runs backwards on a seek.
 function armLeadInAt(tickOptions: () => TickOptions) {
@@ -1272,7 +1312,7 @@ clearLyrics(noCullEngine);
 const SWIPE_RAMP = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
 const SWIPE_DURATION_MS = 1000;
 const SWIPE_LETTERS = 5;
-const swipeWindows = computeLetterSwipeWindows(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS);
+const swipeWindows = linearForwardSwipeWindows(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS);
 assert.ok(swipeWindows, "Given a linear forward ramp, When windows are computed, Then it returns them");
 assert.equal(swipeWindows.length, SWIPE_LETTERS, "Given N letters, Then there is one window each");
 const SWIPE_EPS = 1e-6;
@@ -1302,22 +1342,22 @@ swipeWindows.forEach((window, index) => {
   }
 });
 assert.equal(
-  computeLetterSwipeWindows({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  linearForwardSwipeWindows({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
   null,
   "Given a non-linear ramp, When windows are computed, Then it defers to the single-property sweep"
 );
 assert.equal(
-  computeLetterSwipeWindows({ ...SWIPE_RAMP, startTo: "-0.4" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  linearForwardSwipeWindows({ ...SWIPE_RAMP, startTo: "-0.4" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
   null,
   "Given a ramp that does not move forward, Then it defers to the single-property sweep"
 );
 assert.equal(
-  computeLetterSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
+  linearForwardSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
   null,
   "Given a word with no letters, Then there are no per-letter windows"
 );
 
-// planLetterMaskSweep hands every letter-split word a reveal, even where computeLetterSwipeWindows
+// planLetterMaskSweep hands every letter-split word a reveal, even where linearForwardSwipeWindows
 // bails: the whole-word gradient is off for letter words, so without the fallback they snap to fully
 // highlighted instead of sweeping.
 const linearSweep = planLetterMaskSweep(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS, false);

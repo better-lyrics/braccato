@@ -8,12 +8,8 @@ import {
   WORD_STATE_UPCOMING,
   type WordState,
 } from "../constants";
-import { pooledWaveAnimations } from "./wavePool";
+import { waveAnimationPools } from "./wavePool";
 
-/**
- * Lets go of a part moving to another line or leaving the view: its animations stop, back to the pool
- * they came from, and it shows no sung state until a line that is being sung sets it up again.
- */
 export function releasePart(part: PartData): void {
   resetPartAnimations(part);
   togglePartClass(part, PAUSED_CLASS, false);
@@ -27,15 +23,15 @@ export function releasePart(part: PartData): void {
 export function resetPartAnimations(part: AnimationData): void {
   for (const animation of part.animations) {
     animation.cancel();
-    const pool = pooledWaveAnimations.get(animation);
+    const pool = waveAnimationPools.get(animation);
     if (pool) pool.push(animation);
   }
   part.animations = [];
 }
 
 function resetLineAnimations(lineData: LineData): void {
-  const children = [lineData, ...lineData.parts];
-  children.forEach(resetPartAnimations);
+  resetPartAnimations(lineData);
+  for (const part of lineData.parts) resetPartAnimations(part);
 }
 
 export function hasLineAnimations(lineData: LineData): boolean {
