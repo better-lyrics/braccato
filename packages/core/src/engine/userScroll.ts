@@ -50,6 +50,10 @@ export function writeEngineScrollTop(
 ): void {
   engine.scrollPos = scrollTop;
   scroller.scrollTop = scrollTop;
+  noteEngineScrollEvent(engine, now);
+}
+
+export function noteEngineScrollEvent(engine: AnimationEngineInstance, now: number): void {
   engine.skipScrolls += 1;
   engine.skipScrollsDecayTimes.push(now + ENGINE_SCROLL_EVENT_WINDOW_MS);
 }
