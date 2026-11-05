@@ -68,6 +68,26 @@ export function noteContainerResize(engine: AnimationEngineInstance, width: numb
   return true;
 }
 
+const ENGINE_SCROLL_EVENT_WINDOW_MS = 2000;
+
+export function writeEngineScrollTop(
+  engine: AnimationEngineInstance,
+  scroller: HTMLElement,
+  scrollTop: number,
+  now: number
+): void {
+  engine.scrollPos = scrollTop;
+  const scrollTopBeforeWrite = scroller.scrollTop;
+  scroller.scrollTop = scrollTop;
+  if (scroller.scrollTop === scrollTopBeforeWrite) return;
+  engine.skipScrolls += 1;
+  engine.skipScrollsDecayTimes.push(now + ENGINE_SCROLL_EVENT_WINDOW_MS);
+}
+
+export function requestRescroll(engine: AnimationEngineInstance): void {
+  engine.wasUserScrolling = true;
+}
+
 // -- Skip Scrolls Decay --------------------------
 
 export function decaySkipScrolls(engine: AnimationEngineInstance, now: number, keepsReserve: boolean): void {
