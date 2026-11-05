@@ -3327,6 +3327,7 @@ export function resolveTickOptions(options: TickOptions): ResolvedTickOptions {
     lineOffsetTrim: options.lineOffsetTrim ?? 0,
     passiveScrollEnabled: options.passiveScrollEnabled ?? false,
     playbackRate: resolvePlaybackRate(options.playbackRate),
+    followPausedSeeks: options.followPausedSeeks ?? false,
   };
 }
 
@@ -3704,7 +3705,8 @@ export function tickView(
     currentTime < playbackClock.lastTime - CLOCK_RESYNC_THRESHOLD_S;
   // A clock that was already paused only moves when the host seeks it, however small the step, as a
   // scrub does. The tick that pauses lands a moment past the last playing one and is not a seek.
-  const pausedSeek = !isPlaying && !playbackClock.lastPlayState && currentTime !== playbackClock.lastTime;
+  const pausedSeek =
+    options.followPausedSeeks && !isPlaying && !playbackClock.lastPlayState && currentTime !== playbackClock.lastTime;
 
   if (timeJumped) dropPendingLineScroll(engine);
 
