@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { WORD_STATE_ACTIVE, WORD_STATE_ATTR, WORD_STATE_PAST, WORD_STATE_UPCOMING } from "./constants";
-import { updateWordStates } from "./engine";
+import { updateWordStates } from "./engine/lineAnimationState";
 import { createLyricsLine, type LineData, newLineData } from "./inject";
 import { asDocument, asElement, asFakeNode, FakeDocument } from "./selfcheck/fakeDom";
 import type { LyricPart } from "./types";

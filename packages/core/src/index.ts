@@ -7,7 +7,8 @@
 // answer for on its own: the song level operations address every live view at once, and the
 // injection helpers decorate lines that are already built.
 
-export { resetPlaybackClock, resumeAllAutoscroll } from "./engine";
+export { resetPlaybackClock } from "./engine/clock";
+export { resumeAllAutoscroll } from "./engine/userScroll";
 export {
   injectRomanization,
   injectTranslation,
@@ -25,7 +26,7 @@ export type { Lyric, LyricsRenderer, LyricsRendererHost, TickOptions } from "./t
 // something published, which a consumer has to be able to spell.
 
 /** @public */
-export type { AnimationTickStatus } from "./engine";
+export type { AnimationTickStatus } from "./engine/tick";
 /** @public */
 export type { PartData } from "./inject";
 /** @public */

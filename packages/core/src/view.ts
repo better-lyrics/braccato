@@ -21,13 +21,10 @@ import {
   LYRICS_CLASS,
   RTL_CLASS,
 } from "./constants";
-import {
-  type AnimationEngineInstance,
-  lineScrollOffset,
-  playerTimeForLyricTime,
-  replaceRenderedLines,
-  setupLineCullObserver,
-} from "./engine";
+import { type AnimationEngineInstance } from "./engine/instance";
+import { lineScrollOffset, replaceRenderedLines } from "./engine/renderedLines";
+import { playerTimeForLyricTime } from "./engine/clock";
+import { setupLineCullObserver } from "./engine/culling";
 import {
   addSeekHandler,
   applyDirection,
