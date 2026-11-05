@@ -931,7 +931,7 @@ snapshotCorrection.engine.destroy();
 
 // A host scrubbing while paused moves the clock a few milliseconds a tick, far under the jump
 // threshold, and every one of those ticks is still a seek.
-const pausedTickOptions = (): TickOptions => ({ ...newTickOptions(), isPlaying: false });
+const pausedTickOptions = (): TickOptions => ({ ...newTickOptions(), isPlaying: false, followPausedSeeks: true });
 const scrubDocument = new FakeDocument();
 const scrubEngine = createAnimationEngineInstance(
   asDocument(scrubDocument),
@@ -954,6 +954,13 @@ assert.ok(
     seatedAtFirstPosition.every(animation => !asFakeAnimation(animation).cancelled) &&
     scrubWordAnimations().every(animation => seatedAtFirstPosition.includes(animation)),
   "Given a paused line, When a tick lands at the same time, Then its animations are left alone"
+);
+
+tickView(scrubEngine, 3.25, resolveTickOptions({ ...pausedTickOptions(), followPausedSeeks: false }));
+assert.ok(
+  seatedAtFirstPosition.every(animation => !asFakeAnimation(animation).cancelled) &&
+    scrubWordAnimations().every(animation => seatedAtFirstPosition.includes(animation)),
+  "Given a paused line and a host that did not opt in, When the clock moves inside it by less than the jump threshold, Then its animations are left alone"
 );
 
 tickView(scrubEngine, 3.3, resolveTickOptions(pausedTickOptions()));

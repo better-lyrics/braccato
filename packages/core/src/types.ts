@@ -51,6 +51,12 @@ export interface TickOptions {
    * interface's own gestures and keep the timing the theme asked for at every rate.
    */
   playbackRate?: number;
+
+  /**
+   * Whether a paused clock that moves by less than the jump threshold resets the highlight to the
+   * new time, as an editor scrubbing a paused song needs. Defaults to false.
+   */
+  followPausedSeeks?: boolean;
 }
 
 /**
