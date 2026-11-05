@@ -22,7 +22,7 @@ import {
 import { clearStyleCaches as clearEngineStyleCaches } from "./engine/cssValues";
 import { createAnimationEngineInstance } from "./engine/instance";
 import { hasUnsyncedLyrics } from "./engine/passiveScroll";
-import { noteContainerResize, noteUserScroll as noteEngineUserScroll, resetScrollResume } from "./engine/userScroll";
+import { hasContainerResized, noteUserScroll as noteEngineUserScroll, resetScrollResume } from "./engine/userScroll";
 import { noteVisibilityChange as noteEngineVisibilityChange } from "./engine/timingLogs";
 import {
   relayout,
@@ -243,7 +243,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     const observer = new rendererWindow.ResizeObserver(entries => {
       const target = entries[entries.length - 1]?.target;
       if (!target) return;
-      if (noteContainerResize(engine, target.clientWidth, target.clientHeight)) measure();
+      if (hasContainerResized(engine, target.clientWidth, target.clientHeight)) measure();
     });
     observer.observe(container);
     containerResizeObserver = observer;
