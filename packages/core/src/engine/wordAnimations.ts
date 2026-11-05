@@ -2,7 +2,7 @@ import { RTL_CLASS } from "../constants";
 import type { PartData } from "../inject";
 import { registerThemeSetting } from "../themeSettings";
 import type { AnimationConfig } from "./animationConfig";
-import { correctedAnimationTimeMs, mirrorImageHighlightAnimations, trackLyricAnimationTiming } from "./animationTiming";
+import { correctedAnimationTimeMs, mirrorImageHighlightAnimations, followSongClock } from "./animationTiming";
 import {
   fadeInFullySweptKeyframes,
   fadeOutKeyframes,
@@ -126,7 +126,7 @@ function followSong(
   { offsetMs = 0, skipDriftSample = false }: SongClockOptions = {}
 ): Animation {
   const { appliedTimingOffsetMs } = word;
-  trackLyricAnimationTiming(word.engine, animation, { appliedTimingOffsetMs, offsetMs, skipDriftSample });
+  followSongClock(word.engine, animation, { appliedTimingOffsetMs, offsetMs, skipDriftSample });
   animation.currentTime = currentTimeMs;
   return animation;
 }

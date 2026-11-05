@@ -1,7 +1,7 @@
 import { ANIMATING_CLASS } from "../constants";
 import type { LineData } from "../inject";
 import type { AnimationConfig } from "./animationConfig";
-import { canUseTimingSampleForDrift, learnAnimationTimingOffset, lineNativeTimingSample } from "./animationTiming";
+import { correctLineDrift } from "./animationDrift";
 import type { Playhead } from "./clock";
 import type { AnimationEngineInstance } from "./instance";
 import { startLineAnimations, startLineExitAnimations } from "./lineAnimations";
@@ -13,14 +13,7 @@ import {
   setAnimationsPlayState,
   updateWordStates,
 } from "./lineAnimationState";
-import {
-  ANIMATION_TIMING_ACCUMULATION_DECAY,
-  ANIMATION_TIMING_ACCUMULATION_WEIGHT,
-  ANIMATION_TIMING_RESET_THRESHOLD_MS,
-  logAnimationCleanup,
-  logAnimationTiming,
-  shouldLogAnimationTiming,
-} from "./timingLogs";
+import { logAnimationCleanup } from "./timingLogs";
 
 const ANIMATION_PREPARE_AHEAD_S = 2;
 const LINE_END_GRACE_S = 0.05;
@@ -73,43 +66,14 @@ function updateLineAnimationState(tick: LineTick, line: LineData, index: number)
   if (playbackDiscontinuity && line.isAnimating) resetLineAnimationState(line);
 
   updateWordStates(line, lyricTimeS);
-  correctAnimationDrift(tick, line, index);
-}
-
-function correctAnimationDrift({ engine, lyricTimeS, playhead, now }: LineTick, line: LineData, index: number): void {
-  const sample = lineNativeTimingSample(line, lyricTimeS);
-  line.accumulatedOffsetMs /= ANIMATION_TIMING_ACCUMULATION_DECAY;
-  if (sample === null) return;
-
-  if (!canUseTimingSampleForDrift(sample, playhead.isPlaying)) {
-    if (shouldLogAnimationTiming(engine, line, sample, now)) {
-      logAnimationTiming(engine, "ignored-sample", line, index, sample, lyricTimeS, line.accumulatedOffsetMs);
-    }
-    return;
-  }
-
-  const learnedOffsetMs = learnAnimationTimingOffset(engine, sample);
-  line.accumulatedOffsetMs += sample.offsetMs * ANIMATION_TIMING_ACCUMULATION_WEIGHT;
-  if (shouldLogAnimationTiming(engine, line, sample, now)) {
-    const accumulatedMs = line.accumulatedOffsetMs;
-    logAnimationTiming(
-      engine,
-      "sample",
-      line,
-      index,
-      sample,
-      lyricTimeS,
-      accumulatedMs,
-      learnedOffsetMs,
-      sample.offsetMs
-    );
-  }
-
-  const drifted = Math.abs(line.accumulatedOffsetMs) > ANIMATION_TIMING_RESET_THRESHOLD_MS;
-  if (line.isAnimating && playhead.isPlaying && drifted) {
-    logAnimationTiming(engine, "drift-reset", line, index, sample, lyricTimeS, line.accumulatedOffsetMs);
-    resetLineAnimationState(line);
-  }
+  correctLineDrift({
+    engine: tick.engine,
+    line,
+    lineIndex: index,
+    lyricTimeS,
+    isPlaying: playhead.isPlaying,
+    now: tick.now,
+  });
 }
 
 function retireLine(
