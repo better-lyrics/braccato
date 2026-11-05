@@ -15,22 +15,22 @@ import { CUSTOM_THEME_STYLE_ID } from "./constants";
 import {
   clearLyrics,
   clearOnScreenLyrics as clearEngineOnScreenLyrics,
-  clearStyleCaches as clearEngineStyleCaches,
-  createAnimationEngineInstance,
   getRenderedLines,
   getRenderedSyncType,
-  hasUnsyncedLyrics,
-  noteContainerResize,
-  noteUserScroll as noteEngineUserScroll,
-  noteVisibilityChange as noteEngineVisibilityChange,
-  relayout,
-  resetScrollResume,
-  resolveTickOptions,
   settleSwappedLines,
+} from "./engine/renderedLines";
+import { clearStyleCaches as clearEngineStyleCaches } from "./engine/cssValues";
+import { createAnimationEngineInstance } from "./engine/instance";
+import { hasUnsyncedLyrics } from "./engine/passiveScroll";
+import { noteContainerResize, noteUserScroll as noteEngineUserScroll, resetScrollResume } from "./engine/userScroll";
+import { noteVisibilityChange as noteEngineVisibilityChange } from "./engine/timingLogs";
+import {
+  relayout,
+  resolveTickOptions,
   retickFromPlaybackClock as retickEngineFromPlaybackClock,
   scheduleLyricPositionUpdate as scheduleEngineLyricPositionUpdate,
   tickView,
-} from "./engine";
+} from "./engine/tick";
 import type { LineData } from "./inject";
 import { parseThemeConfig, setThemeSettings } from "./themeSettings";
 import type { Lyric, LyricsRenderer, LyricsRendererHost, LyricsRendererOptions } from "./types";

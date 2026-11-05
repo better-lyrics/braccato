@@ -1,30 +1,26 @@
 import { strict as assert } from "node:assert";
 import { CREDITS_CLASS, CREDITS_NAMES_CLASS, CREDITS_TEXT_CLASS, LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import { type AnimationEngineInstance, createAnimationEngineInstance } from "./engine/instance";
 import {
-  type AnimationEngineInstance,
   clearLyrics,
   clearOnScreenLyrics,
-  computeActiveLinesScrollTop,
-  computeLetterSwipeWindows,
-  computeScrollPadding,
-  createAnimationEngineInstance,
-  findScrollAnchor,
-  forEveryLiveView,
   getRenderedLines,
   getRenderedSyncType,
   hasRenderedLines,
-  noteUserScroll,
-  parseColorAlpha,
-  planLetterMaskSweep,
-  planLetterWave,
-  relayout,
+} from "./engine/renderedLines";
+import {
+  computeActiveLinesScrollTop,
+  computeScrollPadding,
+  findScrollAnchor,
   resolveScrollInsets,
-  resolveTickOptions,
-  scheduleLyricPositionUpdate,
-  setupLineCullObserver,
-  smoothedPlaybackTime,
-  tickView,
-} from "./engine";
+} from "./engine/scrollViewport";
+import { computeLetterSwipeWindows, planLetterMaskSweep, planLetterWave } from "./engine/letterPlans";
+import { forEveryLiveView } from "./engine/liveViews";
+import { noteUserScroll } from "./engine/userScroll";
+import { parseColorAlpha } from "./engine/glow";
+import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
+import { setupLineCullObserver } from "./engine/culling";
+import { smoothedPlaybackTime } from "./engine/clock";
 import {
   asDocument,
   asElement,

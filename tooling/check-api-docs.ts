@@ -26,10 +26,16 @@ import {
 
 const ELEMENT_CLASS = "BraccatoLyricsElement";
 
-// Where `registerThemeSetting` is called. Both are read whole rather than scanned for the call,
+// Where `registerThemeSetting` is called. They are read whole rather than scanned for the call,
 // because a key built from a custom property name arrives as `--the-key` and only the string is
 // looked for.
-const SETTING_SOURCES = ["engine.js", "inject.js"];
+function readThemeSettingSources(packageDir: string): string {
+  const engineDir = join(packageDir, "engine");
+  const engineModules = readdirSync(engineDir)
+    .filter(file => file.endsWith(".js"))
+    .map(file => join(engineDir, file));
+  return [join(packageDir, "inject.js"), ...engineModules].map(path => readFileSync(path, "utf8")).join("\n");
+}
 
 // -- What the package emitted --------------------------------------------
 
@@ -98,7 +104,7 @@ function readEmittedApi(packageDir: string): EmittedApi {
     members: readElementMembers(packageDir),
     constants: readClassNameConstants(packageDir),
     elementSource: readFileSync(join(packageDir, "element.js"), "utf8"),
-    settingSources: SETTING_SOURCES.map(file => readFileSync(join(packageDir, file), "utf8")).join("\n"),
+    settingSources: readThemeSettingSources(packageDir),
     stylesheets: readStylesheets(packageDir),
   };
 }

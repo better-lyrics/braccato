@@ -12,7 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
-import { releasePart } from "./engine";
+import { releasePart } from "./engine/lineAnimationState";
 import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
