@@ -39,6 +39,7 @@ import {
   type WordState,
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
+import { letterClusters } from "./letters";
 import { getSeekTimeFromClick } from "./seek";
 import { isSameText, testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
@@ -50,8 +51,6 @@ let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
 let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
 export const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
-
-const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -316,23 +315,22 @@ function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
   return groups;
 }
 
-function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, threshold: number): boolean {
-  if (text.length <= threshold) {
-    span.textContent = text;
+function appendLongWordBreaks(doc: Document, span: HTMLElement, clusters: string[], threshold: number): boolean {
+  if (clusters.length <= threshold) {
+    span.textContent = clusters.join("");
     return false;
   }
 
-  for (let i = 0; i < text.length; i += threshold) {
-    span.appendChild(doc.createTextNode(text.slice(i, i + threshold)));
-    if (i + threshold < text.length) {
+  for (let i = 0; i < clusters.length; i += threshold) {
+    span.appendChild(doc.createTextNode(clusters.slice(i, i + threshold).join("")));
+    if (i + threshold < clusters.length) {
       span.appendChild(doc.createElement("wbr"));
     }
   }
   return true;
 }
 
-function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
-  const chars = [...graphemeSegmenter.segment(text)].map(segment => segment.segment);
+function appendLetters(doc: Document, wordElement: HTMLElement, chars: string[]): HTMLElement[] {
   wordElement.style.setProperty("--letters", String(chars.length));
   // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
   // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
@@ -364,6 +362,8 @@ function createTimedWordSpan(
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
+  const clusters =
+    perLetter || (!preserveJoining && part.words.length > wrapThreshold) ? letterClusters(part.words) : [part.words];
 
   for (const wordElement of [span, highlight]) {
     wordElement.classList.add(WORD_CLASS);
@@ -379,7 +379,7 @@ function createTimedWordSpan(
 
     if (perLetter) {
       wordElement.classList.add("blyrics-word--lettered");
-      const collected = appendLetters(doc, wordElement, part.words);
+      const collected = appendLetters(doc, wordElement, clusters);
       if (wordElement === span) {
         letters = collected;
       } else {
@@ -389,7 +389,7 @@ function createTimedWordSpan(
     } else if (preserveJoining) {
       wordElement.textContent = part.words;
     } else {
-      appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+      appendLongWordBreaks(doc, wordElement, clusters, wrapThreshold);
     }
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
@@ -411,6 +411,7 @@ function createWordGroup(
     testRtl(group.text) && [...group.text].some(char => /[\p{Letter}\p{Number}]/u.test(char) && !testRtl(char));
   const preserveJoining = testJoiningScript(group.text);
   const perLetter = letterWave.getBooleanValue() && !preserveJoining && !mixedDirection;
+  const isLongGroup = group.text.length > wrapThreshold * 2 && letterClusters(group.text).length > wrapThreshold * 2;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
 
@@ -419,7 +420,7 @@ function createWordGroup(
     groupElement.dir = "auto";
     groupElement.dataset.content = group.text;
 
-    if (group.text.length > wrapThreshold * 2) {
+    if (isLongGroup) {
       groupElement.classList.add(LONG_WORD_GROUP_CLASS);
     }
 

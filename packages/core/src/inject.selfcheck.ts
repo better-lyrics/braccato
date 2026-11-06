@@ -295,6 +295,69 @@ assert.deepEqual(
   "Given a Hebrew word, When letter wave splits it, Then it still splits because Hebrew letters do not join"
 );
 
+assert.deepEqual(
+  lettersOf("ಕ್ಷಣ"),
+  ["ಕ್ಷ", "ಣ"],
+  "regression: Given a Kannada conjunct, When letter wave splits it, Then the virama never ends a letter span"
+);
+
+assert.deepEqual(
+  lettersOf("வாழ்க்கை"),
+  ["வா", "ழ்", "க்", "கை"],
+  "Given a Tamil word, When letter wave splits it, Then a visible pulli keeps its own letter span"
+);
+assert.deepEqual(
+  lettersOf("க்ஷேத்திரம்"),
+  ["க்ஷே", "த்", "தி", "ர", "ம்"],
+  "Given the Tamil ksha ligature, When letter wave splits it, Then the ligature stays one letter span"
+);
+assert.deepEqual(
+  lettersOf("မြန်မာ"),
+  ["မြ", "န်", "မာ"],
+  "regression: Given a Myanmar spacing vowel, When letter wave splits it, Then it stays with its consonant"
+);
+
+assert.deepEqual(
+  lettersOf("අම්මා"),
+  ["අ", "ම්", "මා"],
+  "Given a Sinhala al-lakuna without ZWJ, When letter wave splits it, Then the visible virama keeps its own letter span"
+);
+assert.deepEqual(
+  lettersOf("ශ්‍රී"),
+  ["ශ්‍රී"],
+  "Given a Sinhala ZWJ conjunct, When letter wave splits it, Then the conjunct stays one letter span"
+);
+
+assert.deepEqual(
+  lettersOf("ක‍්ව"),
+  ["ක‍්ව"],
+  "Given a Sinhala touching letter, When letter wave splits it, Then the pair stays one letter span"
+);
+
+function wordPiecesOf(words: string): string[] {
+  const localDoc = new FakeDocument();
+  const root = localDoc.createElement("div");
+  const target = asElement<HTMLElement>(root);
+  const line = newLineData(target, 0, 400);
+  createLyricsLine(asDocument(localDoc), [{ startTimeMs: 0, words, durationMs: 400 }], line, target);
+  return collectTree(root)
+    .filter(node => node.name === "#text" || node.classList.contains(LETTER_CLASS))
+    .filter(node => !node.parentNode?.classList.contains(WORD_HIGHLIGHT_CLASS))
+    .map(node => node.textContent);
+}
+
+setThemeSettings(
+  new Map([
+    ["blyrics-letter-wave", "false"],
+    ["blyrics-long-word-wrap-threshold", "2"],
+  ])
+);
+assert.deepEqual(
+  wordPiecesOf("मुस्कुराएगा"),
+  ["मुस्कु", "राए", "गा"],
+  "regression: Given a Devanagari word past the wrap threshold, When letter wave is off, Then every break falls between letter clusters"
+);
+
 setThemeSettings(new Map());
 
 // -- A line click calls seek, not a document --------------------------------------------
