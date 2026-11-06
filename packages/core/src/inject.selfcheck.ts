@@ -328,6 +328,12 @@ assert.deepEqual(
   "Given a Sinhala ZWJ conjunct, When letter wave splits it, Then the conjunct stays one letter span"
 );
 
+assert.deepEqual(
+  lettersOf("ක‍්ව"),
+  ["ක‍්ව"],
+  "Given a Sinhala touching letter, When letter wave splits it, Then the pair stays one letter span"
+);
+
 function wordPiecesOf(words: string): string[] {
   const localDoc = new FakeDocument();
   const root = localDoc.createElement("div");

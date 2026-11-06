@@ -328,7 +328,7 @@ export const THEME_SETTINGS = [
     key: "blyrics-long-word-wrap-threshold",
     fallback: "10",
     rebuilds: true,
-    summary: "Held words longer than this many characters are split, so the glow moves across the letters.",
+    summary: "Held words longer than this many letters are split, so the glow moves across the letters.",
   },
   {
     key: "blyrics-line-synced-animation-delay",
