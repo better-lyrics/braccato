@@ -317,6 +317,17 @@ assert.deepEqual(
   "regression: Given a Myanmar spacing vowel, When letter wave splits it, Then it stays with its consonant"
 );
 
+assert.deepEqual(
+  lettersOf("අම්මා"),
+  ["අ", "ම්", "මා"],
+  "Given a Sinhala al-lakuna without ZWJ, When letter wave splits it, Then the visible virama keeps its own letter span"
+);
+assert.deepEqual(
+  lettersOf("ශ්‍රී"),
+  ["ශ්‍රී"],
+  "Given a Sinhala ZWJ conjunct, When letter wave splits it, Then the conjunct stays one letter span"
+);
+
 function wordPiecesOf(words: string): string[] {
   const localDoc = new FakeDocument();
   const root = localDoc.createElement("div");

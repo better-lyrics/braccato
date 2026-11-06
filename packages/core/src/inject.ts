@@ -39,8 +39,9 @@ import {
   type WordState,
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
+import { letterClusters } from "./letters";
 import { getSeekTimeFromClick } from "./seek";
-import { isSameText, letterClusters, testJoiningScript, testRtl } from "./text";
+import { isSameText, testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
 import type { Lyric, LyricPart, LyricSyncType } from "./types";
 
@@ -314,10 +315,9 @@ function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
   return groups;
 }
 
-function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, threshold: number): boolean {
-  const clusters = text.length > threshold ? letterClusters(text) : [text];
+function appendLongWordBreaks(doc: Document, span: HTMLElement, clusters: string[], threshold: number): boolean {
   if (clusters.length <= threshold) {
-    span.textContent = text;
+    span.textContent = clusters.join("");
     return false;
   }
 
@@ -330,8 +330,7 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, th
   return true;
 }
 
-function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
-  const chars = letterClusters(text);
+function appendLetters(doc: Document, wordElement: HTMLElement, chars: string[]): HTMLElement[] {
   wordElement.style.setProperty("--letters", String(chars.length));
   // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
   // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
@@ -363,6 +362,8 @@ function createTimedWordSpan(
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
+  const clusters =
+    perLetter || (!preserveJoining && part.words.length > wrapThreshold) ? letterClusters(part.words) : [part.words];
 
   for (const wordElement of [span, highlight]) {
     wordElement.classList.add(WORD_CLASS);
@@ -378,7 +379,7 @@ function createTimedWordSpan(
 
     if (perLetter) {
       wordElement.classList.add("blyrics-word--lettered");
-      const collected = appendLetters(doc, wordElement, part.words);
+      const collected = appendLetters(doc, wordElement, clusters);
       if (wordElement === span) {
         letters = collected;
       } else {
@@ -388,7 +389,7 @@ function createTimedWordSpan(
     } else if (preserveJoining) {
       wordElement.textContent = part.words;
     } else {
-      appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+      appendLongWordBreaks(doc, wordElement, clusters, wrapThreshold);
     }
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
