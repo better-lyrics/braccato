@@ -301,6 +301,22 @@ assert.deepEqual(
   "regression: Given a Kannada conjunct, When letter wave splits it, Then the virama never ends a letter span"
 );
 
+assert.deepEqual(
+  lettersOf("வாழ்க்கை"),
+  ["வா", "ழ்", "க்", "கை"],
+  "Given a Tamil word, When letter wave splits it, Then a visible pulli keeps its own letter span"
+);
+assert.deepEqual(
+  lettersOf("க்ஷேத்திரம்"),
+  ["க்ஷே", "த்", "தி", "ர", "ம்"],
+  "Given the Tamil ksha ligature, When letter wave splits it, Then the ligature stays one letter span"
+);
+assert.deepEqual(
+  lettersOf("မြန်မာ"),
+  ["မြ", "န်", "မာ"],
+  "regression: Given a Myanmar spacing vowel, When letter wave splits it, Then it stays with its consonant"
+);
+
 function wordPiecesOf(words: string): string[] {
   const localDoc = new FakeDocument();
   const root = localDoc.createElement("div");
@@ -309,20 +325,20 @@ function wordPiecesOf(words: string): string[] {
   createLyricsLine(asDocument(localDoc), [{ startTimeMs: 0, words, durationMs: 400 }], line, target);
   return collectTree(root)
     .filter(node => node.name === "#text" || node.classList.contains(LETTER_CLASS))
+    .filter(node => !node.parentNode?.classList.contains(WORD_HIGHLIGHT_CLASS))
     .map(node => node.textContent);
 }
 
-setThemeSettings(new Map([["blyrics-letter-wave", "false"]]));
-assert.deepEqual(
-  wordPiecesOf("मुस्कुराएगा").filter(piece => /^\p{M}/u.test(piece)),
-  [],
-  "regression: Given a Devanagari word past the wrap threshold, When letter wave is off, Then no break lands before a combining mark"
+setThemeSettings(
+  new Map([
+    ["blyrics-letter-wave", "false"],
+    ["blyrics-long-word-wrap-threshold", "2"],
+  ])
 );
-setThemeSettings(new Map([["blyrics-letter-wave", "true"]]));
 assert.deepEqual(
-  wordPiecesOf("मुस्कुराएगा").filter(piece => /^\p{M}/u.test(piece)),
-  [],
-  "regression: Given a Devanagari word, When letter wave is on, Then no letter span starts with a combining mark"
+  wordPiecesOf("मुस्कुराएगा"),
+  ["मुस्कु", "राए", "गा"],
+  "regression: Given a Devanagari word past the wrap threshold, When letter wave is off, Then every break falls between letter clusters"
 );
 
 setThemeSettings(new Map());

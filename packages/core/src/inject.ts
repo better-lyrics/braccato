@@ -40,7 +40,7 @@ import {
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
 import { getSeekTimeFromClick } from "./seek";
-import { isSameText, testJoiningScript, testRtl } from "./text";
+import { isSameText, letterClusters, testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
 import type { Lyric, LyricPart, LyricSyncType } from "./types";
 
@@ -50,22 +50,6 @@ let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
 let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
 export const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
-
-const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-// Canonical_Combining_Class=Virama (UCD 16.0). Grapheme rules do not keep every conjunct whole, and
-// before Unicode 15.1 they keep none, so a cluster ending in one of these joins the letter after it.
-const TRAILING_VIRAMA_REGEX =
-  /[\u{94D}\u{9CD}\u{A4D}\u{ACD}\u{B4D}\u{BCD}\u{C4D}\u{CCD}\u{D3B}-\u{D3C}\u{D4D}\u{DCA}\u{E3A}\u{EBA}\u{F84}\u{1039}-\u{103A}\u{1714}-\u{1715}\u{1734}\u{17D2}\u{1A60}\u{1B44}\u{1BAA}-\u{1BAB}\u{1BF2}-\u{1BF3}\u{2D7F}\u{A806}\u{A82C}\u{A8C4}\u{A953}\u{A9C0}\u{AAF6}\u{ABED}\u{10A3F}\u{11046}\u{11070}\u{1107F}\u{110B9}\u{11133}-\u{11134}\u{111C0}\u{11235}\u{112EA}\u{1134D}\u{113CE}-\u{113D0}\u{11442}\u{114C2}\u{115BF}\u{1163F}\u{116B6}\u{1172B}\u{11839}\u{1193D}-\u{1193E}\u{119E0}\u{11A34}\u{11A47}\u{11A99}\u{11C3F}\u{11D44}-\u{11D45}\u{11D97}\u{11F41}-\u{11F42}\u{1612F}]\u200D?$/u;
-
-function letterClusters(text: string): string[] {
-  const clusters: string[] = [];
-  for (const { segment } of graphemeSegmenter.segment(text)) {
-    const last = clusters.length - 1;
-    if (last >= 0 && TRAILING_VIRAMA_REGEX.test(clusters[last]) && /^\p{L}/u.test(segment)) clusters[last] += segment;
-    else clusters.push(segment);
-  }
-  return clusters;
-}
 
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -331,7 +315,7 @@ function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
 }
 
 function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, threshold: number): boolean {
-  const clusters = letterClusters(text);
+  const clusters = text.length > threshold ? letterClusters(text) : [text];
   if (clusters.length <= threshold) {
     span.textContent = text;
     return false;
@@ -426,7 +410,7 @@ function createWordGroup(
     testRtl(group.text) && [...group.text].some(char => /[\p{Letter}\p{Number}]/u.test(char) && !testRtl(char));
   const preserveJoining = testJoiningScript(group.text);
   const perLetter = letterWave.getBooleanValue() && !preserveJoining && !mixedDirection;
-  const isLongGroup = letterClusters(group.text).length > wrapThreshold * 2;
+  const isLongGroup = group.text.length > wrapThreshold * 2 && letterClusters(group.text).length > wrapThreshold * 2;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
 
