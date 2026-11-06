@@ -295,6 +295,36 @@ assert.deepEqual(
   "Given a Hebrew word, When letter wave splits it, Then it still splits because Hebrew letters do not join"
 );
 
+assert.deepEqual(
+  lettersOf("ಕ್ಷಣ"),
+  ["ಕ್ಷ", "ಣ"],
+  "regression: Given a Kannada conjunct, When letter wave splits it, Then the virama never ends a letter span"
+);
+
+function wordPiecesOf(words: string): string[] {
+  const localDoc = new FakeDocument();
+  const root = localDoc.createElement("div");
+  const target = asElement<HTMLElement>(root);
+  const line = newLineData(target, 0, 400);
+  createLyricsLine(asDocument(localDoc), [{ startTimeMs: 0, words, durationMs: 400 }], line, target);
+  return collectTree(root)
+    .filter(node => node.name === "#text" || node.classList.contains(LETTER_CLASS))
+    .map(node => node.textContent);
+}
+
+setThemeSettings(new Map([["blyrics-letter-wave", "false"]]));
+assert.deepEqual(
+  wordPiecesOf("मुस्कुराएगा").filter(piece => /^\p{M}/u.test(piece)),
+  [],
+  "regression: Given a Devanagari word past the wrap threshold, When letter wave is off, Then no break lands before a combining mark"
+);
+setThemeSettings(new Map([["blyrics-letter-wave", "true"]]));
+assert.deepEqual(
+  wordPiecesOf("मुस्कुराएगा").filter(piece => /^\p{M}/u.test(piece)),
+  [],
+  "regression: Given a Devanagari word, When letter wave is on, Then no letter span starts with a combining mark"
+);
+
 setThemeSettings(new Map());
 
 // -- A line click calls seek, not a document --------------------------------------------
