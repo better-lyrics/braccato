@@ -2,8 +2,6 @@ import { ROMANIZED_LYRICS_CLASS, TRANSLATED_LYRICS_CLASS } from "../constants";
 import type { AnimationEngineInstance } from "./instance";
 import { REDUCED_MOTION_QUERY } from "./motionPreference";
 
-// -- Decoration slide --------------------------
-
 const DECORATION_SLIDE_MS = 350;
 const DECORATION_SLIDE_EASING = "cubic-bezier(0.25, 1, 0.5, 1)";
 export const DECORATION_MIN_SHIFT_PX = 0.5;
@@ -29,13 +27,6 @@ export function lineDecorators(lineElement: HTMLElement): HTMLElement[] {
   ];
 }
 
-/**
- * Snapshots where the lines and their decorators sit now, so the remeasure that follows can slide
- * each one from there to wherever a streamed decoration just pushed it. Returns null when nothing
- * should animate, and otherwise a function to call once the new layout is measured: the line rides
- * its own shift and a decorator rides only the part of its shift its line did not already carry, so
- * a survivor whose line held still still slides into the gap a removed sibling left.
- */
 export function captureDecorationSlide(engine: AnimationEngineInstance): (() => void) | null {
   const container = engine.lyricsContainer;
   if (!container || engine.layout === "stage" || !decorationSlideAllowed(engine, container)) return null;
@@ -54,8 +45,8 @@ export function captureDecorationSlide(engine: AnimationEngineInstance): (() => 
       for (const [element, was] of decorations) {
         const now = line.decorations.get(element);
         if (now === undefined) continue;
-        const shift = was - now - lineShift;
-        if (Math.abs(shift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, shift);
+        const ownShift = was - now - lineShift;
+        if (Math.abs(ownShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(element, ownShift);
       }
     }
   };

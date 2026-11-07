@@ -54,7 +54,10 @@ export function writeEngineScrollTop(
   engine.scrollPos = scrollTop;
   const scrollTopBeforeWrite = scroller.scrollTop;
   scroller.scrollTop = scrollTop;
-  if (scroller.scrollTop === scrollTopBeforeWrite) return;
+  if (scroller.scrollTop !== scrollTopBeforeWrite) noteEngineScrollEvent(engine, now);
+}
+
+export function noteEngineScrollEvent(engine: AnimationEngineInstance, now: number): void {
   engine.skipScrolls += 1;
   engine.skipScrollsDecayTimes.push(now + ENGINE_SCROLL_EVENT_WINDOW_MS);
 }
