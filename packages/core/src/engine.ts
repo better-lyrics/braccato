@@ -202,6 +202,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   window: EngineWindow;
   host: LyricsRendererHost;
   cachedTabRendererHeight: number | null;
+  lineScrollViewTop: number | null;
   cachedScrollInsets: ScrollInsets;
   cachedFooterItem: LineScrollItem | null;
   cachedCreditsItem: LineScrollItem | null;
@@ -305,6 +306,7 @@ export function createAnimationEngineInstance(
     passiveLastWallTime: 0,
     passiveScrollTop: null,
     cachedTabRendererHeight: null,
+    lineScrollViewTop: null,
     cachedScrollInsets: NO_SCROLL_INSETS,
     cachedFooterItem: null,
     cachedCreditsItem: null,
@@ -420,6 +422,8 @@ export function resumeAllAutoscroll(): void {
  *   rather than following the song. Those resume sooner.
  */
 export function noteUserScroll(engine: AnimationEngineInstance, isPassive: boolean): void {
+  const scrollElement = engine.host.getScrollElement();
+  if (scrollElement) followViewMove(engine, scrollElement.scrollTop);
   if (isPassive) {
     if (isPassiveDriftScroll(engine)) return;
   } else if (engine.skipScrolls > 0) {
@@ -693,6 +697,7 @@ export function settleSwappedLines(
     engine.skipScrolls += 1;
     engine.skipScrollsDecayTimes.push(Date.now() + 2000);
     if (engine.scrollPos >= 0) engine.scrollPos += shift;
+    if (engine.lineScrollViewTop !== null) engine.lineScrollViewTop += shift;
   }
 
   if (!decorationSlideAllowed(engine, container)) return;
@@ -835,6 +840,11 @@ interface LineScrollAnimationRecord {
   animation: Animation;
   lineElement: HTMLElement;
   token: number;
+  scroll: LineScrollPlan;
+  keyframes: Keyframe[];
+  durationMs: number;
+  startY: number | null;
+  endY: number | null;
 }
 const LINE_SCROLL_INDEX_PROPERTY = "--blyrics-line-scroll-index";
 const LINE_SCROLL_ACTIVE_INDEX_PROPERTY = "--blyrics-line-scroll-active-index";
@@ -2506,17 +2516,43 @@ function removeLineScrollAnimation(engine: AnimationEngineInstance, record: Line
   clearLineScrollInlineProperties(engine, record.lineElement, record.token);
 }
 
-function trackLineScrollAnimation(
+function translateY(translate: string): number | null {
+  const px = (value: string) =>
+    value === "0" || /^-?[\d.]+(?:e-?\d+)?px$/u.test(value) ? Number.parseFloat(value) : null;
+  const [x, y] = translate.trim().split(/\s+/u);
+  if (y === undefined) return px(x) === null ? null : 0;
+  return px(y);
+}
+
+function animateLineScroll(
   engine: AnimationEngineInstance,
-  animation: Animation,
   lineElement: HTMLElement,
-  token: number
-): void {
-  const record: LineScrollAnimationRecord = { animation, lineElement, token };
+  token: number,
+  scroll: LineScrollPlan,
+  keyframes: Keyframe[],
+  durationMs: number
+): LineScrollAnimationRecord {
+  const animation = lineElement.animate(keyframes, {
+    composite: "add",
+    duration: durationMs,
+    easing: "linear",
+    fill: "none",
+  });
+  const record: LineScrollAnimationRecord = {
+    animation,
+    lineElement,
+    token,
+    scroll,
+    keyframes,
+    durationMs,
+    startY: translateY(String(keyframes[0].translate)),
+    endY: translateY(String(keyframes[keyframes.length - 1].translate)),
+  };
   engine.lineScrollAnimations.push(record);
 
   animation.addEventListener("finish", () => removeLineScrollAnimation(engine, record), { once: true });
   animation.addEventListener("cancel", () => removeLineScrollAnimation(engine, record), { once: true });
+  return record;
 }
 
 function lineScrollSide(relativeIndex: number, scrollDeltaPx: number): LineScrollSide {
@@ -2614,6 +2650,8 @@ interface PreparedLineScroll {
 }
 
 interface ResolvedLineScroll extends PreparedLineScroll {
+  position: number;
+  height: number;
   durationMs: number;
   startEasing: string;
   endEasing: string;
@@ -2631,6 +2669,9 @@ interface LineScrollTiming {
 
 interface LineScrollPlan {
   items: ResolvedLineScroll[];
+  fromScrollTop: number;
+  toScrollTop: number;
+  viewportHeight: number;
 }
 
 interface PendingLineScroll {
@@ -2840,8 +2881,28 @@ function prepareLineScrollOffsets(
     timingKey: string;
     timing: LineScrollTiming | undefined;
   }[] = [];
+  const carried = carriedLineScrolls(engine);
+  // A carried line can be on screen away from its layout box, by at most what its scrolls still owe it.
+  const isCarriedIntoView = (line: LineScrollItem) => {
+    const owedPx = (carried.get(line.lyricElement) ?? []).reduce(
+      (sum, record) => sum + Math.max(Math.abs(record.startY ?? Infinity), Math.abs(record.endY ?? Infinity)),
+      0
+    );
+    return (
+      owedPx > 0 &&
+      isLineVisibleDuringScroll(
+        line,
+        Math.min(fromScrollTop, toScrollTop) - owedPx,
+        Math.max(fromScrollTop, toScrollTop) + owedPx,
+        viewportHeight
+      )
+    );
+  };
   for (let index = 0; index < lines.length; index++) {
-    if (!isLineVisibleDuringScroll(lines[index], fromScrollTop, toScrollTop, viewportHeight)) {
+    if (
+      !isLineVisibleDuringScroll(lines[index], fromScrollTop, toScrollTop, viewportHeight) &&
+      !isCarriedIntoView(lines[index])
+    ) {
       continue;
     }
     const lineElement = lines[index].lyricElement;
@@ -2931,13 +2992,20 @@ function prepareLineScrollOffsets(
   }
 
   const staggerScale = lineScrollStaggerScale(lines, activeLineIndex, scrollDistancePx, naturalAdvance);
-  const activeDurationMs = requests.find(request => request.relativeIndex === 0)?.timing?.durationMs;
+  // The active line can sit outside the window when lines are taller than the view, so the nearest one stands in.
+  const activeDurationMs = requests.reduce<(typeof requests)[number] | undefined>(
+    (nearest, request) =>
+      nearest === undefined || Math.abs(request.relativeIndex) < Math.abs(nearest.relativeIndex) ? request : nearest,
+    undefined
+  )?.timing?.durationMs;
 
   return {
     items: requests.map((request, requestIndex) => {
       const timing = request.timing as LineScrollTiming;
       return {
         ...request.item,
+        position: lines[request.index].position,
+        height: lines[request.index].height,
         durationMs:
           activeDurationMs === undefined
             ? timing.durationMs
@@ -2948,27 +3016,116 @@ function prepareLineScrollOffsets(
         endTranslate: endTranslates ? endTranslates[requestIndex] : "0px 0px",
       };
     }),
+    fromScrollTop,
+    toScrollTop,
+    viewportHeight,
   };
 }
 
+function carriedLineScrolls(engine: AnimationEngineInstance): Map<HTMLElement, LineScrollAnimationRecord[]> {
+  const carried = new Map<HTMLElement, LineScrollAnimationRecord[]>();
+  for (const record of engine.lineScrollAnimations) {
+    const records = carried.get(record.lineElement);
+    if (records) records.push(record);
+    else carried.set(record.lineElement, [record]);
+  }
+  return carried;
+}
+
+// Lines past a running scroll's window rest beside ones it carries; revealing them would show the two crossed.
+function inheritCarriedLineScrolls(
+  engine: AnimationEngineInstance,
+  lines: readonly LineScrollItem[],
+  viewportTop: number,
+  viewportHeight: number,
+  reachPx: number
+): void {
+  if (engine.lineScrollAnimations.length === 0) return;
+  const carried = carriedLineScrolls(engine);
+
+  const viewportBottom = viewportTop + viewportHeight;
+  const inherit = (line: LineScrollItem, neighbour: LineScrollItem, below: boolean) => {
+    const own = carried.get(line.lyricElement) ?? [];
+    // A record cancelled from outside keeps no time until its cancel event removes it.
+    const missing = (carried.get(neighbour.lyricElement) ?? []).filter(
+      record =>
+        (record.animation.startTime !== null || record.animation.currentTime !== null) &&
+        !own.some(ownRecord => ownRecord.scroll === record.scroll)
+    );
+    if (missing.length === 0 || !line.lyricElement.isConnected) return;
+    // Lines further out are reached a frame at a time as the view moves toward them.
+    const clearancePx = below ? line.position - viewportBottom : viewportTop - (line.position + line.height);
+    if (clearancePx > reachPx) return;
+    let offsetPx = 0;
+    for (const { animation, durationMs, startY, endY } of missing) {
+      if (startY === null || endY === null) return;
+      offsetPx += startY + (endY - startY) * clamp(Number(animation.currentTime ?? 0) / durationMs, 0, 1);
+    }
+    // Estimated at linear progress, so an easing far from linear can bring the line into view a little early.
+    if (clearancePx < Math.max(0, below ? -offsetPx : offsetPx)) return;
+
+    carried.set(line.lyricElement, [
+      ...own,
+      ...missing.map(record => {
+        // Owns no scroll properties, so finishing early clears none from under the line's own scroll.
+        const copy = animateLineScroll(
+          engine,
+          line.lyricElement,
+          -1,
+          record.scroll,
+          record.keyframes,
+          record.durationMs
+        );
+        if (record.animation.startTime !== null) copy.animation.startTime = record.animation.startTime;
+        else copy.animation.currentTime = record.animation.currentTime;
+        return copy;
+      }),
+    ]);
+  };
+
+  for (let index = 1; index < lines.length; index++) inherit(lines[index], lines[index - 1], true);
+  for (let index = lines.length - 2; index >= 0; index--) inherit(lines[index], lines[index + 1], false);
+}
+
+// Judged against where the view last was, since that is the last place anything was drawn.
+function followViewMove(engine: AnimationEngineInstance, scrollTop: number): void {
+  const previousTop = engine.lineScrollViewTop;
+  // Small steps add up against the last place judged, so a slow scroll is still caught.
+  if (previousTop !== null && Math.abs(scrollTop - previousTop) <= 2) return;
+  engine.lineScrollViewTop = scrollTop;
+  if (engine.lineScrollAnimations.length === 0 || previousTop === null || engine.cachedTabRendererHeight === null)
+    return;
+  inheritCarriedLineScrolls(
+    engine,
+    getLineScrollItems(engine, engine.lines),
+    previousTop,
+    engine.cachedTabRendererHeight,
+    engine.cachedTabRendererHeight + Math.abs(scrollTop - previousTop)
+  );
+}
+
 function startPreparedLineScroll(engine: AnimationEngineInstance, plan: LineScrollPlan): void {
+  inheritCarriedLineScrolls(
+    engine,
+    plan.items.map(item => ({ lyricElement: item.lineElement, position: item.position, height: item.height })),
+    plan.fromScrollTop,
+    plan.viewportHeight,
+    plan.viewportHeight + Math.abs(plan.toScrollTop - plan.fromScrollTop)
+  );
   for (const item of plan.items) {
     if (!item.lineElement.isConnected || engine.lineScrollElementTokens.get(item.lineElement) !== item.token) continue;
 
-    const animation = item.lineElement.animate(
+    animateLineScroll(
+      engine,
+      item.lineElement,
+      item.token,
+      plan,
       [
         { translate: item.startTranslate, easing: item.startEasing },
         { translate: item.endTranslate, easing: item.endEasing },
       ] as Keyframe[],
-      {
-        composite: "add",
-        duration: item.durationMs,
-        easing: "linear",
-        fill: "none",
-      }
+      item.durationMs
     );
-
-    trackLineScrollAnimation(engine, animation, item.lineElement, item.token);
   }
 }
 
@@ -3190,6 +3347,7 @@ function passiveScrollEngine(engine: AnimationEngineInstance, isPlaying: boolean
 
   tabRenderer.scrollTop = targetScroll;
   engine.passiveScrollTop = tabRenderer.scrollTop;
+  engine.lineScrollViewTop = engine.passiveScrollTop;
 }
 
 /**
@@ -3259,7 +3417,18 @@ export function resolveScrollInsets(
 function measureScrollViewport(engine: AnimationEngineInstance, element: HTMLElement): void {
   const height = element.getBoundingClientRect().height;
   const { scrollPaddingTop, scrollPaddingBottom } = engine.window.getComputedStyle(element);
+  const previousHeight = engine.cachedTabRendererHeight;
   engine.cachedTabRendererHeight = height;
+  // A taller viewport uncovers lines past the edge of a scroll still running.
+  if (previousHeight !== null && height > previousHeight) {
+    inheritCarriedLineScrolls(
+      engine,
+      getLineScrollItems(engine, engine.lines),
+      element.scrollTop,
+      previousHeight,
+      height
+    );
+  }
   engine.cachedScrollInsets = resolveScrollInsets(scrollPaddingTop, scrollPaddingBottom, height);
 }
 
@@ -3464,9 +3633,7 @@ export function measureStage(engine: AnimationEngineInstance): void {
 }
 
 function currentTranslateY(engine: AnimationEngineInstance, element: HTMLElement, fallback: number): number {
-  const parts = engine.window.getComputedStyle(element).translate.split(" ");
-  const y = Number.parseFloat(parts[1] ?? "");
-  return Number.isFinite(y) ? y : fallback;
+  return translateY(engine.window.getComputedStyle(element).translate) ?? fallback;
 }
 
 interface StageMove {
@@ -3787,6 +3954,7 @@ export function tickView(
       : 0;
     // Read before the loop's class writes so this layout read is batched and forces no mid-frame reflow.
     let scrollTop = tabRenderer?.scrollTop ?? 0;
+    if (!isStage) followViewMove(engine, scrollTop);
     const maxScrollTop = tabRenderer ? Math.max(0, tabRenderer.scrollHeight - tabRenderer.clientHeight) : 0;
     if (!isStage && animationConfig.enabled.scroll) {
       updateVisibleLyricWillChange(
@@ -4190,7 +4358,8 @@ export function tickView(
         engine.scrollPos = scrollTop;
         const scrollTopBeforeWrite = tabRenderer.scrollTop;
         tabRenderer.scrollTop = scrollTop;
-        if (tabRenderer.scrollTop !== scrollTopBeforeWrite) {
+        engine.lineScrollViewTop = tabRenderer.scrollTop;
+        if (engine.lineScrollViewTop !== scrollTopBeforeWrite) {
           engine.skipScrolls += 1;
           engine.skipScrollsDecayTimes.push(Date.now() + 2000);
         }
@@ -4353,6 +4522,11 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
 
   const lyricsElement = engine.lyricsContainer;
   if (!lyricsElement) return;
+  if (lyricsElement.clientWidth !== engine.lyricWidth) {
+    // Rewrapped lines move under the scroll still carrying them, so they settle with the reflow instead.
+    dropPendingLineScroll(engine);
+    clearLineScrollAnimations(engine);
+  }
   // Both dimensions, because both are what a resize is compared against. The scroll padding written
   // above lands on this container, so a measurement that records only the width leaves every later
   // resize report looking like a new height, and each one measures again and forces a rescroll.

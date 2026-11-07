@@ -91,6 +91,7 @@ class FakeStyle {
 // `playState` and a `currentTime` that moves, which is a fake of a different size.
 export class FakeAnimation {
   currentTime: number | null = null;
+  startTime: number | null = null;
   readonly playState = "idle";
   cancelled = false;
   playbackRate = 1;
