@@ -1585,12 +1585,13 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   const scroll = (time: number) => {
     lastTickTime = time;
     const before = new Set(engine.lineScrollAnimations);
+    const inheritedKeyframes = new Set([...before].map(record => asFakeAnimation(record.animation).keyframes));
     const fromScrollTop = host.scrollElement.scrollTop;
     assert.equal(tickView(engine, time, resolveTickOptions(newTickOptions())), "ok");
     const deltaPx = host.scrollElement.scrollTop - fromScrollTop;
     const activeIndex = lines.indexOf(engine.lastScrollElements[engine.lastScrollElements.length - 1]);
     const scrolled = engine.lineScrollAnimations
-      .filter(record => !before.has(record))
+      .filter(record => !before.has(record) && !inheritedKeyframes.has(asFakeAnimation(record.animation).keyframes))
       .map(record => {
         const relativeIndex = lines.findIndex(line => line.lyricElement === record.lineElement) - activeIndex;
         const leading = relativeIndex !== 0 && relativeIndex > 0 === deltaPx < 0;
@@ -1679,6 +1680,95 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   lines = mountView(engine);
   firstScroll("regression: Given lyrics opened mid-song, Then their first scroll does not advance naturally");
   engine.destroy();
+}
+
+// -- Lines stay apart while scrolls overlap --------------------------
+
+// Offsets are summed from every scroll animation at a shared clock, so hidden crossings show once on screen.
+function mountSpacedView() {
+  const stepPx = 80;
+  const heightPx = LINE_HEIGHT_PX;
+  const document = new FakeDocument();
+  const window = new FakeWindow({ [ANIMATE_SCROLL_PROPERTY]: "1" });
+  const host = new FakeHost();
+  const engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
+  setLyrics(
+    engine,
+    asElement<HTMLElement>(document.createElement("div")),
+    Array.from({ length: 60 }, (_, index) => ({
+      startTimeMs: 1000 + index * 400,
+      durationMs: 400,
+      words: `L${index}`,
+    })),
+    { loaderVisible: false, noLyrics: false }
+  );
+  const lines = getRenderedLines(engine);
+  lines.forEach((line, index) => {
+    line.position = 1000 + index * stepPx;
+    line.height = heightPx;
+    Object.defineProperty(line.lyricElement, "isConnected", { value: true });
+  });
+
+  let clockMs = 0;
+  const offsetAt = (line: (typeof lines)[number], atMs: number) =>
+    engine.lineScrollAnimations
+      .filter(record => record.lineElement === line.lyricElement)
+      .reduce((sum, record) => {
+        const animation = asFakeAnimation(record.animation);
+        const [startY, endY] = (animation.keyframes as { translate: string }[]).map(keyframe =>
+          Number.parseFloat(keyframe.translate.split(" ")[1] ?? "0")
+        );
+        const durationMs = animation.options.duration as number;
+        const progress = Math.min(1, Math.max(0, (atMs - (animation.startTime ?? atMs)) / durationMs));
+        return sum + startY + (endY - startY) * progress;
+      }, 0);
+  // A browser drops a finished animation, and the fake never finishes one.
+  const advanceClock = (atMs: number) => {
+    clockMs = atMs;
+    engine.lineScrollAnimations = engine.lineScrollAnimations.filter(record => {
+      const animation = asFakeAnimation(record.animation);
+      return animation.startTime === null || clockMs < animation.startTime + (animation.options.duration as number);
+    });
+  };
+  return {
+    engine,
+    host,
+    advanceClock,
+    tickAt(time: number, atMs: number) {
+      advanceClock(atMs);
+      assert.equal(tickView(engine, time, resolveTickOptions(newTickOptions())), "ok");
+      for (const record of engine.lineScrollAnimations) asFakeAnimation(record.animation).startTime ??= clockMs;
+    },
+    assertLinesApart(message: string) {
+      for (let atMs = clockMs; atMs <= clockMs + 3000; atMs += 16) {
+        const tops = lines.map(line => line.position - host.scrollElement.scrollTop + offsetAt(line, atMs));
+        for (let index = 1; index < lines.length; index++) {
+          const overlapTop = Math.max(0, tops[index]);
+          const overlapBottom = Math.min(VIEWPORT_HEIGHT_PX, tops[index - 1] + heightPx);
+          assert.ok(
+            overlapBottom - overlapTop < 1,
+            `${message}: L${index - 1} and L${index} overlap on screen ${atMs - clockMs}ms in (${(overlapBottom - overlapTop).toFixed(0)}px)`
+          );
+        }
+      }
+    },
+  };
+}
+
+{
+  const view = mountSpacedView();
+  view.tickAt(2.0, 0);
+  view.tickAt(20.0, 2000);
+  view.tickAt(6.0, 2200);
+  view.assertLinesApart("regression: Given a far jump back while a far jump ahead is still running");
+
+  view.tickAt(18.0, 6000);
+  view.advanceClock(6150);
+  view.engine.skipScrolls = 0;
+  view.host.scrollElement.scrollTop += 600;
+  noteUserScroll(view.engine, false);
+  view.assertLinesApart("regression: Given the reader scrolls on while a far jump is still running");
+  view.engine.destroy();
 }
 
 // -- A stepped media clock --------------------------------------------
