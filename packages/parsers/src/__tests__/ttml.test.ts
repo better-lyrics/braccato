@@ -405,6 +405,71 @@ describe("TTMLParser", () => {
 			expect(lines[0].parts!.map((p) => p.isBackground)).toEqual([false, true, true]);
 			expect(lines[0].words).toBe("Hello(echo)(echo)");
 		});
+
+		it("numbers each x-bg span of a line and keeps its text as written", () => {
+			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="0s" end="9s"><span begin="0s" end="1s">Lead</span><span ttm:role="x-bg"><span begin="1s" end="2s">(one </span><span begin="2s" end="3s">two)</span></span> <span ttm:role="x-bg"><span begin="3s" end="4s">(three)</span></span></p></div></body></tt>`;
+
+			const line = parseTTMLContent(ttml).lyrics.filter((l) => !l.isInstrumental)[0];
+
+			expect(line.words).toBe("Lead(one two) (three)");
+			expect(line.parts!.map((p) => [p.words, p.backgroundGroup])).toEqual([
+				["Lead", undefined],
+				["(one ", 0],
+				["two)", 0],
+				[" ", undefined],
+				["(three)", 1],
+			]);
+		});
+
+		it("reads timing written on an x-bg span itself the same as timing on a span inside it", () => {
+			const wrap = (p: string) =>
+				`<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div>${p}</div></body></tt>`;
+			const shape = (lead: string, bg: (text: string, begin: number) => string) =>
+				parseTTMLContent(wrap(`<p begin="0s" end="4s">${lead}${bg("(one)", 1)}${bg("(two)", 2)}</p>`));
+			const onSpan = (text: string, begin: number) =>
+				`<span ttm:role="x-bg" begin="${begin}s" end="${begin + 1}s">${text}</span>`;
+			const inside = (text: string, begin: number) =>
+				`<span ttm:role="x-bg"><span begin="${begin}s" end="${begin + 1}s">${text}</span></span>`;
+			const view = (result: ReturnType<typeof parseTTMLContent>) => ({
+				isWordSynced: result.isWordSynced,
+				parts: result.lyrics[0].parts!.map((p) => [p.words, p.startTimeMs, p.durationMs, p.backgroundGroup]),
+			});
+
+			const timedLead = `<span begin="0s" end="1s">Lead</span>`;
+			expect(view(shape(timedLead, onSpan))).toEqual(view(shape(timedLead, inside)));
+			expect(view(shape(timedLead, onSpan)).parts).toEqual([
+				["Lead", 0, 1000, undefined],
+				["(one)", 1000, 1000, 0],
+				["(two)", 2000, 1000, 1],
+			]);
+		});
+
+		it("keeps a line-timed line line-timed when only its x-bg span carries timing", () => {
+			const result = parseTTMLContent(
+				`<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="0s" end="4s">Walking on <span ttm:role="x-bg" begin="2s" end="3s">(walking)</span></p></div></body></tt>`,
+			);
+
+			expect(result.isWordSynced).toBe(false);
+			expect(result.lyrics[0].parts).toEqual([]);
+			expect(result.lyrics[0].words).toBe("Walking on (walking)");
+		});
+
+		it("keeps a line line-timed when its only timed main span is empty", () => {
+			const result = parseTTMLContent(
+				`<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s"><span begin="1s" end="2s"></span>Hi <span ttm:role="x-bg" begin="2.5s" end="4s">(la)</span></p></div></body></tt>`,
+			);
+
+			expect(result.isWordSynced).toBe(false);
+			expect(result.lyrics[0].parts).toEqual([]);
+		});
+
+		it("ignores x-bg span timing that has no end", () => {
+			const result = parseTTMLContent(
+				`<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="0s" end="4s"><span begin="0s" end="1s">Lead</span><span ttm:role="x-bg" begin="2s" dur="1s">(one)</span></p></div></body></tt>`,
+			);
+
+			expect(result.lyrics[0].parts!.every((p) => p.durationMs >= 0)).toBe(true);
+		});
 	});
 
 	describe("explicit content", () => {
