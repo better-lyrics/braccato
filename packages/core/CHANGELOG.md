@@ -1,5 +1,18 @@
 # @braccato/core
 
+## 1.20.1
+
+### Patch Changes
+
+- 930e0b0: The word, line and instrumental animation builders are restructured into small named pieces. Every animation they create, its keyframes and its timing are unchanged.
+- f999d00: Theme values for the animation config are read through one small reader, and the glow helpers are tidied. Every value read, its fallback and the resulting animations are unchanged.
+- 6a52107: Animation drift correction gets its own module, separate from the song-clock bookkeeping and the timing logs, and drift sampling no longer allocates per line on every tick. Timing, drift resets and the `blyrics-debug-animation-timing` logs behave as before.
+- 3c2a296: Line scroll planning is split from the theme variables it reads, with the per-line plan built in one readable pass. Scroll animations, their timing and the line-scroll theme settings are unchanged.
+- 13f4be2: The scroll viewport, passive scroll, line culling and user-scroll helpers are restructured around named steps. Scroll targets, scroll padding, the passive scroll cycle and culling are unchanged.
+- c2e35ad: The engine is split into one module per concern under `engine/`. Nothing a consumer imports or sees changes.
+- 6ad8770: Stage motion, line swapping and decoration slides are restructured into named steps, and the engine overview moves into `engine/README.md`. Stage placement, swapped-line settling and decoration slides are unchanged.
+- 9770bb8: The per-frame tick is split into named steps (clock, line focus, line animations, credits, stage or autoscroll). Rendering is unchanged, and the debug overlay and its theme setting work as before.
+
 ## 1.20.0
 
 ### Minor Changes
