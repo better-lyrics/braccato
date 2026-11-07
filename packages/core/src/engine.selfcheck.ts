@@ -1685,11 +1685,12 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
 // -- Lines stay apart while scrolls overlap --------------------------
 
 // Offsets are summed from every scroll animation at a shared clock, so hidden crossings show once on screen.
-function mountSpacedView() {
-  const stepPx = 80;
-  const heightPx = LINE_HEIGHT_PX;
+function mountSpacedView(
+  stepPx = 80,
+  heightPx = LINE_HEIGHT_PX,
+  window = new FakeWindow({ [ANIMATE_SCROLL_PROPERTY]: "1" })
+) {
   const document = new FakeDocument();
-  const window = new FakeWindow({ [ANIMATE_SCROLL_PROPERTY]: "1" });
   const host = new FakeHost();
   const engine = createAnimationEngineInstance(asDocument(document), asWindow(window), host);
   setLyrics(
@@ -1768,6 +1769,26 @@ function mountSpacedView() {
   view.host.scrollElement.scrollTop += 600;
   noteUserScroll(view.engine, false);
   view.assertLinesApart("regression: Given the reader scrolls on while a far jump is still running");
+  view.engine.destroy();
+}
+
+{
+  const view = mountSpacedView(
+    VIEWPORT_HEIGHT_PX + 120,
+    VIEWPORT_HEIGHT_PX + 100,
+    new FakeWindow(
+      { [ANIMATE_SCROLL_PROPERTY]: "1" },
+      {
+        transitionDuration: element =>
+          `${750 + Number(element.style.getPropertyValue("--blyrics-line-scroll-abs-relative-index")) * 40}ms`,
+      }
+    )
+  );
+  view.tickAt(2.0, 0);
+  view.tickAt(9.0, 2000);
+  view.assertLinesApart(
+    "regression: Given lines taller than the view, Then a far jump's stagger never closes their gap"
+  );
   view.engine.destroy();
 }
 

@@ -136,6 +136,8 @@ export type LineData = {
   isSelected: boolean;
   height: number;
   position: number;
+  insetTop: number;
+  insetBottom: number;
   decorations: Map<HTMLElement, number>;
 } & AnimationData;
 
@@ -203,6 +205,8 @@ export function newLineData(lyricElement: HTMLElement, startTimeMs: number, dura
     isSelected: false,
     height: -1,
     position: -1,
+    insetTop: 0,
+    insetBottom: 0,
     decorations: new Map(),
     animations: [],
   };

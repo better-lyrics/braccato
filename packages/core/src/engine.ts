@@ -208,6 +208,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   cachedCreditsItem: LineScrollItem | null;
   creditsFocused: boolean;
   cachedLineScrollTiming: Map<string, LineScrollTiming>;
+  easingCurves: Map<string, number[]>;
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
   lineScrollAnimations: LineScrollAnimationRecord[];
@@ -312,6 +313,7 @@ export function createAnimationEngineInstance(
     cachedCreditsItem: null,
     creditsFocused: false,
     cachedLineScrollTiming: new Map(),
+    easingCurves: new Map(),
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
     lineScrollAnimations: [],
@@ -835,6 +837,8 @@ interface LineScrollItem {
   lyricElement: HTMLElement;
   height: number;
   position: number;
+  insetTop?: number;
+  insetBottom?: number;
 }
 interface LineScrollAnimationRecord {
   animation: Animation;
@@ -2853,6 +2857,132 @@ function lineScrollStaggerScale(
   return Math.min(1, stepPx / scrollDistancePx);
 }
 
+const EASING_SAMPLES = 64;
+const GAP_SAMPLES = 48;
+
+// Sampled from the browser's own timing, so any easing a theme writes is measured the way it plays.
+function easingCurve(engine: AnimationEngineInstance, easing: string): number[] {
+  const cached = engine.easingCurves.get(easing);
+  if (cached) return cached;
+  const linear = Array.from({ length: EASING_SAMPLES + 1 }, (_, sample) => sample / EASING_SAMPLES);
+  let curve = linear;
+  const { Animation: AnimationConstructor, KeyframeEffect: EffectConstructor } = engine.window;
+  if (typeof AnimationConstructor === "function" && typeof EffectConstructor === "function") {
+    try {
+      const effect = new EffectConstructor(null, null, { duration: EASING_SAMPLES, easing, fill: "both" });
+      const animation = new AnimationConstructor(effect, null);
+      curve = linear.map((progress, sample) => {
+        animation.currentTime = sample;
+        return effect.getComputedTiming().progress ?? progress;
+      });
+    } catch (error) {
+      engine.host.log("Line scroll easing could not be sampled, treating it as linear", easing, error);
+    }
+  }
+  engine.easingCurves.set(easing, curve);
+  return curve;
+}
+
+interface LineScrollMotion {
+  startY: number;
+  endY: number;
+  durationMs: number;
+  elapsedMs: number;
+  curve: number[];
+}
+
+function motionOffset(motions: readonly LineScrollMotion[], afterMs: number): number {
+  let offset = 0;
+  for (const { startY, endY, durationMs, elapsedMs, curve } of motions) {
+    const position = clamp((elapsedMs + afterMs) / durationMs, 0, 1) * EASING_SAMPLES;
+    const sample = Math.min(Math.floor(position), EASING_SAMPLES - 1);
+    const progress = curve[sample] + (curve[sample + 1] - curve[sample]) * (position - sample);
+    offset += startY + (endY - startY) * progress;
+  }
+  return offset;
+}
+
+// Played forward with the scrolls still running, since neighbours easing apart close their gap by distance times progress.
+function safeStaggerScale(
+  engine: AnimationEngineInstance,
+  lines: LineScrollItem[],
+  requests: { index: number; timing: LineScrollTiming; startY: number | null; endY: number | null }[],
+  activeDurationMs: number,
+  scale: number
+): number {
+  const carried = carriedLineScrolls(engine);
+  const runningMotions = (line: LineScrollItem): LineScrollMotion[] | null => {
+    const motions: LineScrollMotion[] = [];
+    for (const record of carried.get(line.lyricElement) ?? []) {
+      if (record.startY === null || record.endY === null) return null;
+      motions.push({
+        startY: record.startY,
+        endY: record.endY,
+        durationMs: record.durationMs,
+        elapsedMs: Number(record.animation.currentTime ?? 0),
+        curve: easingCurve(engine, String(record.keyframes[0].easing ?? "linear")),
+      });
+    }
+    return motions;
+  };
+
+  const pairs: { gapPx: number; upper: LineScrollMotion[]; lower: LineScrollMotion[]; requests: typeof requests }[] =
+    [];
+  let horizonMs = 0;
+  for (let index = 1; index < requests.length; index++) {
+    const above = requests[index - 1];
+    const below = requests[index];
+    if (below.index !== above.index + 1 || above.startY === null || above.endY === null) continue;
+    if (below.startY === null || below.endY === null) continue;
+    const upperLine = lines[above.index];
+    const lowerLine = lines[below.index];
+    const upper = runningMotions(upperLine);
+    const lower = runningMotions(lowerLine);
+    if (!upper || !lower) continue;
+    const gapPx =
+      lowerLine.position +
+      (lowerLine.insetTop ?? 0) -
+      (upperLine.position + upperLine.height - (upperLine.insetBottom ?? 0));
+    pairs.push({ gapPx, upper, lower, requests: [above, below] });
+    for (const motion of [...upper, ...lower]) horizonMs = Math.max(horizonMs, motion.durationMs - motion.elapsedMs);
+    horizonMs = Math.max(horizonMs, above.timing.durationMs, below.timing.durationMs);
+  }
+  if (pairs.length === 0) return scale;
+
+  const keepsApart = (atScale: number) =>
+    pairs.every(({ gapPx, upper, lower, requests: [above, below] }) => {
+      const scrolled = (request: (typeof requests)[number], running: LineScrollMotion[]): LineScrollMotion[] => [
+        ...running,
+        {
+          startY: request.startY as number,
+          endY: request.endY as number,
+          durationMs: activeDurationMs + (request.timing.durationMs - activeDurationMs) * atScale,
+          elapsedMs: 0,
+          curve: easingCurve(engine, request.timing.startEasing),
+        },
+      ];
+      const upperMotions = scrolled(above, upper);
+      const lowerMotions = scrolled(below, lower);
+      // Whatever the running scrolls already left is not this scroll's to take back.
+      const floorPx = Math.min(0, gapPx + motionOffset(lower, 0) - motionOffset(upper, 0));
+      for (let sample = 0; sample <= GAP_SAMPLES; sample++) {
+        const afterMs = (horizonMs * sample) / GAP_SAMPLES;
+        if (gapPx + motionOffset(lowerMotions, afterMs) - motionOffset(upperMotions, afterMs) < floorPx) return false;
+      }
+      return true;
+    });
+
+  if (keepsApart(scale)) return scale;
+  let safe = 0;
+  let unsafe = scale;
+  for (let step = 0; step < 6; step++) {
+    const middle = (safe + unsafe) / 2;
+    if (keepsApart(middle)) safe = middle;
+    else unsafe = middle;
+  }
+  return safe;
+}
+
 function prepareLineScrollOffsets(
   engine: AnimationEngineInstance,
   lines: LineScrollItem[],
@@ -2991,13 +3121,27 @@ function prepareLineScrollOffsets(
     );
   }
 
-  const staggerScale = lineScrollStaggerScale(lines, activeLineIndex, scrollDistancePx, naturalAdvance);
   // The active line can sit outside the window when lines are taller than the view, so the nearest one stands in.
   const activeDurationMs = requests.reduce<(typeof requests)[number] | undefined>(
     (nearest, request) =>
       nearest === undefined || Math.abs(request.relativeIndex) < Math.abs(nearest.relativeIndex) ? request : nearest,
     undefined
   )?.timing?.durationMs;
+  const staggerScale =
+    activeDurationMs === undefined
+      ? 1
+      : safeStaggerScale(
+          engine,
+          lines,
+          requests.map((request, requestIndex) => ({
+            index: request.index,
+            timing: request.timing as LineScrollTiming,
+            startY: translateY(startTranslates ? startTranslates[requestIndex] : defaultStartTranslate),
+            endY: translateY(endTranslates ? endTranslates[requestIndex] : "0px 0px"),
+          })),
+          activeDurationMs,
+          lineScrollStaggerScale(lines, activeLineIndex, scrollDistancePx, naturalAdvance)
+        );
 
   return {
     items: requests.map((request, requestIndex) => {
@@ -4540,6 +4684,10 @@ export function relayout(engine: AnimationEngineInstance, measureLines: boolean)
     const bounds = getRelativeLayoutBounds(lyricsElement, line.lyricElement);
     line.position = bounds.y;
     line.height = bounds.height;
+    // The padding is what keeps neighbouring lines' text apart, so a scroll may close the gap by no more than that.
+    const { paddingTop, paddingBottom } = engine.window.getComputedStyle(line.lyricElement);
+    line.insetTop = Number.parseFloat(paddingTop) || 0;
+    line.insetBottom = Number.parseFloat(paddingBottom) || 0;
     line.decorations = new Map(
       lineDecorators(line.lyricElement).map(element => [element, getRelativeLayoutBounds(lyricsElement, element).y])
     );
