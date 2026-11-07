@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.19.1
+
+### Patch Changes
+
+- 3279ba4: Scrolling unsynced lyrics while the song plays now pauses the drift instead of fighting it.
+
 ## 1.19.0
 
 ### Minor Changes
