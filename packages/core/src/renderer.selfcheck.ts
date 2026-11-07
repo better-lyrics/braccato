@@ -1112,6 +1112,32 @@ assert.equal(
   "Given a user who asked for autoscroll back, When the container is read, Then it no longer records the user taking over"
 );
 
+// -- A host that counts every scroll pauses even when the view ticks between its events ----------
+
+const EVERY_SCROLL_TICK = { isPlaying: true, countEveryUserScroll: true };
+
+for (let i = 0; i < 4; i++) richRenderer.tick(LATE_PLAYBACK_TIME_S, EVERY_SCROLL_TICK);
+const affordanceCallsBeforeTickedScroll = rich.resumeAffordanceCalls.length;
+let tickedNotedScrolls = 0;
+
+while (
+  rich.resumeAffordanceCalls.length === affordanceCallsBeforeTickedScroll &&
+  tickedNotedScrolls < MAX_SWALLOWED_SCROLLS
+) {
+  richRenderer.noteUserScroll();
+  richRenderer.tick(LATE_PLAYBACK_TIME_S, EVERY_SCROLL_TICK);
+  tickedNotedScrolls += 1;
+}
+
+assert.deepEqual(
+  rich.resumeAffordanceCalls.slice(affordanceCallsBeforeTickedScroll),
+  [true],
+  "regression: Given a host that counts every user scroll and ticks every frame, When a user scroll arrives between each tick, Then autoscroll still pauses"
+);
+
+richRenderer.resumeAutoscroll();
+richRenderer.tick(LATE_PLAYBACK_TIME_S, EVERY_SCROLL_TICK);
+
 // -- A visibility change is a diagnostic, and only a theme asks for it -------------------------
 
 setThemeSettings(new Map([[ANIMATION_TIMING_LOG_SETTING, "true"]]));

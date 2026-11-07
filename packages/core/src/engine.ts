@@ -3062,7 +3062,7 @@ function prepareUpcomingLineScroll(
 
 // -- Skip Scrolls Decay --------------------------
 
-function decaySkipScrolls(engine: AnimationEngineInstance, now: number): void {
+function decaySkipScrolls(engine: AnimationEngineInstance, now: number, keepsReserve: boolean): void {
   let j = 0;
   for (; j < engine.skipScrollsDecayTimes.length; j++) {
     if (engine.skipScrollsDecayTimes[j] > now) {
@@ -3070,10 +3070,7 @@ function decaySkipScrolls(engine: AnimationEngineInstance, now: number): void {
     }
   }
   engine.skipScrollsDecayTimes = engine.skipScrollsDecayTimes.slice(j);
-  engine.skipScrolls -= j;
-  if (engine.skipScrolls < 1) {
-    engine.skipScrolls = 1;
-  }
+  engine.skipScrolls = Math.max(keepsReserve ? 1 : 0, engine.skipScrolls - j);
 }
 
 // -- Passive Scroll Engine --------------------------
@@ -3328,6 +3325,7 @@ export function resolveTickOptions(options: TickOptions): ResolvedTickOptions {
     passiveScrollEnabled: options.passiveScrollEnabled ?? false,
     playbackRate: resolvePlaybackRate(options.playbackRate),
     followPausedSeeks: options.followPausedSeeks ?? false,
+    countEveryUserScroll: options.countEveryUserScroll ?? false,
   };
 }
 
@@ -4177,9 +4175,12 @@ export function tickView(
 
         scrollTop = scrollPos;
         engine.scrollPos = scrollTop;
+        const scrollTopBeforeWrite = tabRenderer.scrollTop;
         tabRenderer.scrollTop = scrollTop;
-        engine.skipScrolls += 1;
-        engine.skipScrollsDecayTimes.push(Date.now() + 2000);
+        if (tabRenderer.scrollTop !== scrollTopBeforeWrite) {
+          engine.skipScrolls += 1;
+          engine.skipScrollsDecayTimes.push(Date.now() + 2000);
+        }
       }
     }
 
@@ -4189,7 +4190,7 @@ export function tickView(
       engine.wasUserScrolling = false;
     }
 
-    decaySkipScrolls(engine, now);
+    decaySkipScrolls(engine, now, !options.countEveryUserScroll);
   } catch (err) {
     if (!(err as Error).message?.includes("undefined")) {
       engine.host.log(LYRICS_CHECK_INTERVAL_ERROR, err);
