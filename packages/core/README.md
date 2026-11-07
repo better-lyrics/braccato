@@ -281,6 +281,16 @@ The ones a theme reaches for first. `variables.css` declares the rest.
 `line-height`. Every word is given the glow, so a theme that wants it to mean something selects on
 `data-long-word`, which the module sets on any part held past `blyrics-long-word-threshold`.
 
+A word longer than twice `blyrics-long-word-wrap-threshold` (default `10` characters) gets
+`blyrics-word-group-long` on its group. Its syllables become `display: inline` and take `<wbr>`
+break points, so a word like `Oh-oh-oh-oh-oh-oh-oh-oh` wraps instead of overflowing. Browsers ignore
+`transform` on inline boxes, so a per-syllable animation and the word wobble both stop on those
+words. Raising `blyrics-long-word-wrap-threshold` (say to `1000`) brings both back, and a word wider
+than the view then overflows instead of wrapping. To keep the wrap, a theme can set
+`.blyrics-word-group-long .blyrics--word:not(.blyrics-bidi-sensitive *)` back to `display: inline-block`:
+the syllables still wrap between each other and per-syllable animations return, but the wobble does
+not, because it moves the group and the group stays inline.
+
 The instrumental ripple is the one place a property carries geometry rather than a value.
 `--blyrics-instrumental-wave-path-high` and `--blyrics-instrumental-wave-path-low` are the two shapes
 it morphs between, each a `path()`, and a theme redrawing them is how the wave changes amplitude or
@@ -405,6 +415,7 @@ refactor. Import them from `@braccato/core/constants` instead of typing them out
 | `BACKGROUND_LYRIC_CLASS`  | `blyrics-background-lyric`  | A background vocal, sung over the line it answers.           |
 | `USER_SCROLLING_CLASS`    | `blyrics-user-scrolling`    | Set while a reader has scrolled away and autoscroll waits.   |
 | `TRANSLATED_LYRICS_CLASS` | `blyrics--translated`       | A translation hung off a line that was already built.        |
+| `LONG_WORD_GROUP_CLASS`   | `blyrics-word-group-long`   | A word longer than twice `blyrics-long-word-wrap-threshold`. Its syllables go inline so it can wrap, which turns off any `transform` on them. |
 | `EXPLICIT_WORD_CLASS`     | `blyrics-explicit`          | A word the lyrics flag as explicit. Unstyled unless a theme styles it. |
 | `CREDITS_CLASS`           | `blyrics-credits`           | The songwriter credits after the last line.                  |
 | `CUSTOM_THEME_STYLE_ID`   | `blyrics-custom-style`      | The id of the `<style>` the theme lands in.                  |
