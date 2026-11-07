@@ -57,6 +57,7 @@ const PAUSING_LYRICS_SCROLL_LOG = "Pausing Lyrics Autoscroll Due to User Scroll"
 
 const USER_SCROLL_RESUME_DELAY_MS = 25000;
 const PASSIVE_USER_SCROLL_RESUME_DELAY_MS = 5000;
+const PASSIVE_DRIFT_SCROLL_TOLERANCE_PX = 1;
 
 const LYRIC_ENDING_THRESHOLD_S = registerThemeSetting("blyrics-lyric-ending-threshold-s", 0.5);
 const EARLY_SCROLL_CONSIDER = registerThemeSetting("blyrics-early-scroll-consider-s", 0.54);
@@ -169,6 +170,8 @@ interface AnimEngineViewState {
   };
   passiveScrollAccumulatedTime: number;
   passiveLastWallTime: number;
+  /** Where the passive drift last put the scroll, so a scroll that lands anywhere else is the reader's. */
+  passiveScrollTop: number | null;
 }
 
 /**
@@ -300,6 +303,7 @@ export function createAnimationEngineInstance(
     },
     passiveScrollAccumulatedTime: 0,
     passiveLastWallTime: 0,
+    passiveScrollTop: null,
     cachedTabRendererHeight: null,
     cachedScrollInsets: NO_SCROLL_INSETS,
     cachedFooterItem: null,
@@ -409,14 +413,16 @@ export function resumeAllAutoscroll(): void {
 }
 
 /**
- * The user scrolled this view. Scrolls the engine itself performed are swallowed one at a time;
+ * The user scrolled this view. Scrolls the engine itself performed are swallowed;
  * a real one pauses autoscroll long enough to read where it landed, and offers the way back.
  *
  * @param isPassive - Whether the lyrics on screen are unsynced, and so are drifting on their own
  *   rather than following the song. Those resume sooner.
  */
 export function noteUserScroll(engine: AnimationEngineInstance, isPassive: boolean): void {
-  if (engine.skipScrolls > 0) {
+  if (isPassive) {
+    if (isPassiveDriftScroll(engine)) return;
+  } else if (engine.skipScrolls > 0) {
     engine.skipScrolls--;
     engine.skipScrollsDecayTimes.shift();
     return;
@@ -498,6 +504,7 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.lastScrollDebugContext.centers = [];
   engine.passiveScrollAccumulatedTime = 0;
   engine.passiveLastWallTime = 0;
+  engine.passiveScrollTop = null;
   stopPassiveScrollLoop(engine);
   engine.lines = [];
   engine.cachedFooterItem = null;
@@ -3181,15 +3188,21 @@ function passiveScrollEngine(engine: AnimationEngineInstance, isPlaying: boolean
     targetScroll = 0;
   }
 
-  const prevScrollTop = tabRenderer.scrollTop;
   tabRenderer.scrollTop = targetScroll;
-  const appliedScrollTop = tabRenderer.scrollTop;
-  // Only skip the next scroll event if scrollTop actually changed.
-  // When it doesn't change (pause phases, sub-pixel rounding), no programmatic
-  // scroll event fires, so setting skipScrolls would eat user scroll events instead.
-  if (appliedScrollTop !== prevScrollTop) {
-    engine.skipScrolls = 1;
-  }
+  engine.passiveScrollTop = tabRenderer.scrollTop;
+}
+
+/**
+ * The drift writes the scroll every frame, and a browser folds that scroll and the reader's into one
+ * event, so the drift's own scrolls are told apart by where they land rather than by counting them.
+ */
+function isPassiveDriftScroll(engine: AnimationEngineInstance): boolean {
+  const scrollTop = engine.host.getScrollElement()?.scrollTop;
+  return (
+    engine.passiveScrollTop !== null &&
+    scrollTop !== undefined &&
+    Math.abs(scrollTop - engine.passiveScrollTop) < PASSIVE_DRIFT_SCROLL_TOLERANCE_PX
+  );
 }
 
 /**

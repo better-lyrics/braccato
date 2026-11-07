@@ -1063,6 +1063,58 @@ assert.equal(
 
 placeholderEngine.destroy();
 
+// -- A reader can take over unsynced lyrics while they drift -----------------------------------
+
+const driftDocument = new FakeDocument();
+const driftWindow = new FakeWindow(PANEL_STYLE);
+const driftHost = new FakeHost();
+const driftEngine = createAnimationEngineInstance(asDocument(driftDocument), asWindow(driftWindow), driftHost);
+
+setLyrics(driftEngine, asElement<HTMLElement>(driftDocument.createElement("div")), UNSYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+tickView(driftEngine, PLAYBACK_TIME_S, resolveTickOptions(passiveTickOptions));
+
+const runDriftFrame = (): void => {
+  driftEngine.passiveScrollAccumulatedTime += 0.016;
+  const frame = driftWindow.pendingFrames.get(driftEngine.passiveRAFId!);
+  assert.ok(frame, "The passive scroll loop has a frame waiting");
+  frame(0);
+};
+
+driftEngine.passiveScrollAccumulatedTime = 5;
+runDriftFrame();
+assert.ok(
+  driftHost.scrollElement.scrollTop > 0,
+  "Given unsynced lyrics mid song, When a frame runs, Then the view drifts down"
+);
+
+noteUserScroll(driftEngine, true);
+assert.ok(
+  driftEngine.scrollResumeTime <= Date.now(),
+  "Given unsynced lyrics drifting, When the scroll event for the drift itself arrives, Then autoscroll keeps going"
+);
+
+// A browser folds the drift's scroll and the reader's into one event when they land in the same frame.
+runDriftFrame();
+driftHost.scrollElement.scrollTop = driftHost.scrollElement.scrollTop + 200;
+noteUserScroll(driftEngine, true);
+assert.ok(
+  driftEngine.scrollResumeTime > Date.now(),
+  "regression: Given unsynced lyrics drifting while playing, When the reader scrolls in the same frame as a drift, Then autoscroll pauses"
+);
+
+const readerScrollTop = driftHost.scrollElement.scrollTop;
+runDriftFrame();
+assert.equal(
+  driftHost.scrollElement.scrollTop,
+  readerScrollTop,
+  "Given the reader paused the drift, When the next frame runs, Then the view stays where they left it"
+);
+
+driftEngine.destroy();
+
 // -- The end of the song is somewhere the scroll can actually reach -----------------------------
 
 const OUTRO_LINE_HEIGHT_PX = 60;
