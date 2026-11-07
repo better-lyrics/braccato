@@ -130,7 +130,8 @@ function parseLyricPart(
 			const isTimedItself = element[":@"]?.["@_begin"] && element[":@"]?.["@_end"];
 			if (lineHasTimedSpans && isTimedItself && !timedInside) localP = [element];
 		}
-		const group = isBackground ? { backgroundGroup: backgroundGroups++ } : {};
+		const group = isBackground ? { backgroundGroup: backgroundGroups } : {};
+		const partsBefore = parts.length;
 
 		for (const subPart of localP) {
 			if (subPart["#text"]) {
@@ -165,6 +166,7 @@ function parseLyricPart(
 				isWordSynced = true;
 			}
 		}
+		if (isBackground && parts.length > partsBefore) backgroundGroups++;
 	}
 
 	if (!isWordSynced) {

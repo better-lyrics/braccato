@@ -454,6 +454,14 @@ describe("TTMLParser", () => {
 			expect(result.lyrics[0].words).toBe("Walking on (walking)");
 		});
 
+		it("numbers only the x-bg spans that hold text", () => {
+			const line = parseTTMLContent(
+				`<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="0s" end="4s"><span begin="0s" end="1s">Lead</span><span ttm:role="x-bg"></span><span ttm:role="x-bg"><span begin="1s" end="2s">(one)</span></span><span ttm:role="x-bg"><span begin="2s" end="3s">(two)</span></span></p></div></body></tt>`,
+			).lyrics[0];
+
+			expect(line.parts!.filter((p) => p.isBackground).map((p) => p.backgroundGroup)).toEqual([0, 1]);
+		});
+
 		it("keeps a line line-timed when its only timed main span is empty", () => {
 			const result = parseTTMLContent(
 				`<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s"><span begin="1s" end="2s"></span>Hi <span ttm:role="x-bg" begin="2.5s" end="4s">(la)</span></p></div></body></tt>`,
