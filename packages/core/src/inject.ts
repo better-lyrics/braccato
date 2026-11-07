@@ -164,6 +164,7 @@ type PartialRenderToken = {
 interface WordGroup {
   text: string;
   isBackground: boolean;
+  backgroundGroup?: number;
   tokens: RenderToken[];
 }
 
@@ -254,6 +255,7 @@ function splitPartIntoTokens(part: LyricPart): RenderToken[] {
       part: {
         words: chunk,
         isBackground: part.isBackground,
+        backgroundGroup: part.backgroundGroup,
         explicit: part.explicit,
       },
     });
@@ -284,7 +286,7 @@ function normalizeParts(parts: LyricPart[]): RenderToken[] {
   return parts.flatMap(splitPartIntoTokens);
 }
 
-function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
+function groupTokensByWord(tokens: RenderToken[], splitBackgroundGroups: boolean): (WordGroup | RenderToken)[] {
   const groups: (WordGroup | RenderToken)[] = [];
   let current: WordGroup | null = null;
 
@@ -303,9 +305,10 @@ function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
     }
 
     const isBackground = token.part?.isBackground === true;
-    if (!current || current.isBackground !== isBackground) {
+    const backgroundGroup = splitBackgroundGroups ? token.part?.backgroundGroup : undefined;
+    if (!current || current.isBackground !== isBackground || current.backgroundGroup !== backgroundGroup) {
       flush();
-      current = { text: "", isBackground, tokens: [] };
+      current = { text: "", isBackground, backgroundGroup, tokens: [] };
     }
 
     current.text += token.text;
@@ -492,25 +495,41 @@ export function createLyricsLine(
         .map(part => part.words)
         .join("")
     : lineText;
-  const backgroundText = parts
-    .filter(part => part.isBackground === true)
-    .map(part => part.words)
-    .join("");
+  const backgroundTextOf = (group: number) =>
+    parts
+      .filter(part => part.isBackground === true && (part.backgroundGroup ?? 0) === group)
+      .map(part => part.words)
+      .join("");
   const main = createContentLine(doc, LINE_MAIN_CLASS, mainText);
   const mainRun = createBidiRun(doc, mainText);
   const mainHighlightRun = createHighlightRun(doc, mainText);
-  const groupedTokens = groupTokensByWord(normalizeParts(parts));
-  const backgroundLine = createContentLine(doc, BACKGROUND_LINE_CLASS, backgroundText);
-  const backgroundRun = createBidiRun(doc, backgroundText);
-  const backgroundHighlightRun = createHighlightRun(doc, backgroundText);
-  let hasBackground = false;
+  const groupedTokens = groupTokensByWord(normalizeParts(parts), options.splitBackgroundLine);
+  const backgroundRows = new Map<
+    number,
+    { line: HTMLElement; run: HTMLElement; highlightRun: HTMLElement; used: boolean }
+  >();
+  const backgroundRowOf = (group: number) => {
+    let row = backgroundRows.get(group);
+    if (!row) {
+      const text = backgroundTextOf(group);
+      row = {
+        line: createContentLine(doc, BACKGROUND_LINE_CLASS, text),
+        run: createBidiRun(doc, text),
+        highlightRun: createHighlightRun(doc, text),
+        used: false,
+      };
+      row.line.appendChild(row.highlightRun);
+      row.line.appendChild(row.run);
+      backgroundRows.set(group, row);
+    }
+    return row;
+  };
+  backgroundRowOf(0);
   let pendingForegroundSpace = "";
   let pendingBackgroundSpace = "";
 
   main.appendChild(mainHighlightRun);
   main.appendChild(mainRun);
-  backgroundLine.appendChild(backgroundHighlightRun);
-  backgroundLine.appendChild(backgroundRun);
 
   for (const item of groupedTokens) {
     if ("kind" in item) {
@@ -519,8 +538,9 @@ export function createLyricsLine(
       pendingBackgroundSpace += item.text;
     } else {
       const shouldUseBackgroundLine = options.splitBackgroundLine && item.isBackground;
-      const target = shouldUseBackgroundLine ? backgroundRun : mainRun;
-      const highlightRun = shouldUseBackgroundLine ? backgroundHighlightRun : mainHighlightRun;
+      const backgroundRow = shouldUseBackgroundLine ? backgroundRowOf(item.backgroundGroup ?? 0) : null;
+      const target = backgroundRow ? backgroundRow.run : mainRun;
+      const highlightRun = backgroundRow ? backgroundRow.highlightRun : mainHighlightRun;
       const pendingSpace = shouldUseBackgroundLine ? pendingBackgroundSpace : pendingForegroundSpace;
       if (target.childNodes.length > 0 && pendingSpace.length > 0) {
         target.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
@@ -529,8 +549,8 @@ export function createLyricsLine(
       const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
       target.appendChild(lyricGroup);
       highlightRun.appendChild(highlightGroup);
-      if (shouldUseBackgroundLine) {
-        hasBackground = true;
+      if (backgroundRow) {
+        backgroundRow.used = true;
         pendingBackgroundSpace = "";
       } else {
         pendingForegroundSpace = "";
@@ -538,12 +558,14 @@ export function createLyricsLine(
     }
   }
 
+  const usedBackgroundRows = [...backgroundRows]
+    .filter(([, row]) => row.used)
+    .sort(([a], [b]) => a - b)
+    .map(([, row]) => row);
   alignImageGlowRun(mainHighlightRun, line.parts);
-  if (hasBackground) alignImageGlowRun(backgroundHighlightRun, line.parts);
+  for (const row of usedBackgroundRows) alignImageGlowRun(row.highlightRun, line.parts);
   lyricElement.appendChild(main);
-  if (hasBackground) {
-    lyricElement.appendChild(backgroundLine);
-  }
+  for (const row of usedBackgroundRows) lyricElement.appendChild(row.line);
   return main;
 }
 

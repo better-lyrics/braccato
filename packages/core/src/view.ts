@@ -191,6 +191,7 @@ function lineSignature(lyrics: Lyric[], lineIndex: number): string {
     part.durationMs,
     part.words,
     part.isBackground === true,
+    part.backgroundGroup ?? null,
     part.explicit === true,
   ]);
   // An instrumental line takes its side and direction from the lines around it.
