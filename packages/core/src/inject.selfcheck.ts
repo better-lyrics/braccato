@@ -709,4 +709,60 @@ for (const letterWaveSetting of ["true", "false"]) {
   );
 }
 
+{
+  let clock = 0;
+  const sung = (words: string, backgroundGroup?: number): LyricPart => ({
+    startTimeMs: (clock += 300),
+    durationMs: 300,
+    words,
+    ...(backgroundGroup === undefined ? {} : { isBackground: true, backgroundGroup }),
+  });
+  const backgroundRows = (parts: LyricPart[], splitBackgroundLine = true) => {
+    const rowDoc = new FakeDocument();
+    const target = rowDoc.createElement("div");
+    createLyricsLine(
+      asDocument(rowDoc),
+      parts,
+      newLineData(asElement<HTMLElement>(target), 0, 9000),
+      asElement<HTMLElement>(target),
+      { splitBackgroundLine }
+    );
+    return target.childNodes
+      .filter(row => row.classList.contains(BACKGROUND_LINE_CLASS))
+      .map(row =>
+        collectTree(row)
+          .filter(node => node.classList.contains(WORD_CLASS) && !node.classList.contains(WORD_HIGHLIGHT_CLASS))
+          .map(node => node.dataset.content)
+          .join(" ")
+      );
+  };
+
+  assert.deepEqual(
+    backgroundRows([
+      sung("Walk "),
+      sung("on"),
+      sung("(slow ", 0),
+      sung("down)", 0),
+      sung("(come)", 1),
+      sung("(back)", 2),
+    ]),
+    ["(slow down)", "(come)", "(back)"],
+    "Given a line with three background groups, When it is built, Then each group gets its own row in order"
+  );
+  assert.deepEqual(
+    backgroundRows([
+      sung("Walk"),
+      { ...sung("(slow)"), isBackground: true },
+      { ...sung("(come)"), isBackground: true },
+    ]),
+    ["(slow) (come)"],
+    "Given background parts with no group numbers, When the line is built, Then they share one row"
+  );
+  assert.deepEqual(
+    backgroundRows([sung("Walk"), sung("(slow ", 0), sung("down)", 0), sung("(come)", 1)], false),
+    [],
+    "Given a line built as one row, When it has background groups, Then no background row is added"
+  );
+}
+
 console.log(`Renderer builder self-check passed across ${doc.calls.length} built node(s)`);
