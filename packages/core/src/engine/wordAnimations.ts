@@ -1,8 +1,8 @@
 import { RTL_CLASS } from "../constants";
-import type { PartData } from "../inject";
+import type { PartData, SweepCell } from "../inject";
 import { registerThemeSetting } from "../themeSettings";
 import type { AnimationConfig } from "./animationConfig";
-import { correctedAnimationTimeMs, mirrorImageHighlightAnimations, followSongClock } from "./animationTiming";
+import { correctedAnimationTimeMs, mirrorHighlightAnimations, followSongClock } from "./animationTiming";
 import {
   fadeInFullySweptKeyframes,
   fadeOutKeyframes,
@@ -23,6 +23,7 @@ import {
   swipeRamp,
 } from "./letterPlans";
 import { resetPartAnimations } from "./lineAnimationState";
+import { planCellSweep } from "./sweepPlans";
 import { acquireWaveAnimation } from "./wavePool";
 
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
@@ -69,7 +70,7 @@ export function startWordAnimations(
     ? lineSyncedHighlight(word)
     : richSyncedHighlight(word);
   const motion = config.enabled.wordWobble ? [...wobble(word), ...letterWave(word)] : [];
-  part.animations = [...highlight, ...mirrorImageHighlightAnimations(part, highlight), ...motion];
+  part.animations = [...highlight, ...mirrorHighlightAnimations(part, highlight), ...motion];
 }
 
 export function startWordExitAnimation(part: PartData, config: AnimationConfig, heldPaint: HeldPaint[] = []): void {
@@ -81,7 +82,7 @@ export function startWordExitAnimation(part: PartData, config: AnimationConfig, 
     easing: fades ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
   });
-  const mirrors = mirrorImageHighlightAnimations(part, [fadeOut]);
+  const mirrors = mirrorHighlightAnimations(part, [fadeOut]);
   const holds = heldPaint.map(({ target, frame }) =>
     target.animate([frame, frame], { duration: durationMs, fill: "none" })
   );
@@ -138,10 +139,10 @@ function glowShows(part: PartData, config: AnimationConfig): boolean {
 function richSyncedHighlight(word: WordTimeline): Animation[] {
   const { part, config } = word;
   const animations = config.enabled.highlightSwipe ? swipe(word) : [];
-  const shown = config.enabled.highlightSwipe ? shownKeyframes() : shownFullySweptKeyframes(config);
+  const shown = config.enabled.highlightSwipe ? shownKeyframes() : shownFullySweptKeyframes(config, part);
   const show = part.highlightElement.animate(shown, { duration: INSTANT_MS, easing: "linear", fill: "forwards" });
   animations.push(followSong(word, show, scheduledTimeMs(word, word.elapsedMs, INSTANT_MS)));
-  if (glowShows(part, config)) animations.push(glow(word, word.glowDurationMs));
+  if (glowShows(part, config)) animations.push(...glow(word, word.glowDurationMs));
   return animations;
 }
 
@@ -149,19 +150,21 @@ function lineSyncedHighlight(word: WordTimeline): Animation[] {
   const { part, config } = word;
   const fades = config.enabled.highlightFade;
   const durationMs = fades ? config.highlight.fadeInDurationMs : INSTANT_MS;
-  const fadeIn = part.highlightElement.animate(fadeInFullySweptKeyframes(config), {
+  const fadeIn = part.highlightElement.animate(fadeInFullySweptKeyframes(config, part), {
     duration: durationMs,
     easing: fades ? config.highlight.fadeInEasing : "linear",
     fill: "forwards",
   });
   const animations = [followSong(word, fadeIn, scheduledTimeMs(word, word.elapsedMs, durationMs))];
-  if (glowShows(part, config)) animations.push(glow(word, config.highlight.glowMinDurationMs));
+  if (glowShows(part, config)) animations.push(...glow(word, config.highlight.glowMinDurationMs));
   return animations;
 }
 
 function swipe(word: WordTimeline): Animation[] {
   const { part, config, swipeLeadMs, swipeDurationMs } = word;
   const currentTimeMs = scheduledTimeMs(word, word.elapsedMs + swipeLeadMs, swipeDurationMs);
+  if (part.sweep) return compositedSwipe(word, part.sweep, currentTimeMs);
+  if (part.sweepContext) return [];
   const letters = part.highlightLetterElements;
   if (!letters || letters.length === 0) {
     const gradient = part.highlightElement.animate(swipeKeyframes(config), {
@@ -205,8 +208,43 @@ function swipe(word: WordTimeline): Animation[] {
   return animations;
 }
 
-function glow(word: WordTimeline, durationMs: number): Animation {
+/**
+ * Slides each cell's masks from where the swipe begins back to their resting place and their text the
+ * other way. Filled backwards because the resting pose is the lit one. Only the first mask's animation
+ * feeds the drift check; the others carry the same timing and would repeat it.
+ */
+function compositedSwipe(word: WordTimeline, cells: SweepCell[], currentTimeMs: number): Animation[] {
+  const { part, config, swipeLeadMs, swipeDurationMs } = word;
+  const rtl = part.highlightElement.classList.contains(RTL_CLASS);
+  const withGlow = glowShows(part, config);
+  const timing: KeyframeAnimationOptions = {
+    duration: swipeDurationMs,
+    easing: config.highlight.swipeEasing,
+    fill: "both",
+  };
+  const animations: Animation[] = [];
+  cells.forEach((cell, index) => {
+    const span = cell.span ?? { start: index / cells.length, width: 1 / cells.length };
+    const plan = planCellSweep(swipeRamp(config), span, rtl);
+    if (!plan) return;
+    for (const { mask, text } of withGlow ? [cell, ...cell.glows] : [cell]) {
+      for (const [element, keyframes] of [
+        [mask, plan.mask],
+        [text, plan.text],
+      ] as const) {
+        const slide = element.animate(keyframes, timing);
+        animations.push(
+          followSong(word, slide, currentTimeMs, { offsetMs: swipeLeadMs, skipDriftSample: animations.length > 0 })
+        );
+      }
+    }
+  });
+  return animations;
+}
+
+function glow(word: WordTimeline, durationMs: number): Animation[] {
   const { part, config } = word;
+  if (part.sweep) return sweepGlow(word, part.sweep, durationMs);
   const holdsGlow = Boolean(part.imageLayers) || !config.highlight.glowRestingInvisible;
   const target = part.imageLayers?.glow ?? part.highlightElement;
   const animation = target.animate(glowKeyframes(config, part), {
@@ -214,7 +252,38 @@ function glow(word: WordTimeline, durationMs: number): Animation {
     easing: config.highlight.glowEasing,
     fill: holdsGlow ? "forwards" : "none",
   });
-  return followSong(word, animation, scheduledTimeMs(word, word.elapsedMs, durationMs));
+  return [followSong(word, animation, scheduledTimeMs(word, word.elapsedMs, durationMs))];
+}
+
+// Where the shrinking radius reaches the tight halo's, as a fraction of the glow's eased progress.
+const TIGHT_GLOW_AT = 0.6;
+
+/**
+ * Stands in for a glow whose radius shrinks to nothing: the wide halo crossfades into the tight one
+ * while the radius would shrink between them, and the tight one then fades out. The keyframe offsets
+ * are in eased progress, since the glow's easing applies to the whole effect.
+ */
+function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number): Animation[] {
+  const { config } = word;
+  const fades = config.highlight.glowRestingInvisible;
+  const wide: Keyframe[] = fades
+    ? [{ opacity: 1 }, { opacity: 0, offset: TIGHT_GLOW_AT }, { opacity: 0 }]
+    : [{ opacity: 1 }, { opacity: 1 }];
+  const tight: Keyframe[] = fades
+    ? [{ opacity: 0 }, { opacity: 1, offset: TIGHT_GLOW_AT }, { opacity: 0 }]
+    : [{ opacity: 0 }, { opacity: 0 }];
+  const timing: KeyframeAnimationOptions = {
+    duration: durationMs,
+    easing: config.highlight.glowEasing,
+    fill: fades ? "none" : "forwards",
+  };
+  const currentTimeMs = scheduledTimeMs(word, word.elapsedMs, durationMs);
+  return cells.flatMap(cell =>
+    cell.glows.map((halo, index) => {
+      const fade = halo.glow.animate(index === 0 ? wide : tight, timing);
+      return followSong(word, fade, currentTimeMs, { skipDriftSample: true });
+    })
+  );
 }
 
 function wobble(word: WordTimeline): Animation[] {
@@ -238,14 +307,18 @@ function letterWave(word: WordTimeline): Animation[] {
   if (letterCount === 0) return [];
 
   const run = planLetterWaveRun(word, letterCount);
-  const glowLetters = glowShows(part, config) ? part.imageLayers?.glowLetters : undefined;
-  const glowFadesOut = Number.parseFloat(config.highlight.imageGlowOpacityTo) === 0;
+  const glowLetterSets = glowShows(part, config)
+    ? (part.sweep?.flatMap(cell => cell.glows.map(glow => glow.letters)) ?? [part.imageLayers?.glowLetters])
+    : [];
+  // A sweep's halo copies run their waves whole: cutting a wave short takes a negative end delay,
+  // which the compositor cannot run, and the halo has faded by then anyway.
+  const glowFadesOut = !part.sweep && Number.parseFloat(config.highlight.imageGlowOpacityTo) === 0;
   const glowEndMs = glowFadesOut ? run.headStartMs + word.glowDurationMs : Infinity;
 
   const animations: Animation[] = [];
   floatLetters(word, run, part.letterElements, Infinity, true, animations);
   floatLetters(word, run, part.highlightLetterElements, Infinity, false, animations);
-  floatLetters(word, run, glowLetters, glowEndMs, false, animations);
+  for (const glowLetters of glowLetterSets) floatLetters(word, run, glowLetters, glowEndMs, false, animations);
   return animations;
 }
 

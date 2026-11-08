@@ -21,6 +21,7 @@ import { parseColorAlpha } from "./engine/glow";
 import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
 import { setupLineCullObserver } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
+import { cellFade, type CellSpan, planCellSweep } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
 import {
   asDocument,
@@ -1610,6 +1611,55 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.ok(
     worstPx < 0.15,
     `Given scrolls that overlap, When they are baked into one animation, Then it follows their sum (off by ${worstPx}px)`
+  );
+}
+
+// -- Sweep cells --------------------------------------------
+
+// Each cell's mask edge follows the word's swipe across that cell, and its text cancels the mask's motion.
+{
+  const swipe = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
+  const translateOf = (keyframes: Keyframe[], progress: number): number => {
+    const after = keyframes.findIndex(frame => Number(frame.offset) >= progress);
+    const to = keyframes[Math.max(after, 0)];
+    const from = keyframes[Math.max(after - 1, 0)];
+    const value = (frame: Keyframe) => Number.parseFloat(String(frame.translate));
+    const span = Number(to.offset) - Number(from.offset);
+    if (span <= 0) return value(to);
+    return value(from) + ((value(to) - value(from)) * (progress - Number(from.offset))) / span;
+  };
+  const spans: CellSpan[] = [
+    { start: 0, width: 1 },
+    { start: 0, width: 0.25 },
+    { start: 0.25, width: 0.35 },
+    { start: 0.6, width: 0.4 },
+  ];
+  let worstEdge = 0;
+  let worstGlyph = 0;
+  for (const rtl of [false, true]) {
+    for (const span of spans) {
+      const plan = planCellSweep(swipe, span, rtl);
+      assert.ok(plan, "Given a usable swipe, When a cell is planned, Then it has a plan");
+      const fade = cellFade(swipe, span);
+      const maskWidths = 3 + fade;
+      for (let step = 0; step <= 200; step++) {
+        const progress = step / 200;
+        const wordStart = -0.2 + 1.6 * progress;
+        const expected = Math.min(Math.max((wordStart - span.start) / span.width, -fade), 1);
+        const maskCells = (translateOf(plan.mask, progress) * maskWidths) / 100;
+        const textCells = translateOf(plan.text, progress) / 100;
+        worstEdge = Math.max(worstEdge, Math.abs(1 + (rtl ? -maskCells : maskCells) - expected));
+        worstGlyph = Math.max(worstGlyph, Math.abs(maskCells + textCells));
+      }
+    }
+  }
+  assert.ok(
+    worstEdge < 1e-9,
+    `Given a word split into cells, When the swipe runs, Then each cell's edge sits where the word's is (off by ${worstEdge} cells)`
+  );
+  assert.ok(
+    worstGlyph < 1e-9,
+    `Given a sweep cell, When its mask slides, Then its text slides back by as much (off by ${worstGlyph} cells)`
   );
 }
 

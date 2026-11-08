@@ -26,12 +26,15 @@ export function shownKeyframes(): Keyframe[] {
   return [{ opacity: 1 }, { opacity: 1 }];
 }
 
-export function shownFullySweptKeyframes(config: AnimationConfig): Keyframe[] {
+// A sweep holds its reveal in its own layers, so the word's own opacity is all that animates on it.
+export function shownFullySweptKeyframes(config: AnimationConfig, part: PartData): Keyframe[] {
+  if (part.sweep || part.sweepContext) return shownKeyframes();
   const shown = { opacity: 1, ...swipeAmounts(config, "to") };
   return [shown, shown];
 }
 
-export function fadeInFullySweptKeyframes(config: AnimationConfig): Keyframe[] {
+export function fadeInFullySweptKeyframes(config: AnimationConfig, part: PartData): Keyframe[] {
+  if (part.sweep || part.sweepContext) return [{ opacity: 0 }, { opacity: 1 }];
   return [
     { opacity: 0, ...swipeAmounts(config, "to") },
     { opacity: 1, ...swipeAmounts(config, "to") },
@@ -39,6 +42,7 @@ export function fadeInFullySweptKeyframes(config: AnimationConfig): Keyframe[] {
 }
 
 export function fadeOutKeyframes(config: AnimationConfig, part: PartData): Keyframe[] {
+  if (part.sweep || part.sweepContext) return [{ opacity: 1 }, { opacity: 0 }];
   const filter = part.imageLayers ? "none" : config.highlight.glowTo;
   return [
     { opacity: 1, filter, ...swipeAmounts(config, "to") },

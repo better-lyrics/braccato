@@ -29,11 +29,17 @@ import {
   LONG_WORD_GROUP_CLASS,
   ROMANIZED_LYRICS_CLASS,
   RTL_CLASS,
+  SWEEP_CELL_CLASS,
+  SWEEP_GLOW_CLASS,
+  SWEEP_MASK_CLASS,
+  SWEEP_TEXT_CLASS,
   TRANSLATED_LYRICS_CLASS,
   WORD_CLASS,
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
+  WORD_HIGHLIGHT_CONTEXT_CLASS,
   WORD_HIGHLIGHT_LETTERED_CLASS,
+  WORD_HIGHLIGHT_SWEEP_CLASS,
   WORD_STATE_ATTR,
   WORD_STATE_UPCOMING,
   type WordState,
@@ -114,9 +120,49 @@ export interface AnimationData {
   animations: Animation[];
 }
 
+/** One mask over one copy of a word's text, which a sweep slides in opposite directions. */
+export interface SweepPair {
+  mask: HTMLElement;
+  text: HTMLElement;
+  letters?: HTMLElement[];
+}
+
+/** A copy of the word under a text shadow that never changes, faded in and out by opacity. */
+export interface SweepGlow extends SweepPair {
+  glow: HTMLElement;
+}
+
+/**
+ * One box of a word's sweep, run by the compositor: the whole word when it is its own inline-block
+ * box, or one letter of a word that flows inline. Each mask holds a static soft edge and slides one
+ * way while the text inside it slides the other, so the glyphs hold still and only the edge crosses
+ * them. The glow is a pair of halos at two radii, crossfaded so the glow tightens as it fades. With
+ * nothing animating, the masks rest with the cell fully revealed.
+ */
+export interface SweepCell extends SweepPair {
+  glows: SweepGlow[];
+  /** Where the cell sits along the word, as fractions of the word's width; equal shares if unset. */
+  span?: { start: number; width: number };
+}
+
+/**
+ * The sweep of a word that flows inline without letters: a word in a bidi-sensitive row or a long
+ * group whose script joins or whose letters are not split. Such a word can break across lines and
+ * shape with its neighbours, so no box of its own can hold the sweep. The engine places a cell over
+ * each box the word breaks into, drawing the word from a copy of its line, once the line is laid out.
+ */
+export interface SweepContext {
+  host?: HTMLElement;
+  placedAt?: string;
+  unplaced?: boolean;
+}
+
 export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
   imageLayers?: ImageHighlightLayers;
+  /** The sweep's cells in reading order. */
+  sweep?: SweepCell[];
+  sweepContext?: SweepContext;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
   // Only a word's first syllable holds its groups, so a word split into syllables wobbles once, whole.
@@ -174,14 +220,18 @@ function newPartData(
   highlight: HTMLElement,
   wobbleElements: HTMLElement[],
   letterElements?: HTMLElement[],
-  highlightLetterElements?: HTMLElement[]
+  highlightLetterElements?: HTMLElement[],
+  sweep?: SweepCell[]
 ): PartData {
   return {
     time: part.startTimeMs / 1000,
     duration: part.durationMs / 1000,
     lyricElement: span,
     highlightElement: highlight,
-    imageLayers: wrapImageHighlight(highlight),
+    imageLayers:
+      sweep || highlight.classList.contains(WORD_HIGHLIGHT_CONTEXT_CLASS) ? undefined : wrapImageHighlight(highlight),
+    sweep,
+    sweepContext: highlight.classList.contains(WORD_HIGHLIGHT_CONTEXT_CLASS) ? {} : undefined,
     letterElements,
     highlightLetterElements,
     wobbleElements,
@@ -349,21 +399,76 @@ function appendLetters(doc: Document, wordElement: HTMLElement, text: string): H
   });
 }
 
+function fillWordText(
+  doc: Document,
+  host: HTMLElement,
+  text: string,
+  wrapThreshold: number,
+  perLetter: boolean,
+  preserveJoining: boolean
+): HTMLElement[] | undefined {
+  if (perLetter) return appendLetters(doc, host, text);
+  if (preserveJoining) host.textContent = text;
+  else appendLongWordBreaks(doc, host, text, wrapThreshold);
+  return undefined;
+}
+
+const SWEEP_GLOW_RADII = ["wide", "tight"] as const;
+
+function createSweepPair(doc: Document): SweepPair {
+  const mask = doc.createElement("span");
+  mask.classList.add(SWEEP_MASK_CLASS);
+  const text = doc.createElement("span");
+  text.classList.add(SWEEP_TEXT_CLASS);
+  mask.appendChild(text);
+  return { mask, text };
+}
+
+export function createSweepCell(doc: Document, host: HTMLElement): SweepCell {
+  const glows = SWEEP_GLOW_RADII.map(radius => {
+    const pair = createSweepPair(doc);
+    const glow = doc.createElement("span");
+    glow.classList.add(SWEEP_GLOW_CLASS, `${SWEEP_GLOW_CLASS}--${radius}`);
+    glow.appendChild(pair.mask);
+    return { ...pair, glow };
+  });
+  const cell = { ...createSweepPair(doc), glows };
+  host.classList.add(SWEEP_CELL_CLASS);
+  for (const { glow } of glows) host.appendChild(glow);
+  host.appendChild(cell.mask);
+  return cell;
+}
+
+/** Makes each letter of a word that flows inline its own sweep cell, holding the letter's text. */
+function createLetterSweepCells(doc: Document, letters: HTMLElement[]): SweepCell[] {
+  return letters.map(letter => {
+    const text = letter.textContent ?? "";
+    letter.textContent = "";
+    const cell = createSweepCell(doc, letter);
+    for (const pair of [cell, ...cell.glows]) pair.text.textContent = text;
+    return cell;
+  });
+}
+
 function createTimedWordSpan(
   doc: Document,
   part: LyricPart,
   wrapThreshold: number,
   perLetter: boolean,
-  preserveJoining: boolean
+  preserveJoining: boolean,
+  atomic: boolean
 ): {
   span: HTMLSpanElement;
   highlight: HTMLSpanElement;
   letters?: HTMLElement[];
   highlightLetters?: HTMLElement[];
+  sweep?: SweepCell[];
 } {
   const span = doc.createElement("span");
   const highlight = doc.createElement("span");
   highlight.classList.add(WORD_HIGHLIGHT_CLASS);
+  const wordCell = atomic ? createSweepCell(doc, highlight) : undefined;
+  let sweep = wordCell ? [wordCell] : undefined;
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
@@ -382,31 +487,35 @@ function createTimedWordSpan(
 
     if (perLetter) {
       wordElement.classList.add("blyrics-word--lettered");
-      const collected = appendLetters(doc, wordElement, part.words);
-      if (wordElement === span) {
-        letters = collected;
-      } else {
-        highlightLetters = collected;
-        wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
-      }
-    } else if (preserveJoining) {
-      wordElement.textContent = part.words;
-    } else {
-      appendLongWordBreaks(doc, wordElement, part.words, wrapThreshold);
+      if (wordElement === highlight) wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
     }
+    if (wordElement === highlight && wordCell) {
+      for (const pair of [wordCell, ...wordCell.glows]) {
+        pair.letters = fillWordText(doc, pair.text, part.words, wrapThreshold, perLetter, preserveJoining);
+      }
+      highlightLetters = wordCell.letters;
+    } else {
+      const collected = fillWordText(doc, wordElement, part.words, wrapThreshold, perLetter, preserveJoining);
+      if (wordElement === span) letters = collected;
+      else highlightLetters = collected;
+      if (wordElement === highlight && collected) sweep = createLetterSweepCells(doc, collected);
+    }
+    if (wordElement === highlight && sweep) highlight.classList.add(WORD_HIGHLIGHT_SWEEP_CLASS);
+    else if (wordElement === highlight) highlight.classList.add(WORD_HIGHLIGHT_CONTEXT_CLASS);
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
     wordElement.dataset.content = part.words;
     wordElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
     wordElement.style.setProperty("--blyrics-duration", part.durationMs + "ms");
   }
-  return { span, highlight, letters, highlightLetters };
+  return { span, highlight, letters, highlightLetters, sweep };
 }
 
 function createWordGroup(
   doc: Document,
   group: WordGroup,
-  lineData: LineData
+  lineData: LineData,
+  wordsFlowInline: boolean
 ): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
   // Atomic grapheme spans disrupt the browser's bidi ordering inside a mixed word.
@@ -416,13 +525,17 @@ function createWordGroup(
   const perLetter = letterWave.getBooleanValue() && !preserveJoining && !mixedDirection;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
+  const isLongGroup = group.text.length > wrapThreshold * 2;
+  // A word that is its own inline-block box can hold the sweep's block layers. Long groups and
+  // bidi-sensitive rows lay their words out inline, where a word can break across lines.
+  const atomic = !wordsFlowInline && !isLongGroup;
 
   for (const groupElement of [lyricGroup, highlightGroup]) {
     groupElement.classList.add(WORD_GROUP_CLASS);
     groupElement.dir = "auto";
     groupElement.dataset.content = group.text;
 
-    if (group.text.length > wrapThreshold * 2) {
+    if (isLongGroup) {
       groupElement.classList.add(LONG_WORD_GROUP_CLASS);
     }
 
@@ -434,15 +547,16 @@ function createWordGroup(
   for (const token of group.tokens) {
     if (token.kind === "space") continue;
 
-    const { span, highlight, letters, highlightLetters } = createTimedWordSpan(
+    const { span, highlight, letters, highlightLetters, sweep } = createTimedWordSpan(
       doc,
       token.part,
       wrapThreshold,
       perLetter,
-      preserveJoining
+      preserveJoining,
+      atomic
     );
     const wobbleElements = lyricGroup.childNodes.length === 0 ? [lyricGroup, highlightGroup] : [];
-    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters));
+    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters, sweep));
     lyricGroup.appendChild(span);
     highlightGroup.appendChild(highlight);
   }
@@ -546,7 +660,13 @@ export function createLyricsLine(
         target.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
         highlightRun.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
       }
-      const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
+      const contentLine = backgroundRow ? backgroundRow.line : main;
+      const { lyricGroup, highlightGroup } = createWordGroup(
+        doc,
+        item,
+        line,
+        contentLine.classList.contains(BIDI_SENSITIVE_CLASS)
+      );
       target.appendChild(lyricGroup);
       highlightRun.appendChild(highlightGroup);
       if (backgroundRow) {

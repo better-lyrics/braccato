@@ -15,6 +15,7 @@ import {
 } from "./culling";
 import { captureDecorationSlide, lineDecorators } from "./decorationSlides";
 import type { AnimationEngineInstance } from "./instance";
+import { resetLineAnimationState } from "./lineAnimationState";
 import { driveLineAnimations } from "./lineLifecycle";
 import { clearLineScrolls, dropPendingLineScroll, measureTrailingItem } from "./lineScroll";
 import {
@@ -245,12 +246,23 @@ export function relayout(engine: AnimationEngineInstance, linesAreRendered: bool
   engine.lyricWidth = lyricsElement.clientWidth;
   engine.lyricHeight = lyricsElement.clientHeight;
   measureLinePositions(engine, lyricsElement);
+  restartContextSweeps(engine);
   engine.cachedCreditsItem = measureTrailingItem(lyricsElement, CREDITS_CLASS);
   engine.cachedFooterItem = measureTrailingItem(lyricsElement, FOOTER_CLASS);
   setupLineCullObserver(engine);
 
   requestRescroll(engine);
   engine.host.debug?.resize();
+}
+
+/**
+ * A word drawn by sweep cells placed over its boxes needs them placed again once the layout moves.
+ * Stopping its line lets the next tick start it over at the same moment, which places them afresh.
+ */
+function restartContextSweeps(engine: AnimationEngineInstance): void {
+  for (const line of engine.lines) {
+    if (line.isAnimating && line.parts.some(part => part.sweepContext)) resetLineAnimationState(line);
+  }
 }
 
 function measureLinePositions(engine: AnimationEngineInstance, lyricsElement: HTMLElement): void {

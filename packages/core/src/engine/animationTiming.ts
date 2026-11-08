@@ -33,19 +33,24 @@ export function followSongClock(
   return animation;
 }
 
-export function mirrorImageHighlightAnimations(part: PartData, animations: Animation[]): Animation[] {
-  const target = part.imageLayers?.highlight;
-  if (!target) return [];
+/**
+ * Repeats a word's own animations on the layers drawn for it outside the word: an image highlight's
+ * copy in a run of its own, or the cells of a sweep drawn from copies of the line.
+ */
+export function mirrorHighlightAnimations(part: PartData, animations: Animation[]): Animation[] {
+  const targets = [part.imageLayers?.highlight, part.sweepContext?.host].filter(target => target !== undefined);
   const mirrors: Animation[] = [];
-  for (const animation of animations) {
-    const effect = animation.effect as KeyframeEffect | null;
-    if (!effect || effect.target !== part.highlightElement) continue;
-    const mirror = target.animate(effect.getKeyframes(), effect.getTiming());
-    mirror.playbackRate = animation.playbackRate;
-    mirror.currentTime = animation.currentTime;
-    const track = songClockTracks.get(animation);
-    if (track) songClockTracks.set(mirror, { ...track, skipDriftSample: true });
-    mirrors.push(mirror);
+  for (const target of targets) {
+    for (const animation of animations) {
+      const effect = animation.effect as KeyframeEffect | null;
+      if (!effect || effect.target !== part.highlightElement) continue;
+      const mirror = target.animate(effect.getKeyframes(), effect.getTiming());
+      mirror.playbackRate = animation.playbackRate;
+      mirror.currentTime = animation.currentTime;
+      const track = songClockTracks.get(animation);
+      if (track) songClockTracks.set(mirror, { ...track, skipDriftSample: true });
+      mirrors.push(mirror);
+    }
   }
   return mirrors;
 }

@@ -211,6 +211,175 @@
 	mask-position: 100% 0%;
 }
 
+/* The compositor's sweep. A cell is a word that is its own inline-block box, or one letter of a word
+   that flows inline. Each mask box is 3 + fade cells wide and starts a cell before its cell: opaque up
+   to the end of the cell, then a soft edge `fade` cells wide, where fade is the swipe's width from its
+   last start stop to its last end stop, in cells. The engine slides the mask back to where the swipe
+   begins and the text inside it the other way by the same distance, so the glyphs hold still while
+   the edge crosses them. With nothing animating the masks rest with the cell fully lit. */
+.blyrics--word.blyrics-word-highlight.blyrics-word-highlight--sweep {
+	/* Not text-clipped: a text-clipped background repaints whenever a descendant moves. */
+	-webkit-background-clip: border-box;
+	background-clip: border-box;
+	background-image: none;
+	color: var(--blyrics-lyric-active-color);
+	--blyrics-sweep-angle: 90deg;
+	--blyrics-sweep-fade: calc(
+		var(--blyrics-highlight-swipe-end-to, 1.5) - var(--blyrics-highlight-swipe-start-to, 1.4)
+	);
+}
+
+.blyrics--word.blyrics-word-highlight.blyrics-word-highlight--sweep.blyrics-rtl,
+.blyrics-sweep-window.blyrics-sweep-cell[dir="rtl"] {
+	--blyrics-sweep-angle: 270deg;
+}
+
+.blyrics-word-highlight--sweep .blyrics--letter.blyrics-sweep-cell {
+	--blyrics-sweep-fade: calc(
+		(var(--blyrics-highlight-swipe-end-to, 1.5) - var(--blyrics-highlight-swipe-start-to, 1.4)) *
+			var(--letters, 1)
+	);
+}
+
+/* The mask boxes are laid out by direction, which a `dir="auto"` word does not hand down to its letters,
+   so each cell takes the direction of the word the engine sweeps it for. */
+.blyrics-sweep-cell {
+	direction: ltr;
+	isolation: isolate;
+	/* The mask boxes add nothing to the row's scroll width; the margin keeps the glow's halo. */
+	overflow: clip;
+	overflow-clip-margin: 2rem;
+	position: relative;
+}
+
+.blyrics-word-highlight--sweep.blyrics-rtl .blyrics-sweep-cell,
+.blyrics-sweep-window.blyrics-sweep-cell[dir="rtl"] {
+	direction: rtl;
+}
+
+.blyrics-sweep-mask {
+	--blyrics-sweep-widths: calc(3 + var(--blyrics-sweep-fade));
+	box-sizing: content-box;
+	display: block;
+	margin-inline-start: -100%;
+	width: calc(var(--blyrics-sweep-widths) * 100%);
+	/* Room above and below for the letter wave and for glyphs that reach past the line box. */
+	padding-block: 0.5em;
+	margin-block: -0.5em;
+	--blyrics-sweep-solid: calc(200% / var(--blyrics-sweep-widths));
+	--blyrics-sweep-clear: calc((2 + var(--blyrics-sweep-fade)) * 100% / var(--blyrics-sweep-widths));
+	-webkit-mask-image: linear-gradient(var(--blyrics-sweep-angle), #000 var(--blyrics-sweep-solid), #0000 var(--blyrics-sweep-clear));
+	mask-image: linear-gradient(var(--blyrics-sweep-angle), #000 var(--blyrics-sweep-solid), #0000 var(--blyrics-sweep-clear));
+	-webkit-mask-repeat: no-repeat;
+	mask-repeat: no-repeat;
+}
+
+.blyrics-sweep-text {
+	box-sizing: content-box;
+	display: block;
+	margin-inline-start: calc(100% / var(--blyrics-sweep-widths));
+	width: calc(100% / var(--blyrics-sweep-widths));
+}
+
+/* The glow is the sweep again over a text shadow that never changes, faded by opacity. The copy's own
+   glyphs are clear so only the halo shows, and its mask edge is widened by the halo's radius so a
+   letter just lit glows whole instead of being cut at the edge. */
+.blyrics-sweep-glow {
+	--blyrics-sweep-glow-radius: var(--blyrics-highlight-glow-radius-from, 0.8rem);
+	inset: 0;
+	opacity: 0;
+	pointer-events: none;
+	position: absolute;
+	user-select: none;
+	z-index: -1;
+}
+
+/* The glow shrinks as it fades. The engine crossfades from the wide halo to this one, which sits where
+   the radius has shrunk to by the time the wide one is gone. */
+.blyrics-sweep-glow--tight {
+	--blyrics-sweep-glow-radius: calc(var(--blyrics-highlight-glow-radius-from, 0.8rem) * 0.4);
+}
+
+.blyrics-sweep-glow .blyrics-sweep-mask {
+	padding-block: calc(0.5em + var(--blyrics-sweep-glow-radius));
+	margin-block: calc(-0.5em - var(--blyrics-sweep-glow-radius));
+	-webkit-mask-image: linear-gradient(
+		var(--blyrics-sweep-angle),
+		#000 calc(var(--blyrics-sweep-solid) - var(--blyrics-sweep-glow-radius)),
+		#0000 calc(var(--blyrics-sweep-clear) + var(--blyrics-sweep-glow-radius))
+	);
+	mask-image: linear-gradient(
+		var(--blyrics-sweep-angle),
+		#000 calc(var(--blyrics-sweep-solid) - var(--blyrics-sweep-glow-radius)),
+		#0000 calc(var(--blyrics-sweep-clear) + var(--blyrics-sweep-glow-radius))
+	);
+}
+
+.blyrics-sweep-glow .blyrics-sweep-text {
+	color: transparent;
+	text-shadow: 0 0 var(--blyrics-sweep-glow-radius) var(--blyrics-glow-color);
+}
+
+/* A word that flows inline keeps its text here only for layout; its sweep is drawn by cells placed over
+   each box it breaks into, which show the word from copies of its line. */
+.blyrics--word.blyrics-word-highlight.blyrics-word-highlight--context {
+	background-image: none;
+	color: transparent;
+}
+
+.blyrics-sweep-context {
+	inset: 0;
+	opacity: 0;
+	pointer-events: none;
+	position: absolute;
+	user-select: none;
+	z-index: 1;
+}
+
+.blyrics-sweep-window {
+	--blyrics-sweep-angle: 90deg;
+	position: absolute;
+}
+
+.blyrics-sweep-window .blyrics-sweep-mask,
+.blyrics-sweep-window .blyrics-sweep-text {
+	height: 100%;
+}
+
+.blyrics-sweep-window .blyrics-sweep-text {
+	position: relative;
+}
+
+.blyrics-sweep-clone {
+	color: transparent;
+	max-width: none;
+	position: absolute;
+	text-shadow: none;
+}
+
+.blyrics-sweep-clone .blyrics--word {
+	color: transparent;
+}
+
+.blyrics-sweep-clone .blyrics--word.blyrics-sweep-target {
+	color: var(--blyrics-lyric-active-color);
+}
+
+.blyrics-sweep-glow .blyrics-sweep-clone .blyrics--word.blyrics-sweep-target {
+	color: transparent;
+	text-shadow: 0 0 var(--blyrics-sweep-glow-radius) var(--blyrics-glow-color);
+}
+
+/* The mask boxes have room for glyph overhang, so the letters drop the padding the old per-letter mask
+   needed, which would also offset a cell's glow from its text. */
+.blyrics-word-highlight--sweep .blyrics--letter {
+	-webkit-mask-image: none;
+	mask-image: none;
+	color: inherit;
+	padding-inline: 0;
+	margin-inline: 0;
+}
+
 /* text-decoration skips inline-block letters and rides the wave, so draw on the word box instead, from its
    center (fixed against the text at any line-height), with layout-neutral padding so a tight box can hold it. */
 [blyrics-alt-hover] .blyrics--word:hover {

@@ -1,6 +1,7 @@
 import type { LineData, PartData } from "../inject";
 import type { AnimationConfig } from "./animationConfig";
 import { correctedAnimationTimeMs, followSongClock } from "./animationTiming";
+import { placeContextSweeps } from "./contextSweep";
 import { suppressInvisibleWordGlows } from "./glow";
 import type { AnimationEngineInstance } from "./instance";
 import { startInstrumentalAnimations, startInstrumentalExitAnimations } from "./instrumentalAnimations";
@@ -14,6 +15,7 @@ export function startLineAnimations(
   lyricTimeS: number
 ): void {
   const appliedTimingOffsetMs = engine.learnedAnimationTimingOffsetMs;
+  if (!isInstrumental(line)) placeContextSweeps(line, config);
   startLineEntrance(engine, line, config, lyricTimeS, appliedTimingOffsetMs);
   if (isInstrumental(line)) {
     startInstrumentalAnimations(engine, line, config, lyricTimeS, appliedTimingOffsetMs);

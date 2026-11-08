@@ -284,6 +284,16 @@ The ones a theme reaches for first. `variables.css` declares the rest.
 `line-height`. Every word is given the glow, so a theme that wants it to mean something selects on
 `data-long-word`, which the module sets on any part held past `blyrics-long-word-threshold`.
 
+The sweep and the glow run off the main thread. Each word, or each letter of a word that wraps, holds
+a fixed soft-edged mask over a copy of its text in `--blyrics-lyric-active-color`, and the two slide
+against each other so only the edge moves. A word in a joining script, or one mixing directions, is
+drawn from copies of its line placed over each box it breaks into. The swipe stops
+(`--blyrics-highlight-swipe-*`) set where the edge starts and ends, and the soft edge is as wide as the
+swipe's last start and end stops are apart. The glow is a copy of the word with a
+`text-shadow` of `--blyrics-highlight-glow-radius-from` in `--blyrics-glow-color`, crossfaded into a
+tighter one as it fades; the `--blyrics-highlight-glow-filter-*` overrides are not read.
+`--lyric-transition-amount-*` no longer animate, so a theme cannot draw its own sweep from them.
+
 A word longer than twice `blyrics-long-word-wrap-threshold` (default `10` characters) gets
 `blyrics-word-group-long` on its group. Its syllables become `display: inline` and take `<wbr>`
 break points, so a word like `Oh-oh-oh-oh-oh-oh-oh-oh` wraps instead of overflowing. Browsers ignore
@@ -346,8 +356,8 @@ swells each letter with a transient scale at the crest.
 }
 ```
 
-The split multiplies the DOM per character and reruns the karaoke sweep per letter, so a theme that
-does not want the cost turns it off with `/* blyrics-letter-wave = false; */`. `blyrics-letter-wave`
+The split multiplies the DOM per character, three times over with the glow's two copies, so a theme
+that does not want the cost turns it off with `/* blyrics-letter-wave = false; */`. `blyrics-letter-wave`
 reloads the lines when it changes, the way every build-time setting does.
 
 ### Word state
@@ -431,7 +441,7 @@ them out and you get lines that are in the document and unstyled, rather than li
 | File                                     | What it carries                                                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `@braccato/core/styles/variables.css`    | Every `--blyrics-*` default. It goes first, because the others read from it.                                              |
-| `@braccato/core/styles/lyrics.css`       | The container, the lines, the words and the sweep, plus two `@property` registrations the word animation interpolates through. |
+| `@braccato/core/styles/lyrics.css`       | The container, the lines, the words and the sweep. |
 | `@braccato/core/styles/instrumental.css` | The waveform that fills a bar nobody sings over, and the animation that walks it.                                          |
 | `@braccato/core/styles/stage.css`        | Placement for the stage layout, and nothing else. Only a renderer created with `layout: "stage"` needs it.                  |
 
@@ -602,6 +612,9 @@ They are unset by default; custom CSS that reads them directly should use
 `var(--blyrics-font-family, var(--blyrics-default-font-family))` for the default stack.
 
 ### Theme-provided image fills
+
+Image highlights do nothing at the moment: the sweep moved off the main thread and the image fill and
+its glow have not been rebuilt on it yet, so no word gets the image layers described below.
 
 Image highlights are optional. Enable them in a theme comment:
 
