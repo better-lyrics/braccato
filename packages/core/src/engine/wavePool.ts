@@ -8,7 +8,7 @@ export function acquireWaveAnimation(
   letterElement: HTMLElement,
   keyframes: Keyframe[],
   keyframeSignature: string,
-  timing: { duration: number; delay: number; endDelay: number; fill: FillMode }
+  timing: { duration: number; delay: number; fill: FillMode }
 ): Animation {
   const pool = engine.waveAnimationPool;
   const pooled = pool[pool.length - 1];

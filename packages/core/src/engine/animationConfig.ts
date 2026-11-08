@@ -36,11 +36,6 @@ export interface AnimationConfig {
     swipeEndFrom: string;
     swipeStartTo: string;
     swipeEndTo: string;
-    imageGlowFrom: string;
-    imageGlowTo: string;
-    imageGlowOpacityFrom: string;
-    imageGlowOpacityTo: string;
-    glowFrom: string;
     glowTo: string;
     glowDurationRatio: number;
     glowMinDurationMs: number;
@@ -135,11 +130,6 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       swipeEndFrom: css.string("--blyrics-highlight-swipe-end-from", "-0.1"),
       swipeStartTo: css.string("--blyrics-highlight-swipe-start-to", "1.4"),
       swipeEndTo: css.string("--blyrics-highlight-swipe-end-to", "1.5"),
-      imageGlowFrom: css.string("--blyrics-highlight-glow-radius-from", "0.8rem"),
-      imageGlowTo: css.string("--blyrics-highlight-glow-radius-to", "0px"),
-      imageGlowOpacityFrom: css.string("--blyrics-image-glow-opacity-from", "0.5"),
-      imageGlowOpacityTo: css.string("--blyrics-image-glow-opacity-to", "0"),
-      glowFrom: resolveGlowFilter(engine, lyricsElement, "from", "0.8rem"),
       glowTo,
       glowDurationRatio: css.number("--blyrics-highlight-glow-duration-ratio", 1.2),
       glowMinDurationMs: css.durationMs("--blyrics-highlight-glow-min-duration", "1.2s"),

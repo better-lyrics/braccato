@@ -17,7 +17,6 @@ export function releasePart(part: PartData): void {
   part.wordState = WORD_STATE_UPCOMING;
   part.lyricElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
   part.highlightElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
-  part.imageLayers?.highlight?.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
 }
 
 export function resetPartAnimations(part: AnimationData): void {
@@ -53,7 +52,6 @@ export function togglePartClass(part: LineData | PartData, className: string, fo
   part.lyricElement.classList.toggle(className, force);
   if ("highlightElement" in part) {
     part.highlightElement.classList.toggle(className, force);
-    part.imageLayers?.highlight?.classList.toggle(className, force);
   }
 }
 
@@ -94,6 +92,5 @@ export function updateWordStates(lineData: LineData, currentTime: number): void 
     part.wordState = state;
     part.lyricElement.setAttribute(WORD_STATE_ATTR, state);
     part.highlightElement.setAttribute(WORD_STATE_ATTR, state);
-    part.imageLayers?.highlight?.setAttribute(WORD_STATE_ATTR, state);
   }
 }

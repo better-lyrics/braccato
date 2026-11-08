@@ -13,7 +13,6 @@
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
 import { releasePart } from "./engine/lineAnimationState";
-import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
 import { normalizeLanguage } from "./language";
 import {
   BACKGROUND_LINE_CLASS,
@@ -157,7 +156,6 @@ export interface SweepContext {
 
 export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
-  imageLayers?: ImageHighlightLayers;
   /** The sweep's cells in reading order. */
   sweep?: SweepCell[];
   sweepContext?: SweepContext;
@@ -226,8 +224,6 @@ function newPartData(
     duration: part.durationMs / 1000,
     lyricElement: span,
     highlightElement: highlight,
-    imageLayers:
-      sweep || highlight.classList.contains(WORD_HIGHLIGHT_CONTEXT_CLASS) ? undefined : wrapImageHighlight(highlight),
     sweep,
     sweepContext: highlight.classList.contains(WORD_HIGHLIGHT_CONTEXT_CLASS) ? {} : undefined,
     letterElements,
@@ -385,9 +381,6 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, th
 function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
   const chars = [...graphemeSegmenter.segment(text)].map(segment => segment.segment);
   wordElement.style.setProperty("--letters", String(chars.length));
-  // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
-  // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
-  wordElement.style.setProperty("--mask-fade", `${(10 * chars.length) / (chars.length + 2)}%`);
   return chars.map(char => {
     const letter = doc.createElement("span");
     letter.classList.add(LETTER_CLASS);
@@ -679,8 +672,6 @@ export function createLyricsLine(
     .filter(([, row]) => row.used)
     .sort(([a], [b]) => a - b)
     .map(([, row]) => row);
-  alignImageGlowRun(mainHighlightRun, line.parts);
-  for (const row of usedBackgroundRows) alignImageGlowRun(row.highlightRun, line.parts);
   lyricElement.appendChild(main);
   for (const row of usedBackgroundRows) lyricElement.appendChild(row.line);
   return main;

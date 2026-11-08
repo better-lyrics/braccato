@@ -33,7 +33,7 @@ export function suppressInvisibleWordGlows(
   config: AnimationConfig
 ): void {
   const containerGlowShows = config.highlight.glowContainerAlpha >= HALF_8BIT_ALPHA_STEP;
-  if (containerGlowShows || line.parts.some(part => part.imageLayers)) {
+  if (containerGlowShows) {
     for (const part of line.parts) part.glowSuppressed = false;
     return;
   }
