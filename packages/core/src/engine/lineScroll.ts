@@ -1,6 +1,7 @@
 import type { LineData } from "../inject";
 import { getRelativeLayoutBounds } from "../util";
 import type { AnimationConfig } from "./animationConfig";
+import { addElementCurve, removeElementCurves, timelineNow } from "./elementMotion";
 import type { AnimationEngineInstance } from "./instance";
 import {
   clearScrollVariables,
@@ -23,10 +24,10 @@ export interface LineScrollItem {
   position: number;
 }
 
-export interface LineScrollAnimationRecord {
-  animation: Animation;
+export interface RunningLineScroll {
   lineElement: HTMLElement;
   token: number;
+  durationMs: number;
 }
 
 export interface LineScrollRequest {
@@ -44,8 +45,8 @@ interface PlannedLineScroll extends StyledScrollLine {
   durationMs: number;
   startEasing: string;
   endEasing: string;
-  startTranslate: string;
-  endTranslate: string;
+  startPx: number;
+  endPx: number;
 }
 
 export interface PendingLineScroll {
@@ -56,6 +57,7 @@ export interface PendingLineScroll {
 }
 
 interface ScrollTarget extends StyledScrollLine {
+  heightPx: number;
   token: number;
   relativeIndex: number;
   timingKey: string;
@@ -117,7 +119,15 @@ function planLineScroll(engine: AnimationEngineInstance, request: LineScrollRequ
     const side = scrollSide(relativeIndex, deltaPx);
     const timingKey = `${side}|${Math.abs(relativeIndex)}`;
     const cachedTiming = engine.cachedLineScrollTiming.get(timingKey);
-    targets.push({ lineElement, side, token: claimLine(engine, lineElement), relativeIndex, timingKey, cachedTiming });
+    targets.push({
+      lineElement,
+      side,
+      heightPx: line.height,
+      token: claimLine(engine, lineElement),
+      relativeIndex,
+      timingKey,
+      cachedTiming,
+    });
     if (translateThemed || !cachedTiming) {
       writeScrollVariables(lineElement, { index, activeIndex, relativeIndex, side, deltaPx });
     }
@@ -145,8 +155,8 @@ function planLineScroll(engine: AnimationEngineInstance, request: LineScrollRequ
           : activeDurationMs + (timing.durationMs - activeDurationMs) * staggerScale,
       startEasing: timing.startEasing,
       endEasing: timing.endEasing,
-      startTranslate: translates?.start[index] ?? `0px ${deltaPx}px`,
-      endTranslate: translates?.end[index] ?? "0px 0px",
+      startPx: translates?.start[index] ?? deltaPx,
+      endPx: translates?.end[index] ?? 0,
     };
   });
 }
@@ -190,16 +200,21 @@ function staggerScaleKeepingLinesApart(
 }
 
 function startLineScroll(engine: AnimationEngineInstance, plan: PlannedLineScroll[]): void {
+  const startMs = timelineNow(engine);
   for (const line of plan) {
     if (!line.lineElement.isConnected || !ownsLine(engine, line.lineElement, line.token)) continue;
-    const animation = line.lineElement.animate(
-      [
-        { translate: line.startTranslate, easing: line.startEasing },
-        { translate: line.endTranslate, easing: line.endEasing },
-      ] as Keyframe[],
-      { composite: "add", duration: line.durationMs, easing: "linear", fill: "none" }
-    );
-    trackLineScrollAnimation(engine, animation, line.lineElement, line.token);
+    const scroll: RunningLineScroll = { lineElement: line.lineElement, token: line.token, durationMs: line.durationMs };
+    engine.runningLineScrolls.push(scroll);
+    addElementCurve(engine, line.lineElement, {
+      kind: "scroll",
+      startMs,
+      durationMs: line.durationMs,
+      fromPx: line.startPx,
+      toPx: line.endPx,
+      easing: line.startEasing,
+      endEasing: line.endEasing,
+      onEnd: () => endLineScroll(engine, scroll),
+    });
   }
 }
 
@@ -219,31 +234,16 @@ function releaseLine(engine: AnimationEngineInstance, lineElement: HTMLElement, 
   engine.lineScrollElementTokens.delete(lineElement);
 }
 
-function trackLineScrollAnimation(
-  engine: AnimationEngineInstance,
-  animation: Animation,
-  lineElement: HTMLElement,
-  token: number
-): void {
-  const record: LineScrollAnimationRecord = { animation, lineElement, token };
-  engine.lineScrollAnimations.push(record);
-  animation.addEventListener("finish", () => removeLineScrollAnimation(engine, record), { once: true });
-  animation.addEventListener("cancel", () => removeLineScrollAnimation(engine, record), { once: true });
+function endLineScroll(engine: AnimationEngineInstance, scroll: RunningLineScroll): void {
+  const index = engine.runningLineScrolls.indexOf(scroll);
+  if (index !== -1) engine.runningLineScrolls.splice(index, 1);
+  releaseLine(engine, scroll.lineElement, scroll.token);
 }
 
-export function removeLineScrollAnimation(engine: AnimationEngineInstance, record: LineScrollAnimationRecord): void {
-  const index = engine.lineScrollAnimations.indexOf(record);
-  if (index !== -1) engine.lineScrollAnimations.splice(index, 1);
-  releaseLine(engine, record.lineElement, record.token);
-}
-
-export function clearLineScrollAnimations(engine: AnimationEngineInstance): void {
-  const records = engine.lineScrollAnimations;
-  engine.lineScrollAnimations = [];
-  for (const record of records) {
-    record.animation.cancel();
-    releaseLine(engine, record.lineElement, record.token);
-  }
+export function clearLineScrolls(engine: AnimationEngineInstance): void {
+  const scrolledElements = new Set(engine.runningLineScrolls.map(scroll => scroll.lineElement));
+  for (const element of scrolledElements) removeElementCurves(engine, element, "scroll");
+  for (const scroll of [...engine.runningLineScrolls]) endLineScroll(engine, scroll);
 }
 
 export function isLineVisibleDuringScroll(

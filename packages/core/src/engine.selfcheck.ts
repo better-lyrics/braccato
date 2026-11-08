@@ -20,6 +20,7 @@ import { noteUserScroll } from "./engine/userScroll";
 import { parseColorAlpha } from "./engine/glow";
 import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
 import { setupLineCullObserver } from "./engine/culling";
+import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
 import { smoothedPlaybackTime } from "./engine/clock";
 import {
   asDocument,
@@ -1553,8 +1554,8 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.equal(engine.skipScrolls, firstScrollCount, "B must not scroll again when it starts");
   assert.equal(host.scrollElement.scrollTop, firstPosition, "The committed target remains stationary");
   tick(1.7);
-  const previousAnimations = engine.lineScrollAnimations.map(record => record.animation);
-  assert.ok(previousAnimations.length > 0, "The previous scroll animations are still running");
+  const previousScrolls = [...engine.runningLineScrolls];
+  assert.ok(previousScrolls.length > 0, "The previous scrolls are still running");
   tick(1.8);
   assert.equal(
     engine.skipScrolls,
@@ -1564,14 +1565,52 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.ok(host.scrollElement.scrollTop > firstPosition);
   assert.deepEqual(engine.lastScrollElements, [lines[2], lines[3]], "C's scroll includes upcoming D");
   assert.ok(
-    previousAnimations.every(animation => engine.lineScrollAnimations.some(record => record.animation === animation)),
-    "A new scroll preserves the previous additive animations"
+    previousScrolls.every(scroll => engine.runningLineScrolls.includes(scroll)),
+    "A new scroll keeps the previous scrolls running"
   );
   tick(2.1);
   assert.equal(engine.skipScrolls, firstScrollCount + 1, "D must not trigger a duplicate scroll");
   tick(1);
   assert.equal(engine.skipScrolls, firstScrollCount + 2, "Seeking backwards must still retarget the viewport");
   engine.destroy();
+}
+
+// -- Overlapping motions --------------------------------------------
+
+{
+  const easeOut = () => (progress: number) => 1 - (1 - progress) ** 3;
+  const nowMs = 10_000;
+  const curve = (startMs: number, durationMs: number, fromPx: number, toPx: number): MotionCurve => ({
+    startMs,
+    durationMs,
+    fromPx,
+    toPx,
+    easing: "ease-out",
+    endEasing: "linear",
+  });
+  const curves = [curve(nowMs - 300, 800, -120, 0), curve(nowMs, 900, -80, 0), curve(nowMs - 100, 500, 40, 6)];
+  const baked = bakeMotion(curves, nowMs, easeOut);
+  const fullScalePx = Number.parseFloat(String(baked.keyframes[1].translate).split(" ")[1]);
+  const stops = [...String(baked.keyframes[0].easing).matchAll(/(-?[\d.e-]+) (-?[\d.e-]+)%/g)].map(([, value, at]) => ({
+    timeMs: baked.startMs + (Number(at) / 100) * baked.durationMs,
+    offsetPx: Number(value) * fullScalePx,
+  }));
+  const bakedOffsetAt = (timeMs: number) => {
+    const after = stops.findIndex(stop => stop.timeMs > timeMs);
+    const from = stops[after - 1];
+    const to = stops[after];
+    return from.offsetPx + ((to.offsetPx - from.offsetPx) * (timeMs - from.timeMs)) / (to.timeMs - from.timeMs);
+  };
+  const worstPx = Math.max(
+    ...Array.from({ length: 900 }, (_, step) => {
+      const timeMs = nowMs + step + 0.5;
+      return Math.abs(bakedOffsetAt(timeMs) - offsetAt(curves, timeMs, easeOut));
+    })
+  );
+  assert.ok(
+    worstPx < 0.15,
+    `Given scrolls that overlap, When they are baked into one animation, Then it follows their sum (off by ${worstPx}px)`
+  );
 }
 
 // -- Line scroll stagger --------------------------------------------
@@ -1621,19 +1660,19 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
 
   const scroll = (time: number) => {
     lastTickTime = time;
-    const before = new Set(engine.lineScrollAnimations);
+    const before = new Set(engine.runningLineScrolls);
     const fromScrollTop = host.scrollElement.scrollTop;
     assert.equal(tickView(engine, time, resolveTickOptions(newTickOptions())), "ok");
     const deltaPx = host.scrollElement.scrollTop - fromScrollTop;
     const activeIndex = lines.indexOf(engine.lastScrollElements[engine.lastScrollElements.length - 1]);
-    const scrolled = engine.lineScrollAnimations
-      .filter(record => !before.has(record))
-      .map(record => {
-        const relativeIndex = lines.findIndex(line => line.lyricElement === record.lineElement) - activeIndex;
+    const scrolled = engine.runningLineScrolls
+      .filter(scroll => !before.has(scroll))
+      .map(scroll => {
+        const relativeIndex = lines.findIndex(line => line.lyricElement === scroll.lineElement) - activeIndex;
         const leading = relativeIndex !== 0 && relativeIndex > 0 === deltaPx < 0;
         const side = relativeIndex === 0 ? "active" : leading ? "above" : "below";
         return {
-          durationMs: asFakeAnimation(record.animation).options.duration as number,
+          durationMs: scroll.durationMs,
           themedMs: expectedDurationMs(side, Math.abs(relativeIndex)),
         };
       });

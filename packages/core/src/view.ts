@@ -22,7 +22,8 @@ import {
   RTL_CLASS,
 } from "./constants";
 import { type AnimationEngineInstance } from "./engine/instance";
-import { lineScrollOffset, replaceRenderedLines } from "./engine/renderedLines";
+import { elementMotionOffsetPx } from "./engine/elementMotion";
+import { replaceRenderedLines } from "./engine/renderedLines";
 import { playerTimeForLyricTime } from "./engine/clock";
 import { setupLineCullObserver } from "./engine/culling";
 import {
@@ -326,7 +327,7 @@ export function setLyrics(
  * Where each line of a swap was before it, in the container's coordinates, and how tall it was: a
  * kept line's own place, and for a line built in place of one, the place of the line it replaced.
  */
-export type SwapPositions = Map<LineData, { position: number; height: number; scrollAnimationOffset: number }>;
+export type SwapPositions = Map<LineData, { position: number; height: number; motionOffset: number }>;
 
 /**
  * Pairs each new line with an old one that builds the same, keeping their order, so a kept element is
@@ -459,7 +460,7 @@ export function swapLyrics(
       line.lyricElement.dataset.lineNumber = String(lineIndex);
       applyLyricLanguage(line.lyricElement, context.languages[lineIndex]);
       lines.push(line);
-      positions.set(line, { position: line.position, height: line.height, scrollAnimationOffset: 0 });
+      positions.set(line, { position: line.position, height: line.height, motionOffset: 0 });
       continue;
     }
     if (unmatchedOld.length === 0) {
@@ -474,7 +475,7 @@ export function swapLyrics(
         position: standsFor.position,
         height: standsFor.height,
         // A kept line finishes its own line scroll; this one starts where the line it replaced was.
-        scrollAnimationOffset: lineScrollOffset(engine, standsFor.lyricElement),
+        motionOffset: elementMotionOffsetPx(engine, standsFor.lyricElement),
       });
       if (decorationKeys.get(standsFor) === decorationKeys.get(line)) moveDecorations(standsFor, line);
     }

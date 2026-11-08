@@ -239,9 +239,12 @@ resuming autoscroll and relayout can still reposition the view.
 /* blyrics-line-scroll-duration = 750ms; */
 ```
 
-New groups scroll immediately. Previous per-line `translate` animations continue and compose
-additively, so their duration does not block the next scroll. The line-scroll duration knobs
-control visual motion. The legacy `--blyrics-lyric-scroll-duration` variable and its
+New groups scroll immediately. A line still moving from an earlier scroll keeps that motion: what
+is left of it and the new scroll are added together into one `translate` animation, so their
+durations do not block the next scroll and the browser can run the motion off the main thread.
+Decoration slides join the same animation. While a line scrolls or slides, that animation replaces
+any `translate` a theme sets on the line itself. The line-scroll duration knobs control visual
+motion. The legacy `--blyrics-lyric-scroll-duration` variable and its
 `--blyrics-lyric-transition-duration` alias have been removed, along with the container transform
 transition. `blyrics-queue-scroll-ms` is ignored, and no timing equation needs balancing.
 Missing or invalid line durations fall back to an internal `750ms` duration; nonpositive resolved
