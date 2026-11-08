@@ -21,7 +21,7 @@ import { parseColorAlpha } from "./engine/glow";
 import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
 import { setupLineCullObserver } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
-import { cellFade, type CellSpan, planCellSweep } from "./engine/sweepPlans";
+import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
 import {
   asDocument,
@@ -1645,10 +1645,10 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
       for (let step = 0; step <= 200; step++) {
         const progress = step / 200;
         const wordStart = -0.2 + 1.6 * progress;
-        const expected = Math.min(Math.max((wordStart - span.start) / span.width, -fade), 1);
+        const expected = Math.min(Math.max((wordStart - span.start) / span.width, -fade), SWEEP_REST);
         const maskCells = (translateOf(plan.mask, progress) * maskWidths) / 100;
         const textCells = translateOf(plan.text, progress) / 100;
-        worstEdge = Math.max(worstEdge, Math.abs(1 + (rtl ? -maskCells : maskCells) - expected));
+        worstEdge = Math.max(worstEdge, Math.abs(SWEEP_REST + (rtl ? -maskCells : maskCells) - expected));
         worstGlyph = Math.max(worstGlyph, Math.abs(maskCells + textCells));
       }
     }

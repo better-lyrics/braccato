@@ -111,16 +111,16 @@ function place(
     const span = { start: start / wordWidth, width: box.width / wordWidth };
     start += box.width;
     window.style.setProperty("--blyrics-sweep-fade", String(cellFade(swipeRamp(config), span)));
-    const cell = createSweepCell(doc, window);
-    for (const pair of [cell, ...cell.glows]) {
+    const cell = createSweepCell(doc, window, into => {
       const copy = lineCopy.cloneNode(true) as HTMLElement;
       Object.assign(copy.style, {
         left: `${runBox.x - box.x}px`,
         top: `${runBox.y - box.y}px`,
         width: `${runBox.width}px`,
       });
-      pair.text.appendChild(copy);
-    }
+      into.appendChild(copy);
+      return undefined;
+    });
     host.appendChild(window);
     return { ...cell, span };
   });

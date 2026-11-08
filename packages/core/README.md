@@ -289,9 +289,10 @@ a fixed soft-edged mask over a copy of its text in `--blyrics-lyric-active-color
 against each other so only the edge moves. A word in a joining script, or one mixing directions, is
 drawn from copies of its line placed over each box it breaks into. The swipe stops
 (`--blyrics-highlight-swipe-*`) set where the edge starts and ends, and the soft edge is as wide as the
-swipe's last start and end stops are apart. The glow is a copy of the word with a
-`text-shadow` of `--blyrics-highlight-glow-radius-from` in `--blyrics-glow-color`, crossfaded into a
-tighter one as it fades; the `--blyrics-highlight-glow-filter-*` overrides are not read.
+swipe's last start and end stops are apart. The glow is two copies of the word inside the same mask,
+with a `text-shadow` of `--blyrics-highlight-glow-radius-from` and a tighter one in
+`--blyrics-glow-color`, crossfaded as it fades; it starts where the edge reaches the word or letter,
+and the `--blyrics-highlight-glow-filter-*` overrides are not read.
 `--lyric-transition-amount-*` no longer animate, so a theme cannot draw its own sweep from them.
 
 A word longer than twice `blyrics-long-word-wrap-threshold` (default `10` characters) gets

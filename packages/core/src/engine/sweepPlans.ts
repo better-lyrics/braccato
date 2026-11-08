@@ -25,6 +25,12 @@ function swipeStops(swipe: SwipeRamp): SwipeStops | null {
   return { startFrom, startTo, fade: Math.max(fade, 0) };
 }
 
+/**
+ * Where a cell's mask edge rests, in the cell's widths: half a cell past its end, so the halos inside
+ * the mask show whole once the cell is lit. `.blyrics-sweep-mask` in lyrics.css places its edge there.
+ */
+export const SWEEP_REST = 1.5;
+
 /** A cell's place along its word, as fractions of the word's width. */
 export interface CellSpan {
   start: number;
@@ -41,13 +47,22 @@ export function cellFade(swipe: SwipeRamp, span: CellSpan): number {
 }
 
 /**
+ * How far through the swipe, in eased progress, its start stop reaches the start of a cell. Until then
+ * the cell's halo would show behind the edge before any of its text is lit, so its glow waits.
+ */
+export function cellReachedAt(swipe: SwipeRamp, span: CellSpan): number {
+  const stops = swipeStops(swipe);
+  return stops ? clamp((span.start - stops.startFrom) / (stops.startTo - stops.startFrom), 0, 1) : 0;
+}
+
+/**
  * Plans one cell of a sweep. In the cell's own widths the start stop runs from
  * `(startFrom - span.start) / span.width` to `(startTo - span.start) / span.width`, and the cell only
- * changes while that is between `-fade` (nothing lit yet) and `1` (all of it lit), so the motion is
- * clamped there. `.blyrics-sweep-mask` in lyrics.css is `3 + fade` cells wide, starting a cell before
- * the cell, with its soft edge from the end of the cell to `fade` cells further; at rest the cell is
- * fully lit. The start stop moves linearly in eased progress, so keyframes at the clamp points with
- * the swipe's easing on the whole effect follow it exactly.
+ * changes while that is between `-fade` (nothing lit yet) and `SWEEP_REST` (lit, with room for its
+ * halo), so the motion is clamped there. `.blyrics-sweep-mask` in lyrics.css is `3 + fade` cells wide,
+ * starting a cell before the cell, with its soft edge from `SWEEP_REST` to `fade` cells further. The
+ * start stop moves linearly in eased progress, so keyframes at the clamp points with the swipe's
+ * easing on the whole effect follow it exactly.
  */
 export function planCellSweep(swipe: SwipeRamp, span: CellSpan, rtl: boolean): CellSweep | null {
   const stops = swipeStops(swipe);
@@ -60,12 +75,12 @@ export function planCellSweep(swipe: SwipeRamp, span: CellSpan, rtl: boolean): C
   const progressAt = (start: number) =>
     (start * span.width + span.start - stops.startFrom) / (stops.startTo - stops.startFrom);
 
-  const offsets = [0, progressAt(-fade), progressAt(1), 1].map(offset => clamp(offset, 0, 1));
+  const offsets = [0, progressAt(-fade), progressAt(SWEEP_REST), 1].map(offset => clamp(offset, 0, 1));
   const unique = offsets.filter((offset, position) => offsets.indexOf(offset) === position);
   const mask: Keyframe[] = [];
   const text: Keyframe[] = [];
   for (const offset of unique) {
-    const behind = sign * (clamp(startAt(offset), -fade, 1) - 1);
+    const behind = sign * (clamp(startAt(offset), -fade, SWEEP_REST) - SWEEP_REST);
     mask.push({ offset, translate: `${(behind * 100) / maskWidths}% 0` });
     text.push({ offset, translate: `${-behind * 100}% 0` });
   }

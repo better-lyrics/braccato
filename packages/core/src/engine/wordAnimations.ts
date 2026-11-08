@@ -23,7 +23,7 @@ import {
   swipeRamp,
 } from "./letterPlans";
 import { resetPartAnimations } from "./lineAnimationState";
-import { planCellSweep } from "./sweepPlans";
+import { type CellSpan, cellReachedAt, planCellSweep } from "./sweepPlans";
 import { acquireWaveAnimation } from "./wavePool";
 
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
@@ -138,11 +138,12 @@ function glowShows(part: PartData, config: AnimationConfig): boolean {
 
 function richSyncedHighlight(word: WordTimeline): Animation[] {
   const { part, config } = word;
-  const animations = config.enabled.highlightSwipe ? swipe(word) : [];
+  const swipes = config.enabled.highlightSwipe;
+  const animations = swipes ? swipe(word) : [];
   const shown = config.enabled.highlightSwipe ? shownKeyframes() : shownFullySweptKeyframes(config, part);
   const show = part.highlightElement.animate(shown, { duration: INSTANT_MS, easing: "linear", fill: "forwards" });
   animations.push(followSong(word, show, scheduledTimeMs(word, word.elapsedMs, INSTANT_MS)));
-  if (glowShows(part, config)) animations.push(...glow(word, word.glowDurationMs));
+  if (glowShows(part, config)) animations.push(...glow(word, word.glowDurationMs, swipes));
   return animations;
 }
 
@@ -156,7 +157,7 @@ function lineSyncedHighlight(word: WordTimeline): Animation[] {
     fill: "forwards",
   });
   const animations = [followSong(word, fadeIn, scheduledTimeMs(word, word.elapsedMs, durationMs))];
-  if (glowShows(part, config)) animations.push(...glow(word, config.highlight.glowMinDurationMs));
+  if (glowShows(part, config)) animations.push(...glow(word, config.highlight.glowMinDurationMs, false));
   return animations;
 }
 
@@ -209,14 +210,13 @@ function swipe(word: WordTimeline): Animation[] {
 }
 
 /**
- * Slides each cell's masks from where the swipe begins back to their resting place and their text the
- * other way. Filled backwards because the resting pose is the lit one. Only the first mask's animation
- * feeds the drift check; the others carry the same timing and would repeat it.
+ * Slides each cell's mask from where the swipe begins back to its resting place and its text the other
+ * way. Filled backwards because the resting pose is the lit one. Only the first mask's animation feeds
+ * the drift check; the others carry the same timing and would repeat it.
  */
 function compositedSwipe(word: WordTimeline, cells: SweepCell[], currentTimeMs: number): Animation[] {
   const { part, config, swipeLeadMs, swipeDurationMs } = word;
   const rtl = part.highlightElement.classList.contains(RTL_CLASS);
-  const withGlow = glowShows(part, config);
   const timing: KeyframeAnimationOptions = {
     duration: swipeDurationMs,
     easing: config.highlight.swipeEasing,
@@ -227,24 +227,22 @@ function compositedSwipe(word: WordTimeline, cells: SweepCell[], currentTimeMs: 
     const span = cell.span ?? { start: index / cells.length, width: 1 / cells.length };
     const plan = planCellSweep(swipeRamp(config), span, rtl);
     if (!plan) return;
-    for (const { mask, text } of withGlow ? [cell, ...cell.glows] : [cell]) {
-      for (const [element, keyframes] of [
-        [mask, plan.mask],
-        [text, plan.text],
-      ] as const) {
-        const slide = element.animate(keyframes, timing);
-        animations.push(
-          followSong(word, slide, currentTimeMs, { offsetMs: swipeLeadMs, skipDriftSample: animations.length > 0 })
-        );
-      }
+    for (const [element, keyframes] of [
+      [cell.mask, plan.mask],
+      [cell.text, plan.text],
+    ] as const) {
+      const slide = element.animate(keyframes, timing);
+      animations.push(
+        followSong(word, slide, currentTimeMs, { offsetMs: swipeLeadMs, skipDriftSample: animations.length > 0 })
+      );
     }
   });
   return animations;
 }
 
-function glow(word: WordTimeline, durationMs: number): Animation[] {
+function glow(word: WordTimeline, durationMs: number, followsSwipe: boolean): Animation[] {
   const { part, config } = word;
-  if (part.sweep) return sweepGlow(word, part.sweep, durationMs);
+  if (part.sweep) return sweepGlow(word, part.sweep, durationMs, followsSwipe);
   const holdsGlow = Boolean(part.imageLayers) || !config.highlight.glowRestingInvisible;
   const target = part.imageLayers?.glow ?? part.highlightElement;
   const animation = target.animate(glowKeyframes(config, part), {
@@ -261,10 +259,12 @@ const TIGHT_GLOW_AT = 0.6;
 /**
  * Stands in for a glow whose radius shrinks to nothing: the wide halo crossfades into the tight one
  * while the radius would shrink between them, and the tight one then fades out. The keyframe offsets
- * are in eased progress, since the glow's easing applies to the whole effect.
+ * are in eased progress, since the glow's easing applies to the whole effect. Under a swipe each
+ * cell's glow starts when the edge reaches it, so a halo never shows ahead of its lit text. The wait
+ * is exact for a linear swipe and taken as linear for any other.
  */
-function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number): Animation[] {
-  const { config } = word;
+function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number, followsSwipe: boolean): Animation[] {
+  const { config, swipeLeadMs, swipeDurationMs } = word;
   const fades = config.highlight.glowRestingInvisible;
   const wide: Keyframe[] = fades
     ? [{ opacity: 1 }, { opacity: 0, offset: TIGHT_GLOW_AT }, { opacity: 0 }]
@@ -272,18 +272,23 @@ function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number): 
   const tight: Keyframe[] = fades
     ? [{ opacity: 0 }, { opacity: 1, offset: TIGHT_GLOW_AT }, { opacity: 0 }]
     : [{ opacity: 0 }, { opacity: 0 }];
-  const timing: KeyframeAnimationOptions = {
-    duration: durationMs,
-    easing: config.highlight.glowEasing,
-    fill: fades ? "none" : "forwards",
-  };
-  const currentTimeMs = scheduledTimeMs(word, word.elapsedMs, durationMs);
-  return cells.flatMap(cell =>
-    cell.glows.map((halo, index) => {
+  return cells.flatMap((cell, cellIndex) => {
+    const span: CellSpan = cell.span ?? { start: cellIndex / cells.length, width: 1 / cells.length };
+    const delayMs = followsSwipe
+      ? Math.max(0, cellReachedAt(swipeRamp(config), span) * swipeDurationMs - swipeLeadMs)
+      : 0;
+    const timing: KeyframeAnimationOptions = {
+      delay: delayMs,
+      duration: durationMs,
+      easing: config.highlight.glowEasing,
+      fill: fades ? "none" : "forwards",
+    };
+    const currentTimeMs = scheduledTimeMs(word, word.elapsedMs, delayMs + durationMs);
+    return cell.glows.map((halo, index) => {
       const fade = halo.glow.animate(index === 0 ? wide : tight, timing);
       return followSong(word, fade, currentTimeMs, { skipDriftSample: true });
-    })
-  );
+    });
+  });
 }
 
 function wobble(word: WordTimeline): Animation[] {

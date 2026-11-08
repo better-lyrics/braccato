@@ -120,26 +120,24 @@ export interface AnimationData {
   animations: Animation[];
 }
 
-/** One mask over one copy of a word's text, which a sweep slides in opposite directions. */
-export interface SweepPair {
-  mask: HTMLElement;
-  text: HTMLElement;
-  letters?: HTMLElement[];
-}
-
 /** A copy of the word under a text shadow that never changes, faded in and out by opacity. */
-export interface SweepGlow extends SweepPair {
+export interface SweepGlow {
   glow: HTMLElement;
+  letters?: HTMLElement[];
 }
 
 /**
  * One box of a word's sweep, run by the compositor: the whole word when it is its own inline-block
- * box, or one letter of a word that flows inline. Each mask holds a static soft edge and slides one
- * way while the text inside it slides the other, so the glyphs hold still and only the edge crosses
- * them. The glow is a pair of halos at two radii, crossfaded so the glow tightens as it fades. With
- * nothing animating, the masks rest with the cell fully revealed.
+ * box, or one letter of a word that flows inline. Its mask holds a static soft edge and slides one way
+ * while the text inside it slides the other, so the glyphs hold still and only the edge crosses them.
+ * The glow is a pair of halos at two radii inside the same text, so the edge reveals them with it,
+ * crossfaded so the glow tightens as it fades. With nothing animating, the mask rests with the cell
+ * fully lit.
  */
-export interface SweepCell extends SweepPair {
+export interface SweepCell {
+  mask: HTMLElement;
+  text: HTMLElement;
+  letters?: HTMLElement[];
   glows: SweepGlow[];
   /** Where the cell sits along the word, as fractions of the word's width; equal shares if unset. */
   span?: { start: number; width: number };
@@ -415,28 +413,26 @@ function fillWordText(
 
 const SWEEP_GLOW_RADII = ["wide", "tight"] as const;
 
-function createSweepPair(doc: Document): SweepPair {
+/** Puts a copy of the cell's text into an element, returning its letters if the word is split. */
+export type FillSweepText = (into: HTMLElement) => HTMLElement[] | undefined;
+
+export function createSweepCell(doc: Document, host: HTMLElement, fill: FillSweepText): SweepCell {
   const mask = doc.createElement("span");
   mask.classList.add(SWEEP_MASK_CLASS);
   const text = doc.createElement("span");
   text.classList.add(SWEEP_TEXT_CLASS);
   mask.appendChild(text);
-  return { mask, text };
-}
-
-export function createSweepCell(doc: Document, host: HTMLElement): SweepCell {
+  const letters = fill(text);
   const glows = SWEEP_GLOW_RADII.map(radius => {
-    const pair = createSweepPair(doc);
     const glow = doc.createElement("span");
     glow.classList.add(SWEEP_GLOW_CLASS, `${SWEEP_GLOW_CLASS}--${radius}`);
-    glow.appendChild(pair.mask);
-    return { ...pair, glow };
+    const glowLetters = fill(glow);
+    text.appendChild(glow);
+    return { glow, letters: glowLetters };
   });
-  const cell = { ...createSweepPair(doc), glows };
   host.classList.add(SWEEP_CELL_CLASS);
-  for (const { glow } of glows) host.appendChild(glow);
-  host.appendChild(cell.mask);
-  return cell;
+  host.appendChild(mask);
+  return { mask, text, letters, glows };
 }
 
 /** Makes each letter of a word that flows inline its own sweep cell, holding the letter's text. */
@@ -444,9 +440,10 @@ function createLetterSweepCells(doc: Document, letters: HTMLElement[]): SweepCel
   return letters.map(letter => {
     const text = letter.textContent ?? "";
     letter.textContent = "";
-    const cell = createSweepCell(doc, letter);
-    for (const pair of [cell, ...cell.glows]) pair.text.textContent = text;
-    return cell;
+    return createSweepCell(doc, letter, into => {
+      into.appendChild(doc.createTextNode(text));
+      return undefined;
+    });
   });
 }
 
@@ -467,8 +464,7 @@ function createTimedWordSpan(
   const span = doc.createElement("span");
   const highlight = doc.createElement("span");
   highlight.classList.add(WORD_HIGHLIGHT_CLASS);
-  const wordCell = atomic ? createSweepCell(doc, highlight) : undefined;
-  let sweep = wordCell ? [wordCell] : undefined;
+  let sweep: SweepCell[] | undefined;
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
@@ -489,11 +485,12 @@ function createTimedWordSpan(
       wordElement.classList.add("blyrics-word--lettered");
       if (wordElement === highlight) wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
     }
-    if (wordElement === highlight && wordCell) {
-      for (const pair of [wordCell, ...wordCell.glows]) {
-        pair.letters = fillWordText(doc, pair.text, part.words, wrapThreshold, perLetter, preserveJoining);
-      }
-      highlightLetters = wordCell.letters;
+    if (wordElement === highlight && atomic) {
+      const cell = createSweepCell(doc, highlight, into =>
+        fillWordText(doc, into, part.words, wrapThreshold, perLetter, preserveJoining)
+      );
+      sweep = [cell];
+      highlightLetters = cell.letters;
     } else {
       const collected = fillWordText(doc, wordElement, part.words, wrapThreshold, perLetter, preserveJoining);
       if (wordElement === span) letters = collected;
