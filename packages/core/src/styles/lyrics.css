@@ -295,7 +295,8 @@
 .blyrics--line > .blyrics-line-main > .blyrics-background-lyric,
 .blyrics--line > .blyrics-background-line > .blyrics-background-lyric,
 .blyrics--line > .blyrics-line-main > .blyrics-bidi-run > .blyrics-background-lyric,
-.blyrics--line > .blyrics-background-line > .blyrics-bidi-run > .blyrics-background-lyric {
+.blyrics--line > .blyrics-background-line > .blyrics-bidi-run > .blyrics-background-lyric,
+.blyrics-sweep-clone > .blyrics-background-lyric {
 	font-size: 0.75em;
 	font-weight: 500;
 }

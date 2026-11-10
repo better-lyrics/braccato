@@ -234,6 +234,7 @@ export function relayout(engine: AnimationEngineInstance, linesAreRendered: bool
     if (!linesAreRendered || !engine.lyricsContainer) return;
     engine.cachedCreditsItem = measureTrailingItem(engine.lyricsContainer, CREDITS_CLASS);
     measureStage(engine);
+    restartContextSweeps(engine);
     return;
   }
   applyScrollPadding(engine);
