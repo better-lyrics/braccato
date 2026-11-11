@@ -1,6 +1,5 @@
 import type { LineData } from "../inject";
 import { hasUnplacedContextSweeps } from "./contextSweep";
-import { timelineNow } from "./elementMotion";
 import type { AnimationEngineInstance } from "./instance";
 import { resetLineAnimationState } from "./lineAnimationState";
 import { isLineVisibleDuringScroll, LINE_SCROLL_WILL_CHANGE_VALUE, type LineScrollItem } from "./lineScroll";
@@ -10,19 +9,20 @@ export interface LineCulling {
   scroller: HTMLElement;
   contentOffset: number;
   followReaderScroll: () => void;
-  framesSinceSetup: number;
-  lastFrameTime: number;
+  startObserver: ResizeObserver | null;
+  ready: boolean;
 }
 
-// A skipped line keeps the height it last rendered at, so none is skipped before a frame has rendered them all.
-const FRAMES_BEFORE_SKIPPING = 2;
+// A skipped line keeps the height it last rendered at, so none is skipped before two rendering updates
+// have laid every line out; a resize observation is delivered only after one has.
+const RENDERING_UPDATES_BEFORE_SKIPPING = 2;
 
 export function setupLineCulling(engine: AnimationEngineInstance): void {
   stopLineCulling(engine);
   const container = engine.lyricsContainer;
   if (engine.layout === "stage" || !container || engine.lines.length === 0) return;
   const scroller = engine.host.getScrollElement();
-  if (!scroller) return;
+  if (!scroller?.isConnected) return;
 
   // The engine owns scrollTop; Firefox's scroll anchoring would answer cull height shifts with a scroll the
   // engine reads as the user's.
@@ -33,12 +33,12 @@ export function setupLineCulling(engine: AnimationEngineInstance): void {
     scroller,
     contentOffset: measureContentOffset(scroller, container),
     followReaderScroll: () => cullAroundScroller(engine, culling),
-    framesSinceSetup: 0,
-    lastFrameTime: timelineNow(engine),
+    startObserver: null,
+    ready: false,
   };
   engine.lineCulling = culling;
   scroller.addEventListener("scroll", culling.followReaderScroll, { passive: true });
-  cullAroundScroller(engine, culling);
+  startCullingAfterRenderingUpdates(engine, culling, container, RENDERING_UPDATES_BEFORE_SKIPPING);
   for (const line of engine.lines) {
     if (!engine.culledLineElements.has(line.lyricElement)) restartUnplacedLine(line);
   }
@@ -46,7 +46,10 @@ export function setupLineCulling(engine: AnimationEngineInstance): void {
 
 export function stopLineCulling(engine: AnimationEngineInstance): void {
   const culling = engine.lineCulling;
-  if (culling) culling.scroller.removeEventListener("scroll", culling.followReaderScroll);
+  if (culling) {
+    culling.scroller.removeEventListener("scroll", culling.followReaderScroll);
+    culling.startObserver?.disconnect();
+  }
   engine.lineCulling = null;
   clearOffscreenLineCulling(engine);
 }
@@ -66,7 +69,7 @@ export function updateLineCulling(
   viewportHeight: number
 ): void {
   const culling = engine.lineCulling;
-  if (!culling || !hasRenderedSinceSetup(engine, culling)) return;
+  if (!culling?.ready) return;
   const top = Math.min(fromScrollTop, toScrollTop) - viewportHeight - culling.contentOffset;
   const bottom = Math.max(fromScrollTop, toScrollTop) + 2 * viewportHeight - culling.contentOffset;
   for (const line of engine.lines) {
@@ -83,14 +86,27 @@ export function updateLineCulling(
   }
 }
 
-function hasRenderedSinceSetup(engine: AnimationEngineInstance, culling: LineCulling): boolean {
-  if (culling.framesSinceSetup >= FRAMES_BEFORE_SKIPPING) return true;
-  const frameTime = timelineNow(engine);
-  if (frameTime !== culling.lastFrameTime) {
-    culling.lastFrameTime = frameTime;
-    culling.framesSinceSetup += 1;
-  }
-  return culling.framesSinceSetup >= FRAMES_BEFORE_SKIPPING;
+function startCullingAfterRenderingUpdates(
+  engine: AnimationEngineInstance,
+  culling: LineCulling,
+  container: HTMLElement,
+  updates: number
+): void {
+  const Observer = engine.window.ResizeObserver;
+  if (typeof Observer !== "function") return;
+  const observer = new Observer(() => {
+    observer.disconnect();
+    culling.startObserver = null;
+    if (engine.lineCulling !== culling) return;
+    if (updates > 1) {
+      startCullingAfterRenderingUpdates(engine, culling, container, updates - 1);
+      return;
+    }
+    culling.ready = true;
+    cullAroundScroller(engine, culling);
+  });
+  culling.startObserver = observer;
+  observer.observe(container);
 }
 
 function isMeasured(line: LineData): boolean {

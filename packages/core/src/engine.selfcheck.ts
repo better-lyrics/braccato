@@ -103,7 +103,7 @@ class FakeScrollElement {
 
   readonly scrollListeners = new Set<() => void>();
   readonly clientTop = 0;
-  isConnected = true;
+  isConnected = false;
 
   getBoundingClientRect(): { y: number; height: number } {
     return { y: 0, height: this.viewportHeight };
@@ -1296,10 +1296,9 @@ assert.equal(
 // Lines more than a viewport outside the scroll are skipped by their measured positions, so no observer runs per frame.
 
 const cullDocument = new FakeDocument();
-const cullFrameClock = { currentTime: 0 };
-Object.assign(cullDocument, { timeline: cullFrameClock });
 const cullWindow = new FakeWindow(PANEL_STYLE, { intersectionObserver: true });
 const cullHost = new FakeHost();
+cullHost.scrollElement.isConnected = true;
 const cullMount = cullDocument.createElement("div");
 const cullEngine = createAnimationEngineInstance(asDocument(cullDocument), asWindow(cullWindow), cullHost);
 const CULL_LYRICS: Lyric[] = Array.from({ length: 8 }, (_, index) => ({
@@ -1335,19 +1334,30 @@ cullEngine.lines.forEach((line, index) => {
   line.position = index * VIEWPORT_HEIGHT_PX;
   line.height = VIEWPORT_HEIGHT_PX;
 });
-cullFrameClock.currentTime += 16;
+const framesBeforeCulling = cullWindow.requestedFrames.length;
+// A rendering update lays the container out and delivers the observation waiting on it.
+const runCullFrames = () => {
+  for (const observer of cullWindow.resizeObservers.filter(candidate => !candidate.disconnected)) {
+    for (const target of observer.targets) observer.reportSize(target);
+  }
+};
 updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
 assert.equal(
   cullLines.some((_, index) => isSkipped(index)),
   false,
   "Given culling armed one frame ago, When the scroll is read, Then no line is skipped before a frame has rendered every line at its own height"
 );
-cullFrameClock.currentTime += 16;
-updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
 assert.deepEqual(
   cullLines.map((_, index) => isSkipped(index)),
   [false, false, false, true, true, true, true, true],
-  "Given lines a viewport tall, When the scroll is at the top, Then the viewport and one viewport past it render and the rest are skipped"
+  "Given a paused view that never ticks, When two frames have rendered every line, Then the viewport and one viewport past it render and the rest are skipped"
+);
+assert.equal(
+  cullWindow.requestedFrames.length,
+  framesBeforeCulling,
+  "Given a paused view that never ticks, When culling starts, Then it asked for no animation frame"
 );
 
 cullHost.scrollElement.scrollBy(3 * VIEWPORT_HEIGHT_PX);
@@ -1365,7 +1375,24 @@ assert.deepEqual(
 );
 
 updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+setupLineCulling(cullEngine);
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
+assert.equal(
+  cullLines.some((_, index) => isSkipped(index)),
+  false,
+  "Given lines measured again, When one frame has passed, Then none is skipped yet, so a line changed by the relayout renders once first"
+);
+runCullFrames();
+assert.equal(isSkipped(7), true, "Given lines measured again, When two frames have passed, Then skipping resumes");
+
+setupLineCulling(cullEngine);
 clearLyrics(cullEngine);
+assert.equal(
+  cullWindow.resizeObservers.every(observer => observer.disconnected),
+  true,
+  "Given culling waiting for its start-up rendering, When the song is cleared, Then nothing is left observing"
+);
 assert.equal(
   cullHost.scrollElement.scrollListeners.size,
   0,
