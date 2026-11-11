@@ -44,6 +44,7 @@ import {
   type WordState,
   ZERO_DURATION_ANIMATION_CLASS,
 } from "./constants";
+import { letterClusters } from "./letters";
 import { getSeekTimeFromClick } from "./seek";
 import { isSameText, testJoiningScript, testRtl } from "./text";
 import { registerThemeSetting } from "./themeSettings";
@@ -55,8 +56,6 @@ let longWordThreshold = registerThemeSetting("blyrics-long-word-threshold", 1500
 let longWordWrapThreshold = registerThemeSetting("blyrics-long-word-wrap-threshold", 10, true);
 let letterWave = registerThemeSetting("blyrics-letter-wave", true, true);
 export const hideCredits = registerThemeSetting("blyrics-hide-credits", false, true);
-
-const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 const LTR_SCRIPT_REGEX =
   /[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -363,23 +362,22 @@ function groupTokensByWord(tokens: RenderToken[], splitBackgroundGroups: boolean
   return groups;
 }
 
-function appendLongWordBreaks(doc: Document, span: HTMLElement, text: string, threshold: number): boolean {
-  if (text.length <= threshold) {
-    span.textContent = text;
+function appendLongWordBreaks(doc: Document, span: HTMLElement, clusters: string[], threshold: number): boolean {
+  if (clusters.length <= threshold) {
+    span.textContent = clusters.join("");
     return false;
   }
 
-  for (let i = 0; i < text.length; i += threshold) {
-    span.appendChild(doc.createTextNode(text.slice(i, i + threshold)));
-    if (i + threshold < text.length) {
+  for (let i = 0; i < clusters.length; i += threshold) {
+    span.appendChild(doc.createTextNode(clusters.slice(i, i + threshold).join("")));
+    if (i + threshold < clusters.length) {
       span.appendChild(doc.createElement("wbr"));
     }
   }
   return true;
 }
 
-function appendLetters(doc: Document, wordElement: HTMLElement, text: string): HTMLElement[] {
-  const chars = [...graphemeSegmenter.segment(text)].map(segment => segment.segment);
+function appendLetters(doc: Document, wordElement: HTMLElement, chars: string[]): HTMLElement[] {
   wordElement.style.setProperty("--letters", String(chars.length));
   return chars.map(char => {
     const letter = doc.createElement("span");
@@ -393,14 +391,14 @@ function appendLetters(doc: Document, wordElement: HTMLElement, text: string): H
 function fillWordText(
   doc: Document,
   host: HTMLElement,
-  text: string,
+  clusters: string[],
   wrapThreshold: number,
   perLetter: boolean,
   preserveJoining: boolean
 ): HTMLElement[] | undefined {
-  if (perLetter) return appendLetters(doc, host, text);
-  if (preserveJoining) host.textContent = text;
-  else appendLongWordBreaks(doc, host, text, wrapThreshold);
+  if (perLetter) return appendLetters(doc, host, clusters);
+  if (preserveJoining) host.textContent = clusters.join("");
+  else appendLongWordBreaks(doc, host, clusters, wrapThreshold);
   return undefined;
 }
 
@@ -461,6 +459,8 @@ function createTimedWordSpan(
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
+  const clusters =
+    perLetter || (!preserveJoining && part.words.length > wrapThreshold) ? letterClusters(part.words) : [part.words];
 
   for (const wordElement of [span, highlight]) {
     wordElement.classList.add(WORD_CLASS);
@@ -480,12 +480,12 @@ function createTimedWordSpan(
     }
     if (wordElement === highlight && atomic) {
       const cell = createSweepCell(doc, highlight, into =>
-        fillWordText(doc, into, part.words, wrapThreshold, perLetter, preserveJoining)
+        fillWordText(doc, into, clusters, wrapThreshold, perLetter, preserveJoining)
       );
       sweep = [cell];
       highlightLetters = cell.letters;
     } else {
-      const collected = fillWordText(doc, wordElement, part.words, wrapThreshold, perLetter, preserveJoining);
+      const collected = fillWordText(doc, wordElement, clusters, wrapThreshold, perLetter, preserveJoining);
       if (wordElement === span) letters = collected;
       else highlightLetters = collected;
       if (wordElement === highlight && collected) sweep = createLetterSweepCells(doc, collected);
@@ -513,9 +513,9 @@ function createWordGroup(
     testRtl(group.text) && [...group.text].some(char => /[\p{Letter}\p{Number}]/u.test(char) && !testRtl(char));
   const preserveJoining = testJoiningScript(group.text);
   const perLetter = letterWave.getBooleanValue() && !preserveJoining && !mixedDirection;
+  const isLongGroup = group.text.length > wrapThreshold * 2 && letterClusters(group.text).length > wrapThreshold * 2;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
-  const isLongGroup = group.text.length > wrapThreshold * 2;
   // A word that is its own inline-block box can hold the sweep's block layers. Long groups and
   // bidi-sensitive rows lay their words out inline, where a word can break across lines.
   const atomic = !wordsFlowInline && !isLongGroup;
