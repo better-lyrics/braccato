@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.21.1
+
+### Patch Changes
+
+- d12c6dd: Long songs play with less work per frame: off-screen lines are skipped from the positions relayout measured instead of an IntersectionObserver over every line, line animation checks stop building an array per line, and `TTMLParser.metadata` reuses the parse `TTMLParser.parse` just did on the same document.
+
 ## 1.21.0
 
 ### Minor Changes
