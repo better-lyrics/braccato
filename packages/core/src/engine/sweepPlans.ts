@@ -51,8 +51,17 @@ export function cellFade(swipe: SwipeRamp, span: CellSpan): number {
  * the cell's halo would show behind the edge before any of its text is lit, so its glow waits.
  */
 export function cellReachedAt(swipe: SwipeRamp, span: CellSpan): number {
+  return startStopReaches(swipe, span.start);
+}
+
+/** How far through the swipe, in eased progress, its start stop reaches the end of a cell. */
+export function cellLitAt(swipe: SwipeRamp, span: CellSpan): number {
+  return startStopReaches(swipe, span.start + span.width);
+}
+
+function startStopReaches(swipe: SwipeRamp, position: number): number {
   const stops = swipeStops(swipe);
-  return stops ? clamp((span.start - stops.startFrom) / (stops.startTo - stops.startFrom), 0, 1) : 0;
+  return stops ? clamp((position - stops.startFrom) / (stops.startTo - stops.startFrom), 0, 1) : 0;
 }
 
 /**

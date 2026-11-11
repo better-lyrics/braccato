@@ -28,6 +28,7 @@ import {
   asElement,
   asFakeAnimation,
   asFakeNode,
+  type FakeAnimation,
   collectTree,
   FakeDocument,
   FakeNode,
@@ -1670,6 +1671,74 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
     worstGlyph < 1e-9,
     `Given a sweep cell, When its mask slides, Then its text slides back by as much (off by ${worstGlyph} cells)`
   );
+}
+
+// A halo is revealed by its cell's mask, so a step in its opacity shows as a flash behind the edge.
+{
+  const HUM = "M".padEnd(25, "m");
+  const glowLyrics: Lyric[] = [
+    { startTimeMs: 3000, durationMs: 1000, words: HUM, parts: [{ startTimeMs: 3000, durationMs: 1000, words: HUM }] },
+    LEAD_IN_LYRICS[1],
+  ];
+  const glowDocument = new FakeDocument();
+  const glowEngine = createAnimationEngineInstance(
+    asDocument(glowDocument),
+    asWindow(new FakeWindow(PANEL_STYLE)),
+    new FakeHost(undefined, glowDocument)
+  );
+  setLyrics(glowEngine, asElement<HTMLElement>(glowDocument.createElement("div")), glowLyrics, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  placeLines(glowEngine);
+  const [heldLine] = getRenderedLines(glowEngine);
+  const halos = () =>
+    heldLine.parts.flatMap(part =>
+      (part.sweep ?? []).flatMap(cell => cell.glows.flatMap(halo => asFakeNode(halo.glow).animations))
+    );
+  const opacityAt = (keyframes: unknown, index: number) => Number((keyframes as Keyframe[]).at(index)?.opacity);
+
+  tickView(glowEngine, 3.5, resolveTickOptions(newTickOptions()));
+  const started = halos();
+  const cells = heldLine.parts.flatMap(part => part.sweep ?? []);
+  // The word is long enough to sweep letter by letter. It lasts 1s, so the edge crosses each letter in
+  // 1000ms / cells and its glow lasts 1200ms.
+  const expectedPeak = Math.min(1000 / cells.length / 1200, 0.3);
+  const keyframesOf = (element: HTMLElement) => asFakeNode(element).animations[0]?.keyframes as Keyframe[];
+  assert.ok(
+    cells.length === HUM.length &&
+      cells.every(cell => {
+        const [wide, tight] = cell.glows.map(halo => keyframesOf(halo.glow));
+        return (
+          wide[0].opacity === 0 &&
+          wide[1].opacity === 1 &&
+          Math.abs(Number(wide[1].offset) - expectedPeak) < 1e-9 &&
+          tight[1].opacity === 0 &&
+          tight[1].offset === wide[1].offset
+        );
+      }),
+    "regression: Given a swiped word, When its glow starts, Then each halo starts clear and peaks as the edge leaves its cell"
+  );
+
+  const [heldWord] = heldLine.parts;
+  const fadingOut = () =>
+    asFakeNode(heldWord.highlightElement).animations.some(
+      animation => opacityAt(animation.keyframes, 0) === 1 && opacityAt(animation.keyframes, -1) === 0
+    );
+  for (let hundredths = 355; hundredths <= 600 && !fadingOut(); hundredths += 5) {
+    tickView(glowEngine, hundredths / 100, resolveTickOptions(newTickOptions()));
+  }
+  const kept = heldWord.animations.map(asFakeAnimation);
+  const hasStarted = (animation: FakeAnimation) => Number(animation.currentTime) >= Number(animation.options.delay);
+  const [glowing, waiting] = [started.filter(hasStarted), started.filter(animation => !hasStarted(animation))];
+  assert.ok(
+    fadingOut() &&
+      glowing.length > 0 &&
+      glowing.every(animation => !animation.cancelled && kept.includes(animation)) &&
+      waiting.every(animation => animation.cancelled && !kept.includes(animation)),
+    "regression: Given a word still glowing, When its line exits, Then its started glows keep fading under the text and the rest never start"
+  );
+  glowEngine.destroy();
 }
 
 // -- Line scroll stagger --------------------------------------------
