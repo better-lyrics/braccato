@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.21.4
+
+### Patch Changes
+
+- af24a4d: The glow on a word rises as the sweep crosses it instead of appearing at full strength, and keeps fading out with the line instead of cutting off when the line ends.
+
 ## 1.21.3
 
 ### Patch Changes
