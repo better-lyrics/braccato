@@ -9,12 +9,13 @@ export interface LineCulling {
   scroller: HTMLElement;
   contentOffset: number;
   followReaderScroll: () => void;
-  startObserver: ResizeObserver | null;
+  startObserver: IntersectionObserver | null;
   ready: boolean;
 }
 
 // A skipped line keeps the height it last rendered at, so none is skipped before two rendering updates
-// have laid every line out; a resize observation is delivered only after one has.
+// have laid every line out. An intersection observation is delivered as its own task after one has, so starting
+// from it never adds a resize observation to a rendering update that is already delivering them.
 const RENDERING_UPDATES_BEFORE_SKIPPING = 2;
 
 export function setupLineCulling(engine: AnimationEngineInstance): void {
@@ -92,7 +93,7 @@ function startCullingAfterRenderingUpdates(
   container: HTMLElement,
   updates: number
 ): void {
-  const Observer = engine.window.ResizeObserver;
+  const Observer = engine.window.IntersectionObserver;
   if (typeof Observer !== "function") return;
   const observer = new Observer(() => {
     observer.disconnect();
