@@ -8,6 +8,7 @@ import type { LineScrollTiming } from "./lineScrollStyle";
 import type { AnimationSettings } from "./animationConfig";
 import { REDUCED_MOTION_QUERY } from "./motionPreference";
 import { clearStyleCaches } from "./cssValues";
+import { type LineCulling, stopLineCulling } from "./culling";
 import { liveEngines } from "./liveViews";
 import { stopPassiveScrollLoop } from "./passiveScroll";
 import { cancelLyricPositionUpdate } from "./tick";
@@ -75,7 +76,7 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   visibleWillChangeElements: Set<HTMLElement>;
   culledLineElements: Set<HTMLElement>;
   waveAnimationPool: Animation[];
-  lineCullObserver: IntersectionObserver | null;
+  lineCulling: LineCulling | null;
   cachedDurations: Map<string, number>;
   cachedCSSValues: Map<string, string>;
   cachedAnimationSettings: AnimationSettings | null;
@@ -163,7 +164,7 @@ export function createAnimationEngineInstance(
     visibleWillChangeElements: new Set(),
     culledLineElements: new Set(),
     waveAnimationPool: [],
-    lineCullObserver: null,
+    lineCulling: null,
     cachedDurations: new Map(),
     cachedCSSValues: new Map(),
     cachedAnimationSettings: null,
@@ -191,8 +192,7 @@ export function createAnimationEngineInstance(
       engine.tabRendererResizeObserver?.disconnect();
       engine.tabRendererResizeObserver = null;
       engine.observedTabRenderer = null;
-      engine.lineCullObserver?.disconnect();
-      engine.lineCullObserver = null;
+      stopLineCulling(engine);
       stopPassiveScrollLoop(engine);
       cancelLyricPositionUpdate(engine);
     },

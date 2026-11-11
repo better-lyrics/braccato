@@ -19,7 +19,7 @@ import { forEveryLiveView } from "./engine/liveViews";
 import { noteUserScroll } from "./engine/userScroll";
 import { parseColorAlpha } from "./engine/glow";
 import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
-import { setupLineCullObserver } from "./engine/culling";
+import { measureContentOffset, setupLineCulling, updateLineCulling } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
 import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
@@ -101,8 +101,25 @@ class FakeScrollElement {
     this.currentScrollTop = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight));
   }
 
-  getBoundingClientRect(): { height: number } {
-    return { height: this.viewportHeight };
+  readonly scrollListeners = new Set<() => void>();
+  readonly clientTop = 0;
+  isConnected = false;
+
+  getBoundingClientRect(): { y: number; height: number } {
+    return { y: 0, height: this.viewportHeight };
+  }
+
+  addEventListener(type: string, listener: () => void): void {
+    if (type === "scroll") this.scrollListeners.add(listener);
+  }
+
+  removeEventListener(type: string, listener: () => void): void {
+    if (type === "scroll") this.scrollListeners.delete(listener);
+  }
+
+  scrollBy(deltaPx: number): void {
+    this.scrollTop += deltaPx;
+    for (const listener of this.scrollListeners) listener();
   }
 }
 
@@ -1276,98 +1293,131 @@ assert.equal(
 
 // -- Off-screen line culling --------------------------------------------
 
-// A window offering an IntersectionObserver skips off-screen lines; one without leaves all rendered.
+// Lines more than a viewport outside the scroll are skipped by their measured positions, so no observer runs per frame.
 
 const cullDocument = new FakeDocument();
 const cullWindow = new FakeWindow(PANEL_STYLE, { intersectionObserver: true });
 const cullHost = new FakeHost();
+cullHost.scrollElement.isConnected = true;
 const cullMount = cullDocument.createElement("div");
 const cullEngine = createAnimationEngineInstance(asDocument(cullDocument), asWindow(cullWindow), cullHost);
+const CULL_LYRICS: Lyric[] = Array.from({ length: 8 }, (_, index) => ({
+  startTimeMs: 200000 + index * 3000,
+  durationMs: 3000,
+  words: `Line ${index + 1}`,
+}));
 
-setLyrics(cullEngine, asElement<HTMLElement>(cullMount), LINE_SYNCED_LYRICS, { loaderVisible: false, noLyrics: false });
+setLyrics(cullEngine, asElement<HTMLElement>(cullMount), CULL_LYRICS, { loaderVisible: false, noLyrics: false });
 
 const cullLines = renderedLineElements(cullMount);
-const cullObserver = cullWindow.intersectionObservers.at(-1);
-assert(cullObserver, "Given a window offering an IntersectionObserver, When lyrics are set, Then one is created");
+const isSkipped = (index: number) => cullLines[index].style.getPropertyValue("content-visibility") === "auto";
 assert.equal(
-  cullObserver.targets.length,
-  cullLines.length,
-  "Given lyrics are set, When the culling observer arms, Then it observes every line"
+  cullWindow.intersectionObservers.length,
+  0,
+  "Given a window offering an IntersectionObserver, When lyrics are set, Then culling creates none"
 );
 assert.equal(
   cullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
   "none",
-  "Given culling arms, When the observer is set up, Then scroll anchoring is disabled on the container so a cull height-shift cannot fire a scroll the engine misreads as the user's"
+  "Given culling arms, When lyrics are set, Then scroll anchoring is disabled on the container so a cull height-shift cannot fire a scroll the engine misreads as the user's"
 );
-for (const line of cullLines) {
+for (const [index, line] of cullLines.entries()) {
   assert.notEqual(
     line.style.getPropertyValue("contain-intrinsic-block-size"),
     "",
-    "Given lyrics are set, When the observer arms, Then each line carries a skipped-size placeholder"
+    "Given lyrics are set, When culling arms, Then each line carries a skipped-size placeholder"
   );
-  assert.equal(
-    line.style.getPropertyValue("content-visibility"),
-    "",
-    "Given lyrics are set, When no line has been reported off-screen, Then none is skipped"
-  );
+  assert.equal(isSkipped(index), false, "Given lines not yet measured, When culling arms, Then none is skipped");
 }
 
-cullObserver.report(cullLines[0], false);
+cullEngine.lines.forEach((line, index) => {
+  line.position = index * VIEWPORT_HEIGHT_PX;
+  line.height = VIEWPORT_HEIGHT_PX;
+});
+const framesBeforeCulling = cullWindow.requestedFrames.length;
+// A rendering update lays the container out and delivers the observation waiting on it.
+const runCullFrames = () => {
+  for (const observer of cullWindow.resizeObservers.filter(candidate => !candidate.disconnected)) {
+    for (const target of observer.targets) observer.reportSize(target);
+  }
+};
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
 assert.equal(
-  cullLines[0].style.getPropertyValue("content-visibility"),
-  "auto",
-  "Given a line, When it is reported off-screen, Then it is skipped"
+  cullLines.some((_, index) => isSkipped(index)),
+  false,
+  "Given culling armed one frame ago, When the scroll is read, Then no line is skipped before a frame has rendered every line at its own height"
+);
+runCullFrames();
+assert.deepEqual(
+  cullLines.map((_, index) => isSkipped(index)),
+  [false, false, false, true, true, true, true, true],
+  "Given a paused view that never ticks, When two frames have rendered every line, Then the viewport and one viewport past it render and the rest are skipped"
+);
+assert.equal(
+  cullWindow.requestedFrames.length,
+  framesBeforeCulling,
+  "Given a paused view that never ticks, When culling starts, Then it asked for no animation frame"
 );
 
-cullObserver.report(cullLines[0], true);
-assert.equal(
-  cullLines[0].style.getPropertyValue("content-visibility"),
-  "",
-  "Given a skipped line, When it is reported back on-screen, Then it renders again"
+cullHost.scrollElement.scrollBy(3 * VIEWPORT_HEIGHT_PX);
+assert.deepEqual(
+  cullLines.map((_, index) => isSkipped(index)),
+  [true, false, false, false, false, false, true, true],
+  "Given a reader scrolls with no tick, When the scroll event arrives, Then the lines around the new scroll render and those left behind are skipped"
 );
 
-cullObserver.report(cullLines[1], true);
-assert.equal(
-  cullLines[1].style.getPropertyValue("content-visibility"),
-  "",
-  "Given an on-screen line, When it is reported, Then it is never skipped"
+updateLineCulling(cullEngine, 0, 6 * VIEWPORT_HEIGHT_PX, VIEWPORT_HEIGHT_PX);
+assert.deepEqual(
+  cullLines.map((_, index) => isSkipped(index)),
+  [false, false, false, false, false, false, false, false],
+  "Given a line scroll from the top to six viewports down, When it is planned, Then every line between the two positions renders"
 );
 
-cullObserver.report(cullLines[2], false);
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+setupLineCulling(cullEngine);
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
+assert.equal(
+  cullLines.some((_, index) => isSkipped(index)),
+  false,
+  "Given lines measured again, When one frame has passed, Then none is skipped yet, so a line changed by the relayout renders once first"
+);
+runCullFrames();
+assert.equal(isSkipped(7), true, "Given lines measured again, When two frames have passed, Then skipping resumes");
+
+setupLineCulling(cullEngine);
 clearLyrics(cullEngine);
 assert.equal(
-  cullObserver.disconnected,
+  cullWindow.resizeObservers.every(observer => observer.disconnected),
   true,
-  "Given a song with a culling observer, When it is cleared, Then the observer is disconnected"
+  "Given culling waiting for its start-up rendering, When the song is cleared, Then nothing is left observing"
 );
 assert.equal(
-  cullLines[2].style.getPropertyValue("content-visibility"),
-  "",
-  "Given a skipped line, When the song is cleared, Then it is un-skipped"
-);
-
-// A window without an IntersectionObserver leaves every line rendered rather than failing.
-const noCullDocument = new FakeDocument();
-const noCullWindow = new FakeWindow(PANEL_STYLE);
-const noCullHost = new FakeHost();
-const noCullEngine = createAnimationEngineInstance(asDocument(noCullDocument), asWindow(noCullWindow), noCullHost);
-const noCullMount = noCullDocument.createElement("div");
-setLyrics(noCullEngine, asElement<HTMLElement>(noCullMount), LINE_SYNCED_LYRICS, {
-  loaderVisible: false,
-  noLyrics: false,
-});
-assert.equal(
-  noCullWindow.intersectionObservers.length,
+  cullHost.scrollElement.scrollListeners.size,
   0,
-  "Given a window with no IntersectionObserver, When lyrics are set, Then culling arms nothing and the lines render"
+  "Given a song with culling armed, When it is cleared, Then culling stops following the scroller"
 );
+assert.equal(isSkipped(7), false, "Given a skipped line, When the song is cleared, Then it is un-skipped");
+setupLineCulling(cullEngine);
+clearLyrics(cullEngine);
+
+const pageScrollPx = 5000;
+const documentScroller = {
+  clientTop: 0,
+  scrollTop: pageScrollPx,
+  getBoundingClientRect: () => ({ y: -pageScrollPx }),
+  ownerDocument: { scrollingElement: null as unknown },
+};
+documentScroller.ownerDocument.scrollingElement = documentScroller;
 assert.equal(
-  noCullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
-  "",
-  "Given no IntersectionObserver, When culling cannot arm, Then anchoring is left untouched because no cull height-shift occurs"
+  measureContentOffset(
+    documentScroller as unknown as HTMLElement,
+    { getBoundingClientRect: () => ({ y: 300 - pageScrollPx }) } as unknown as HTMLElement
+  ),
+  300,
+  "Given the page itself scrolls, When the lyrics start 300px down the page, Then their offset ignores how far the page was scrolled"
 );
-setupLineCullObserver(noCullEngine); // safe to call directly with no observer support
-clearLyrics(noCullEngine);
 
 // Per-letter swipe windows: each letter owns the slice of the sweep where its own reveal happens,
 // holding hidden before and shown after, so only the letters under the moving edge keep animating.

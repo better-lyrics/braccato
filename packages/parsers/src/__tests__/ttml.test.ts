@@ -692,6 +692,17 @@ describe("TTMLParser.metadata", () => {
 	});
 
 	describe("invariants", () => {
+		it("answers the same credits whether or not the document was just parsed", () => {
+			const credited = (name: string) =>
+				`<tt xmlns="http://www.w3.org/ns/ttml"><head><metadata><iTunesMetadata><songwriters><songwriter>${name}</songwriter></songwriters></iTunesMetadata></metadata></head>${body}</tt>`;
+
+			TTMLParser.parse(credited("A"));
+			const afterParse = TTMLParser.metadata(credited("A"));
+			afterParse.songwriters.push("B");
+			expect(TTMLParser.metadata(credited("A")).songwriters).toEqual(["A"]);
+			expect(TTMLParser.metadata(credited("C")).songwriters).toEqual(["C"]);
+		});
+
 		it("leaves the parsed lyrics and their result shape alone", () => {
 			const ttml = `<tt xmlns="http://www.w3.org/ns/ttml"><head><metadata><iTunesMetadata><songwriters><songwriter>A</songwriter></songwriters></iTunesMetadata></metadata></head>${body}</tt>`;
 
