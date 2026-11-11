@@ -1,7 +1,7 @@
 import { ANIMATING_CLASS, CURRENT_LYRICS_CLASS } from "../constants";
 import type { LineData } from "../inject";
 import type { LyricSyncType } from "../types";
-import { clearVisibleLyricWillChange, stopLineCulling } from "./culling";
+import { clearOffscreenLineCulling, clearVisibleLyricWillChange } from "./culling";
 import { DECORATION_MIN_SHIFT_PX, decorationSlideAllowed, slideElementBy } from "./decorationSlides";
 import { stopAllElementMotion, stopElementMotion } from "./elementMotion";
 import type { AnimationEngineInstance } from "./instance";
@@ -37,7 +37,9 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   dropPendingLineScroll(engine);
   stopAllElementMotion(engine);
   clearVisibleLyricWillChange(engine);
-  stopLineCulling(engine);
+  engine.lineCullObserver?.disconnect();
+  engine.lineCullObserver = null;
+  clearOffscreenLineCulling(engine);
   for (const line of engine.lines) {
     resetLineAnimationState(line);
     line.isSelected = false;

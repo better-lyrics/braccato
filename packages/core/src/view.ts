@@ -25,7 +25,7 @@ import { type AnimationEngineInstance } from "./engine/instance";
 import { elementMotionOffsetPx } from "./engine/elementMotion";
 import { replaceRenderedLines } from "./engine/renderedLines";
 import { playerTimeForLyricTime } from "./engine/clock";
-import { setupLineCulling } from "./engine/culling";
+import { setupLineCullObserver } from "./engine/culling";
 import {
   addSeekHandler,
   applyDirection,
@@ -320,7 +320,7 @@ export function setLyrics(
   // sizes it by.
   engine.lyricWidth = container.clientWidth;
   engine.lyricHeight = container.clientHeight;
-  setupLineCulling(engine);
+  setupLineCullObserver(engine);
 }
 
 /**
