@@ -3,14 +3,15 @@ import type { LineData } from "../inject";
 import type { LyricSyncType } from "../types";
 import { clearOffscreenLineCulling, clearVisibleLyricWillChange } from "./culling";
 import { DECORATION_MIN_SHIFT_PX, decorationSlideAllowed, slideElementBy } from "./decorationSlides";
+import { stopAllElementMotion, stopElementMotion } from "./elementMotion";
 import type { AnimationEngineInstance } from "./instance";
 import { resetLineAnimationState, togglePartClass } from "./lineAnimationState";
-import { clearLineScrollAnimations, dropPendingLineScroll, removeLineScrollAnimation } from "./lineScroll";
+import { dropPendingLineScroll } from "./lineScroll";
 import { stopPassiveScrollLoop } from "./passiveScroll";
-import { currentTranslateY, replaceStageElements, resetStage } from "./stageMotion";
+import { replaceStageElements, resetStage } from "./stageMotion";
 import { noteEngineScrollEvent } from "./userScroll";
 
-type LinePlacement = { position: number; height: number; scrollAnimationOffset: number };
+type LinePlacement = { position: number; height: number; motionOffset: number };
 
 export function clearOnScreenLyrics(engine: AnimationEngineInstance): boolean {
   if (!engine.lyricsContainer) return false;
@@ -34,7 +35,7 @@ export function getRenderedSyncType(engine: AnimationEngineInstance): LyricSyncT
 export function clearLyrics(engine: AnimationEngineInstance): void {
   engine.scrollPos = -1;
   dropPendingLineScroll(engine);
-  clearLineScrollAnimations(engine);
+  stopAllElementMotion(engine);
   clearVisibleLyricWillChange(engine);
   engine.lineCullObserver?.disconnect();
   engine.lineCullObserver = null;
@@ -61,11 +62,6 @@ export function clearLyrics(engine: AnimationEngineInstance): void {
   resetStage(engine);
 }
 
-export function lineScrollOffset(engine: AnimationEngineInstance, element: HTMLElement): number {
-  const scrolling = engine.lineScrollAnimations.some(record => record.lineElement === element);
-  return scrolling ? currentTranslateY(engine, element, 0) : 0;
-}
-
 export function replaceRenderedLines(
   engine: AnimationEngineInstance,
   lines: LineData[],
@@ -76,11 +72,7 @@ export function replaceRenderedLines(
 
   dropPendingLineScroll(engine);
   const droppedElements = new Set(dropped.map(line => line.lyricElement));
-  for (const record of [...engine.lineScrollAnimations]) {
-    if (!droppedElements.has(record.lineElement)) continue;
-    record.animation.cancel();
-    removeLineScrollAnimation(engine, record);
-  }
+  for (const element of droppedElements) stopElementMotion(engine, element);
   for (const line of dropped) {
     resetLineAnimationState(line);
     line.isSelected = false;
@@ -136,8 +128,8 @@ export function settleSwappedLines(
   for (const line of engine.lines) {
     const was = before.get(line);
     if (was === undefined || !isMeasured(was.position) || !isMeasured(line.position)) continue;
-    const onScreenShift = was.position + was.scrollAnimationOffset - line.position + appliedShift;
-    if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(line.lyricElement, onScreenShift);
+    const onScreenShift = was.position + was.motionOffset - line.position + appliedShift;
+    if (Math.abs(onScreenShift) >= DECORATION_MIN_SHIFT_PX) slideElementBy(engine, line.lyricElement, onScreenShift);
   }
 }
 

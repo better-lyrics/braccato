@@ -17,6 +17,10 @@ export interface StyledScrollLine {
   side: LineScrollSide;
 }
 
+interface SizedScrollLine extends StyledScrollLine {
+  heightPx: number;
+}
+
 export interface ScrollVariables {
   index: number;
   activeIndex: number;
@@ -153,9 +157,9 @@ export function resolveScrollTimings(
 
 export function resolveThemedTranslates(
   engine: AnimationEngineInstance,
-  lines: StyledScrollLine[],
+  lines: SizedScrollLine[],
   { lineScroll }: AnimationConfig
-): { start: string[]; end: string[] } {
+): { start: (number | null)[]; end: (number | null)[] } {
   const translatesAt = (keyframe: ScrollKeyframe) =>
     batchProbeComputedStyle(
       engine,
@@ -165,14 +169,26 @@ export function resolveThemedTranslates(
         const fallback = keyframe === "start" ? "var(--blyrics-line-scroll-delta-px, 0px)" : "0px";
         return `0 ${scrollVariable(`translate-y-${keyframe}`, line.side, lineScroll.differentialEffects, fallback)}`;
       },
-      style => normalizedTranslate(style.translate)
-    );
+      style => style.translate
+    ).map((translate, index) => translateYPx(translate, lines[index].heightPx));
   return { start: translatesAt("start"), end: translatesAt("end") };
 }
 
-function normalizedTranslate(translateValue: string): string {
-  const translate = translateValue.trim();
-  return translate && translate !== "none" ? translate : "0px 0px";
+export function translateYPx(translate: string, heightPx: number): number | null {
+  const value = translate.trim();
+  if (value === "" || value === "none") return 0;
+  const [, y = "0px"] = value.match(/calc\([^)]*\)|\S+/g) ?? [];
+  const terms = y
+    .replace(/^calc\((.*)\)$/, "$1")
+    .replace(/\s+-\s+/g, " + -")
+    .split(/\s+\+\s+/);
+  let px = 0;
+  for (const term of terms) {
+    const length = term.trim().match(/^(-?[\d.]+(?:e-?\d+)?)(px|%)?$/);
+    if (!length || (length[2] === undefined && Number(length[1]) !== 0)) return null;
+    px += length[2] === "%" ? (Number(length[1]) * heightPx) / 100 : Number(length[1]);
+  }
+  return px;
 }
 
 function batchProbeComputedStyle<T>(

@@ -2,7 +2,8 @@ import type { LineData } from "../inject";
 import type { LyricsLayout, LyricsRendererHost, LyricSyncType, ResolvedTickOptions } from "../types";
 import type { StageBox, StageMetrics } from "../stage";
 import { NO_SCROLL_INSETS, type ScrollInsets } from "./scrollViewport";
-import type { LineScrollAnimationRecord, LineScrollItem, PendingLineScroll } from "./lineScroll";
+import type { ElementMotion } from "./elementMotion";
+import type { LineScrollItem, PendingLineScroll, RunningLineScroll } from "./lineScroll";
 import type { LineScrollTiming } from "./lineScrollStyle";
 import type { AnimationSettings } from "./animationConfig";
 import { REDUCED_MOTION_QUERY } from "./motionPreference";
@@ -65,7 +66,9 @@ export interface AnimationEngineInstance extends AnimEngineViewState {
   cachedLineScrollTiming: Map<string, LineScrollTiming>;
   tabRendererResizeObserver: ResizeObserver | null;
   observedTabRenderer: HTMLElement | null;
-  lineScrollAnimations: LineScrollAnimationRecord[];
+  runningLineScrolls: RunningLineScroll[];
+  elementMotions: Map<HTMLElement, ElementMotion>;
+  easingTables: Map<string, Float64Array>;
   lineScrollAnimationToken: number;
   pendingLineScroll: PendingLineScroll | null;
   lineScrollElementTokens: WeakMap<HTMLElement, number>;
@@ -151,7 +154,9 @@ export function createAnimationEngineInstance(
     cachedLineScrollTiming: new Map(),
     tabRendererResizeObserver: null,
     observedTabRenderer: null,
-    lineScrollAnimations: [],
+    runningLineScrolls: [],
+    elementMotions: new Map(),
+    easingTables: new Map(),
     lineScrollAnimationToken: 0,
     pendingLineScroll: null,
     lineScrollElementTokens: new WeakMap(),

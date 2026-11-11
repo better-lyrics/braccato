@@ -16,7 +16,7 @@ import {
 import { captureDecorationSlide, lineDecorators } from "./decorationSlides";
 import type { AnimationEngineInstance } from "./instance";
 import { driveLineAnimations } from "./lineLifecycle";
-import { clearLineScrollAnimations, dropPendingLineScroll, measureTrailingItem } from "./lineScroll";
+import { clearLineScrolls, dropPendingLineScroll, measureTrailingItem } from "./lineScroll";
 import {
   hasNoLyricsPlaceholder,
   hasUnsyncedLyrics,
@@ -183,7 +183,7 @@ function readScrollerBeforeWrites(engine: AnimationEngineInstance): ScrollerRead
 function stopLineScrolling(engine: AnimationEngineInstance): void {
   dropPendingLineScroll(engine);
   clearVisibleLyricWillChange(engine);
-  clearLineScrollAnimations(engine);
+  clearLineScrolls(engine);
 }
 
 function focusLines(
