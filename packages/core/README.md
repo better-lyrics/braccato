@@ -284,6 +284,17 @@ The ones a theme reaches for first. `variables.css` declares the rest.
 `line-height`. Every word is given the glow, so a theme that wants it to mean something selects on
 `data-long-word`, which the module sets on any part held past `blyrics-long-word-threshold`.
 
+The sweep and the glow run off the main thread. Each word, or each letter of a word that wraps, holds
+a fixed soft-edged mask over a copy of its text in `--blyrics-lyric-active-color`, and the two slide
+against each other so only the edge moves. A word in a joining script, or one mixing directions, is
+drawn from copies of its line placed over each box it breaks into. The swipe stops
+(`--blyrics-highlight-swipe-*`) set where the edge starts and ends, and the soft edge is as wide as the
+swipe's last start and end stops are apart. The glow is two copies of the word inside the same mask,
+with a `text-shadow` of `--blyrics-highlight-glow-radius-from` and a tighter one in
+`--blyrics-glow-color`, crossfaded as it fades; it starts where the edge reaches the word or letter,
+and the `--blyrics-highlight-glow-filter-*` overrides are not read.
+`--lyric-transition-amount-*` no longer animate, so a theme cannot draw its own sweep from them.
+
 A word longer than twice `blyrics-long-word-wrap-threshold` (default `10` characters) gets
 `blyrics-word-group-long` on its group. Its syllables become `display: inline` and take `<wbr>`
 break points, so a word like `Oh-oh-oh-oh-oh-oh-oh-oh` wraps instead of overflowing. Browsers ignore
@@ -346,8 +357,8 @@ swells each letter with a transient scale at the crest.
 }
 ```
 
-The split multiplies the DOM per character and reruns the karaoke sweep per letter, so a theme that
-does not want the cost turns it off with `/* blyrics-letter-wave = false; */`. `blyrics-letter-wave`
+The split multiplies the DOM per character, three times over with the glow's two copies, so a theme
+that does not want the cost turns it off with `/* blyrics-letter-wave = false; */`. `blyrics-letter-wave`
 reloads the lines when it changes, the way every build-time setting does.
 
 ### Word state
@@ -431,7 +442,7 @@ them out and you get lines that are in the document and unstyled, rather than li
 | File                                     | What it carries                                                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `@braccato/core/styles/variables.css`    | Every `--blyrics-*` default. It goes first, because the others read from it.                                              |
-| `@braccato/core/styles/lyrics.css`       | The container, the lines, the words and the sweep, plus two `@property` registrations the word animation interpolates through. |
+| `@braccato/core/styles/lyrics.css`       | The container, the lines, the words and the sweep. |
 | `@braccato/core/styles/instrumental.css` | The waveform that fills a bar nobody sings over, and the animation that walks it.                                          |
 | `@braccato/core/styles/stage.css`        | Placement for the stage layout, and nothing else. Only a renderer created with `layout: "stage"` needs it.                  |
 
@@ -601,43 +612,21 @@ loading regional CJK web fonts should set `--noto-sans-universal` on these eleme
 They are unset by default; custom CSS that reads them directly should use
 `var(--blyrics-font-family, var(--blyrics-default-font-family))` for the default stack.
 
-### Theme-provided image fills
+### Theme-provided instrumental image
 
-Image highlights are optional. Enable them in a theme comment:
+A theme can paint the instrumental note with an image. Enable it in a theme comment:
 
 ```css
 /* blyrics-image-highlights = true; */
 .blyrics-container {
   --blyrics-highlight-image: url("my-image.jpg");
-  --blyrics-image-glow-opacity-from: 0.5;
-  --blyrics-image-glow-opacity-to: 0;
 }
 ```
 
-Changing this setting requests a lyric rebuild through the existing `setTheme` return value.
-Without it, the renderer adds no image or glow layers and keeps its shadow animation. With it,
-the sharp fill and a separate blurred copy share the word reveal, letter motion, opacity, pause,
-seek and playback-rate handling. Existing glow radius, duration and easing properties still apply;
-the two image-glow opacity properties replace the solid shadow color's alpha.
+Changing this setting requests a lyric rebuild through the existing `setTheme` return value. The
+image may be an SDR texture or an HDR gain-map asset. The theme owns HDR media queries and
+`dynamic-range-limit`; the core never opts into extra display brightness. The note keeps its original
+color path until its SVG image loads, reuses the original animated wave clip and fade group, and
+forced colors fall back to system colors. Words no longer take an image fill.
 
-The image may be an SDR texture or an HDR gain-map asset. The theme owns HDR media queries
-and `dynamic-range-limit`; the core never opts into extra display brightness. Ordinary active
-text color backs up the image fill, while the note keeps its original color path until its
-SVG image loads. The note image reuses the original animated wave clip and fade group.
-
-The glow layer is outside the paint's mask, avoiding clipped halos at word edges. Bidi-sensitive
-runs and fragmented long words use a parallel inline text run for the glow, so the browser
-reproduces the same ordering and wrapped fragments. Its reveal and visibility use the same
-animation clock as the sharp text. No generated text or per-frame geometry reads are needed.
-Joining-script word groups retain contextual joining by using whole-word sweeps instead of
-inline-block letter waves, including when image highlights are disabled.
-Forced colors suppress the image and halo in favor of system text colors.
-
-For real-browser regression checks, build the package, serve the repository root and open
-`tooling/browser/image-highlights.html`. Import `image-highlights-checks.js` from that page and
-call `runImageHighlightChecks(testView)`. The default fixture uses an SDR image; a `theme` query
-parameter can point at a consumer's HDR stylesheet for physical-display testing.
-`runLetterInkChecks(testView)` in the same module checks that letter masks cover glyph overhang,
-such as a `j`'s hook or an italic `f`, without moving any letter.
-
-Words that mix RTL characters with LTR letters or numbers retain native text shaping instead of per-letter motion. Image glow, letter masks and letter motion retain their current paint during the line exit fade.
+Words that mix RTL characters with LTR letters or numbers retain native text shaping instead of per-letter motion.

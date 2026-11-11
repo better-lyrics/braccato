@@ -1,4 +1,6 @@
+import { hasUnplacedContextSweeps } from "./contextSweep";
 import type { AnimationEngineInstance } from "./instance";
+import { resetLineAnimationState } from "./lineAnimationState";
 import { isLineVisibleDuringScroll, LINE_SCROLL_WILL_CHANGE_VALUE, type LineScrollItem } from "./lineScroll";
 
 // Use screen intersections because transformed scrolling decouples layout coordinates from visibility.
@@ -22,6 +24,7 @@ export function setupLineCullObserver(engine: AnimationEngineInstance): void {
         const element = entry.target as HTMLElement;
         if (entry.isIntersecting) {
           if (engine.culledLineElements.delete(element)) uncullLine(element);
+          restartUnplacedLine(engine, element);
         } else if (!engine.culledLineElements.has(element)) {
           cullLine(element);
           engine.culledLineElements.add(element);
@@ -32,6 +35,12 @@ export function setupLineCullObserver(engine: AnimationEngineInstance): void {
   );
   for (const line of engine.lines) observer.observe(line.lyricElement);
   engine.lineCullObserver = observer;
+}
+
+/** A line that started while it was skipped starts over now that its words have boxes to place on. */
+function restartUnplacedLine(engine: AnimationEngineInstance, element: HTMLElement): void {
+  const line = engine.lines.find(candidate => candidate.lyricElement === element);
+  if (line && hasUnplacedContextSweeps(line)) resetLineAnimationState(line);
 }
 
 export function clearOffscreenLineCulling(engine: AnimationEngineInstance): void {

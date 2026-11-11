@@ -33,8 +33,9 @@ export function followSongClock(
   return animation;
 }
 
-export function mirrorImageHighlightAnimations(part: PartData, animations: Animation[]): Animation[] {
-  const target = part.imageLayers?.highlight;
+/** Repeats a word's own animations on the cells of a sweep drawn for it from copies of its line. */
+export function mirrorHighlightAnimations(part: PartData, animations: Animation[]): Animation[] {
+  const target = part.sweepContext?.host;
   if (!target) return [];
   const mirrors: Animation[] = [];
   for (const animation of animations) {

@@ -15,6 +15,7 @@ import {
 } from "./culling";
 import { captureDecorationSlide, lineDecorators } from "./decorationSlides";
 import type { AnimationEngineInstance } from "./instance";
+import { resetLineAnimationState } from "./lineAnimationState";
 import { driveLineAnimations } from "./lineLifecycle";
 import { clearLineScrolls, dropPendingLineScroll, measureTrailingItem } from "./lineScroll";
 import {
@@ -228,29 +229,48 @@ function updateCreditsFocus(engine: AnimationEngineInstance, lyricsElement: HTML
   return true;
 }
 
-export function relayout(engine: AnimationEngineInstance, linesAreRendered: boolean): void {
+/** Returns whether it stopped lines that only a tick starts again; see `restartContextSweeps`. */
+export function relayout(engine: AnimationEngineInstance, linesAreRendered: boolean): boolean {
   if (engine.layout === "stage") {
-    if (!linesAreRendered || !engine.lyricsContainer) return;
+    if (!linesAreRendered || !engine.lyricsContainer) return false;
     engine.cachedCreditsItem = measureTrailingItem(engine.lyricsContainer, CREDITS_CLASS);
     measureStage(engine);
-    return;
+    return restartContextSweeps(engine);
   }
   applyScrollPadding(engine);
   const scrollElement = engine.host.getScrollElement();
   if (scrollElement) measureScrollViewport(engine, scrollElement);
-  if (!linesAreRendered) return;
+  if (!linesAreRendered) return false;
 
   const lyricsElement = engine.lyricsContainer;
-  if (!lyricsElement) return;
+  if (!lyricsElement) return false;
   engine.lyricWidth = lyricsElement.clientWidth;
   engine.lyricHeight = lyricsElement.clientHeight;
   measureLinePositions(engine, lyricsElement);
+  const restarted = restartContextSweeps(engine);
   engine.cachedCreditsItem = measureTrailingItem(lyricsElement, CREDITS_CLASS);
   engine.cachedFooterItem = measureTrailingItem(lyricsElement, FOOTER_CLASS);
   setupLineCullObserver(engine);
 
   requestRescroll(engine);
   engine.host.debug?.resize();
+  return restarted;
+}
+
+/**
+ * A word drawn by sweep cells placed over its boxes needs them placed again once the layout moves.
+ * Stopping its line lets the next tick start it over at the same moment, which places them afresh.
+ * A paused view gets no next tick on its own, so whoever relayouts has to tick once it returns true.
+ */
+function restartContextSweeps(engine: AnimationEngineInstance): boolean {
+  let restarted = false;
+  for (const line of engine.lines) {
+    if (line.isAnimating && line.parts.some(part => part.sweepContext)) {
+      resetLineAnimationState(line);
+      restarted = true;
+    }
+  }
+  return restarted;
 }
 
 function measureLinePositions(engine: AnimationEngineInstance, lyricsElement: HTMLElement): void {
@@ -277,6 +297,11 @@ export function retickFromPlaybackClock(
 ): AnimationTickStatus {
   const options = buildTickOptions(playbackClock.lastEventCreationTime, playbackClock.lastPlayState);
   return tickView(engine, playbackClock.lastTime, resolveTickOptions(options));
+}
+
+/** Ticks again at the time and with the options of the last tick, for a view that is not ticking itself. */
+export function retickAtLastTime(engine: AnimationEngineInstance): void {
+  if (engine.lastTickOptions) tickView(engine, playbackClock.lastTime, engine.lastTickOptions);
 }
 
 export function scheduleLyricPositionUpdate(

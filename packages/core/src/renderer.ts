@@ -27,6 +27,7 @@ import { noteVisibilityChange as noteEngineVisibilityChange } from "./engine/tim
 import {
   relayout,
   resolveTickOptions,
+  retickAtLastTime,
   retickFromPlaybackClock as retickEngineFromPlaybackClock,
   scheduleLyricPositionUpdate as scheduleEngineLyricPositionUpdate,
   tickView,
@@ -212,7 +213,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
    */
   function measure(measureLines = true): void {
     forgetScrollElement();
-    relayout(engine, measureLines && areLinesMeasurable(getRenderedLines(engine)));
+    if (relayout(engine, measureLines && areLinesMeasurable(getRenderedLines(engine)))) retickAtLastTime(engine);
   }
 
   function stopObservingContainer(): void {

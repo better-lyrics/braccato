@@ -16,18 +16,6 @@ export interface LetterSwipeWindow {
   to: { start: number; end: number };
 }
 
-export interface LetterMaskKeyframe {
-  offset: number;
-  maskPosition: string;
-}
-
-export interface LetterMaskSweep {
-  keyframes: LetterMaskKeyframe[];
-  delayMs: number;
-  durationMs: number;
-  easing: string;
-}
-
 export interface LetterWaveTiming {
   delayMs: number;
   durationMs: number;
@@ -82,59 +70,6 @@ export function linearForwardSwipeWindows(
     });
   }
   return windows;
-}
-
-export function planLetterMaskSweep(
-  swipe: SwipeRamp,
-  letterCount: number,
-  swipeDurationMs: number,
-  rtl: boolean
-): LetterMaskSweep[] {
-  const windows = linearForwardSwipeWindows({ ...swipe, easing: "linear" }, letterCount, swipeDurationMs);
-  if (!windows) return [];
-
-  const maskSpan = letterCount + 2;
-  const maskPositionAt = (start: number, index: number): string => {
-    const position = (0.5 * maskSpan - (start * letterCount - index)) / (maskSpan - 1);
-    return `${(rtl ? 1 - position : position) * 100}% 0%`;
-  };
-  const durationMs = swipeDurationMs > 0 ? swipeDurationMs : 1;
-
-  return windows.map((window, index) => {
-    const from = maskPositionAt(window.from.start, index);
-    const to = maskPositionAt(window.to.start, index);
-    return swipe.easing === "linear"
-      ? windowedSweep(window, from, to)
-      : wholeSwipeSweep(window, from, to, durationMs, swipe.easing);
-  });
-}
-
-function windowedSweep(window: LetterSwipeWindow, from: string, to: string): LetterMaskSweep {
-  return {
-    keyframes: [
-      { offset: 0, maskPosition: from },
-      { offset: 1, maskPosition: to },
-    ],
-    delayMs: window.delayMs,
-    durationMs: window.durationMs,
-    easing: "linear",
-  };
-}
-
-function wholeSwipeSweep(
-  window: LetterSwipeWindow,
-  from: string,
-  to: string,
-  swipeDurationMs: number,
-  easing: string
-): LetterMaskSweep {
-  const revealStart = clamp(window.delayMs / swipeDurationMs, 0, 1);
-  const revealEnd = clamp((window.delayMs + window.durationMs) / swipeDurationMs, 0, 1);
-  const keyframes: LetterMaskKeyframe[] = [{ offset: 0, maskPosition: from }];
-  if (revealStart > 0) keyframes.push({ offset: revealStart, maskPosition: from });
-  if (revealEnd > revealStart) keyframes.push({ offset: revealEnd, maskPosition: to });
-  if (revealEnd < 1) keyframes.push({ offset: 1, maskPosition: to });
-  return { keyframes, delayMs: 0, durationMs: swipeDurationMs, easing };
 }
 
 export function planLetterWave(

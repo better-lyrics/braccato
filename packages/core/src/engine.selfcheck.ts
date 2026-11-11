@@ -14,13 +14,14 @@ import {
   findScrollAnchor,
   resolveScrollInsets,
 } from "./engine/scrollViewport";
-import { linearForwardSwipeWindows, planLetterMaskSweep, planLetterWave } from "./engine/letterPlans";
+import { linearForwardSwipeWindows, planLetterWave } from "./engine/letterPlans";
 import { forEveryLiveView } from "./engine/liveViews";
 import { noteUserScroll } from "./engine/userScroll";
 import { parseColorAlpha } from "./engine/glow";
 import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
 import { setupLineCullObserver } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
+import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
 import {
   asDocument,
@@ -1418,45 +1419,6 @@ assert.equal(
   "Given a word with no letters, Then there are no per-letter windows"
 );
 
-// planLetterMaskSweep hands every letter-split word a reveal, even where linearForwardSwipeWindows
-// bails: the whole-word gradient is off for letter words, so without the fallback they snap to fully
-// highlighted instead of sweeping.
-const linearSweep = planLetterMaskSweep(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
-assert.equal(linearSweep.length, SWIPE_LETTERS, "Given a linear ramp, Then every letter gets a mask sweep");
-assert.ok(
-  linearSweep.every(sweep => sweep.easing === "linear" && sweep.keyframes.length === 2),
-  "Given a linear ramp, Then each letter rides the short windowed plan"
-);
-
-for (const easing of ["ease", "cubic-bezier(0.4, 0, 0.2, 1)"]) {
-  const sweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
-  assert.equal(sweep.length, SWIPE_LETTERS, "Given a non-linear ramp, When planned, Then every letter still reveals");
-  assert.ok(
-    sweep.every(entry => entry.easing === easing && entry.durationMs === SWIPE_DURATION_MS && entry.delayMs === 0),
-    "Given a non-linear ramp, Then each letter runs the whole duration under the theme easing"
-  );
-  assert.ok(
-    sweep.every(entry => entry.keyframes[0].offset === 0 && entry.keyframes.at(-1)?.offset === 1),
-    "Given a non-linear ramp, Then each letter's reveal spans the whole timeline"
-  );
-  assert.ok(
-    sweep.every(
-      (entry, index) => entry.keyframes.at(-1)?.maskPosition === linearSweep[index].keyframes.at(-1)?.maskPosition
-    ),
-    "Given a non-linear ramp, Then each letter ends at the same fully-revealed mask as the linear plan, not swept past"
-  );
-  assert.ok(
-    sweep.every((entry, index) => entry.keyframes[0].maskPosition === linearSweep[index].keyframes[0].maskPosition),
-    "Given a non-linear ramp, Then each letter starts hidden, the same as the linear plan"
-  );
-}
-
-assert.deepEqual(
-  planLetterMaskSweep(SWIPE_RAMP, 0, SWIPE_DURATION_MS, false),
-  [],
-  "Given a word with no letters, Then there is nothing to sweep"
-);
-
 // With the default ramp the swipe touches letter i at i/n of the word and has lit it 1/n + 0.1 of the
 // word later. A long word lights each letter slower than a 900ms float rises, so each starts as it is
 // touched and stretches its float to crest as it is lit. A short word lights them faster, so each
@@ -1487,13 +1449,6 @@ assert.deepEqual(
     [80, 900],
   ],
   "Given a short word, Then each letter starts early enough to crest as it is lit"
-);
-
-const ltrSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
-const rtlSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, true);
-assert.ok(
-  ltrSweep.some((entry, index) => entry.keyframes[0].maskPosition !== rtlSweep[index].keyframes[0].maskPosition),
-  "Given RTL, Then the mask sweeps from the mirrored edge"
 );
 
 // Glow alpha parsing: the engine skips a word's per-frame blur only when its resolved glow color
@@ -1610,6 +1565,55 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.ok(
     worstPx < 0.15,
     `Given scrolls that overlap, When they are baked into one animation, Then it follows their sum (off by ${worstPx}px)`
+  );
+}
+
+// -- Sweep cells --------------------------------------------
+
+// Each cell's mask edge follows the word's swipe across that cell, and its text cancels the mask's motion.
+{
+  const swipe = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
+  const translateOf = (keyframes: Keyframe[], progress: number): number => {
+    const after = keyframes.findIndex(frame => Number(frame.offset) >= progress);
+    const to = keyframes[Math.max(after, 0)];
+    const from = keyframes[Math.max(after - 1, 0)];
+    const value = (frame: Keyframe) => Number.parseFloat(String(frame.translate));
+    const span = Number(to.offset) - Number(from.offset);
+    if (span <= 0) return value(to);
+    return value(from) + ((value(to) - value(from)) * (progress - Number(from.offset))) / span;
+  };
+  const spans: CellSpan[] = [
+    { start: 0, width: 1 },
+    { start: 0, width: 0.25 },
+    { start: 0.25, width: 0.35 },
+    { start: 0.6, width: 0.4 },
+  ];
+  let worstEdge = 0;
+  let worstGlyph = 0;
+  for (const rtl of [false, true]) {
+    for (const span of spans) {
+      const plan = planCellSweep(swipe, span, rtl);
+      assert.ok(plan, "Given a usable swipe, When a cell is planned, Then it has a plan");
+      const fade = cellFade(swipe, span);
+      const maskWidths = 3 + fade;
+      for (let step = 0; step <= 200; step++) {
+        const progress = step / 200;
+        const wordStart = -0.2 + 1.6 * progress;
+        const expected = Math.min(Math.max((wordStart - span.start) / span.width, -fade), SWEEP_REST);
+        const maskCells = (translateOf(plan.mask, progress) * maskWidths) / 100;
+        const textCells = translateOf(plan.text, progress) / 100;
+        worstEdge = Math.max(worstEdge, Math.abs(SWEEP_REST + (rtl ? -maskCells : maskCells) - expected));
+        worstGlyph = Math.max(worstGlyph, Math.abs(maskCells + textCells));
+      }
+    }
+  }
+  assert.ok(
+    worstEdge < 1e-9,
+    `Given a word split into cells, When the swipe runs, Then each cell's edge sits where the word's is (off by ${worstEdge} cells)`
+  );
+  assert.ok(
+    worstGlyph < 1e-9,
+    `Given a sweep cell, When its mask slides, Then its text slides back by as much (off by ${worstGlyph} cells)`
   );
 }
 

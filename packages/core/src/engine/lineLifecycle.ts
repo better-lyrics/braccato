@@ -92,7 +92,7 @@ function retireLine(
         logAnimationCleanup(engine, "selected-stale-reset", line, index, lyricTimeS, staleAfterS);
         resetLineAnimationState(line);
       } else {
-        startLineExitAnimations(engine, line, config, lyricTimeS);
+        startLineExitAnimations(line, config, lyricTimeS);
         markLineAnimationsStopped(line);
       }
     } else {
