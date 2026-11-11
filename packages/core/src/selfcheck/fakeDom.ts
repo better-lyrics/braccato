@@ -121,7 +121,6 @@ export class FakeNode {
   readonly attributes: Record<string, string> = {};
   readonly childNodes: FakeNode[] = [];
   readonly clickListeners: ClickListener[] = [];
-  readonly scrollListeners = new Set<() => void>();
   readonly dispatchedEvents: unknown[] = [];
   readonly animations: FakeAnimation[] = [];
   parentNode: FakeNode | null = null;
@@ -300,18 +299,10 @@ export class FakeNode {
   }
 
   addEventListener(type: string, listener: ClickListener): void {
-    if (type === "scroll") {
-      this.scrollListeners.add(listener as () => void);
-      return;
-    }
     if (type !== "click") {
-      throw new Error(`The fake node only records click and scroll listeners, not "${type}"`);
+      throw new Error(`The fake node only records click listeners, not "${type}"`);
     }
     this.clickListeners.push(listener);
-  }
-
-  removeEventListener(type: string, listener: () => void): void {
-    if (type === "scroll") this.scrollListeners.delete(listener);
   }
 
   dispatchClick(event: FakeClickEvent): void {

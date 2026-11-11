@@ -10,8 +10,7 @@ import { getCSSDurationInMs } from "./cssValues";
 import {
   clearOffscreenLineCulling,
   clearVisibleLyricWillChange,
-  setupLineCulling,
-  updateLineCulling,
+  setupLineCullObserver,
   updateVisibleLyricWillChange,
 } from "./culling";
 import { captureDecorationSlide, lineDecorators } from "./decorationSlides";
@@ -140,14 +139,9 @@ function renderSyncedLyrics(
     clearVisibleLyricWillChange(engine);
     return;
   }
-  if (scroller) {
+  if (scroller && config.enabled.scroll) {
     const pendingScrollTop = engine.pendingLineScroll?.toScrollTop ?? scroller.scrollTop;
-    updateLineCulling(engine, scroller.scrollTop, pendingScrollTop, scroller.height);
-    if (config.enabled.scroll) {
-      updateVisibleLyricWillChange(engine, engine.lines, scroller.scrollTop, pendingScrollTop, scroller.height);
-    } else {
-      stopLineScrolling(engine);
-    }
+    updateVisibleLyricWillChange(engine, engine.lines, scroller.scrollTop, pendingScrollTop, scroller.height);
   } else {
     stopLineScrolling(engine);
   }
@@ -256,7 +250,7 @@ export function relayout(engine: AnimationEngineInstance, linesAreRendered: bool
   const restarted = restartContextSweeps(engine);
   engine.cachedCreditsItem = measureTrailingItem(lyricsElement, CREDITS_CLASS);
   engine.cachedFooterItem = measureTrailingItem(lyricsElement, FOOTER_CLASS);
-  setupLineCulling(engine);
+  setupLineCullObserver(engine);
 
   requestRescroll(engine);
   engine.host.debug?.resize();
