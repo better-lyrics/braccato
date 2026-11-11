@@ -16,6 +16,7 @@ import {
 } from "./constants";
 import { addSeekHandler, createLyricsLine, injectRomanization, injectTranslation, newLineData } from "./inject";
 import { createInstrumentalElement } from "./instrumental";
+import { joinLetterSegments } from "./letters";
 import {
   asDocument,
   asElement,
@@ -361,6 +362,12 @@ assert.deepEqual(
   wordPiecesOf("मुस्कुराएगा"),
   ["मुस्कु", "राए", "गा"],
   "regression: Given a Devanagari word past the wrap threshold, When letter wave is off, Then every break falls between letter clusters"
+);
+
+assert.deepEqual(
+  joinLetterSegments(["स्", "त्", "रि", "याँ"]),
+  ["स्त्रि", "याँ"],
+  "Given grapheme segments from an ICU without conjunct rules, When they are joined, Then a conjunct chain stays one letter"
 );
 
 setThemeSettings(new Map());

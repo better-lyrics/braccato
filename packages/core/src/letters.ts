@@ -10,9 +10,13 @@ const joinsTamilLigature = (previous: string, next: string): boolean =>
   (previous.endsWith("க்") && next.startsWith("ஷ")) || (previous.endsWith("ஸ்") && next.startsWith("ரீ"));
 
 export function letterClusters(text: string): string[] {
+  return joinLetterSegments(Array.from(graphemeSegmenter.segment(text), ({ segment }) => segment));
+}
+
+export function joinLetterSegments(segments: Iterable<string>): string[] {
   const clusters: string[] = [];
   let previous = "";
-  for (const { segment } of graphemeSegmenter.segment(text)) {
+  for (const segment of segments) {
     const joins =
       clusters.length > 0 &&
       (MARK_START_REGEX.test(segment) ||
