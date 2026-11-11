@@ -1312,9 +1312,14 @@ setLyrics(cullEngine, asElement<HTMLElement>(cullMount), CULL_LYRICS, { loaderVi
 const cullLines = renderedLineElements(cullMount);
 const isSkipped = (index: number) => cullLines[index].style.getPropertyValue("content-visibility") === "auto";
 assert.equal(
-  cullWindow.intersectionObservers.length,
+  cullWindow.resizeObservers.length,
   0,
-  "Given a window offering an IntersectionObserver, When lyrics are set, Then culling creates none"
+  "Given lyrics are set, When culling waits for its start-up rendering, Then it creates no resize observer, which a relayout running inside a resize callback would leave undelivered"
+);
+assert.deepEqual(
+  cullWindow.intersectionObservers.map(observer => observer.targets.length),
+  [1],
+  "Given lyrics are set, When culling waits for its start-up rendering, Then one observer watches one element and no line is observed"
 );
 assert.equal(
   cullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
@@ -1337,8 +1342,8 @@ cullEngine.lines.forEach((line, index) => {
 const framesBeforeCulling = cullWindow.requestedFrames.length;
 // A rendering update lays the container out and delivers the observation waiting on it.
 const runCullFrames = () => {
-  for (const observer of cullWindow.resizeObservers.filter(candidate => !candidate.disconnected)) {
-    for (const target of observer.targets) observer.reportSize(target);
+  for (const observer of cullWindow.intersectionObservers.filter(candidate => !candidate.disconnected)) {
+    for (const target of observer.targets) observer.report(target, true);
   }
 };
 updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
@@ -1389,7 +1394,7 @@ assert.equal(isSkipped(7), true, "Given lines measured again, When two frames ha
 setupLineCulling(cullEngine);
 clearLyrics(cullEngine);
 assert.equal(
-  cullWindow.resizeObservers.every(observer => observer.disconnected),
+  cullWindow.intersectionObservers.every(observer => observer.disconnected),
   true,
   "Given culling waiting for its start-up rendering, When the song is cleared, Then nothing is left observing"
 );
