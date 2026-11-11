@@ -34,7 +34,7 @@ function resetLineAnimations(lineData: LineData): void {
 }
 
 export function hasLineAnimations(lineData: LineData): boolean {
-  return [lineData, ...lineData.parts].some(part => part.animations.length > 0);
+  return lineData.animations.length > 0 || lineData.parts.some(part => part.animations.length > 0);
 }
 
 export function markLineAnimationsStopped(lineData: LineData): void {
