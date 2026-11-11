@@ -306,8 +306,17 @@ function readSongwriters(metadataElements: MetadataElement[]): string[] {
 	return uniqueNames(names);
 }
 
+// A caller reading lines and credits from one document parses its XML once: the credits of the last parse are kept.
+let lastParsedCredits: { xml: string; songwriters: string[] } | null = null;
+
+function songwritersOf(xml: string): string[] {
+	if (lastParsedCredits?.xml === xml) return [...lastParsedCredits.songwriters];
+	return readSongwriters(readMetadataElements(readTtmlRoot(xml)));
+}
+
 export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): ParsedTTML {
 	const ttContainer = readTtmlRoot(xml);
+	lastParsedCredits = { xml, songwriters: readSongwriters(readMetadataElements(ttContainer)) };
 	if (!ttContainer) return { lyrics: [], isWordSynced: false };
 
 	const tt = ttContainer.tt;
@@ -451,6 +460,6 @@ export const TTMLParser: LyricParser = {
 		return parseTTMLContent(input).lyrics;
 	},
 	metadata(input: string): LyricMetadata {
-		return { songwriters: readSongwriters(readMetadataElements(readTtmlRoot(input))) };
+		return { songwriters: songwritersOf(input) };
 	},
 };
