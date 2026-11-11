@@ -1,5 +1,65 @@
 # @braccato/core
 
+## 1.21.2
+
+### Patch Changes
+
+- 137e8c9: Long songs no longer trigger a "ResizeObserver loop completed with undelivered notifications" error when the lyrics load, resize or swap. Skipping off-screen lines now waits for rendering with an intersection observation instead of a resize observation.
+
+## 1.21.1
+
+### Patch Changes
+
+- d12c6dd: Long songs play with less work per frame: off-screen lines are skipped from the positions relayout measured instead of an IntersectionObserver over every line, line animation checks stop building an array per line, and `TTMLParser.metadata` reuses the parse `TTMLParser.parse` just did on the same document.
+
+## 1.21.0
+
+### Minor Changes
+
+- a78acf2: The karaoke sweep, its glow and the letter wave run off the main thread, so they keep moving while the page is busy and no longer repaint every active word on every frame. Each word, or each letter of a word that wraps, holds a fixed soft-edged mask over a copy of its text, and the two slide against each other; a word in a joining script or one mixing directions is drawn from copies of its line placed over each box it breaks into. The glow is two fixed halos inside the same mask, crossfaded from wide to tight, instead of a shrinking `drop-shadow`.
+  
+  The old sweep is removed rather than kept as a fallback: `--lyric-transition-amount-*` and their `@property` registrations are gone, so a theme that draws its own sweep from them stops moving; the `--blyrics-highlight-glow-filter-*` overrides no longer change the glow; and image fills on words are gone, so `blyrics-image-highlights` now paints only the instrumental note and `--blyrics-image-glow-opacity-*` do nothing.
+
+### Patch Changes
+
+- 654c26e: Line scrolls run off the main thread, so they no longer stall while the page is busy. A line that is still moving when the next scroll starts carries what is left of that motion into the new scroll, and a decoration slide joins it, as one animation the browser can composite. While a line scrolls or slides, that animation replaces any `translate` a theme sets on the line itself.
+
+## 1.20.1
+
+### Patch Changes
+
+- 930e0b0: The word, line and instrumental animation builders are restructured into small named pieces. Every animation they create, its keyframes and its timing are unchanged.
+- f999d00: Theme values for the animation config are read through one small reader, and the glow helpers are tidied. Every value read, its fallback and the resulting animations are unchanged.
+- 6a52107: Animation drift correction gets its own module, separate from the song-clock bookkeeping and the timing logs, and drift sampling no longer allocates per line on every tick. Timing, drift resets and the `blyrics-debug-animation-timing` logs behave as before.
+- 3c2a296: Line scroll planning is split from the theme variables it reads, with the per-line plan built in one readable pass. Scroll animations, their timing and the line-scroll theme settings are unchanged.
+- 13f4be2: The scroll viewport, passive scroll, line culling and user-scroll helpers are restructured around named steps. Scroll targets, scroll padding, the passive scroll cycle and culling are unchanged.
+- c2e35ad: The engine is split into one module per concern under `engine/`. Nothing a consumer imports or sees changes.
+- 6ad8770: Stage motion, line swapping and decoration slides are restructured into named steps, and the engine overview moves into `engine/README.md`. Stage placement, swapped-line settling and decoration slides are unchanged.
+- 9770bb8: The per-frame tick is split into named steps (clock, line focus, line animations, credits, stage or autoscroll). Rendering is unchanged, and the debug overlay and its theme setting work as before.
+
+## 1.20.0
+
+### Minor Changes
+
+- ac28099: Number each background vocal group of a TTML line with a new `backgroundGroup` on its parts, read timing written on an `x-bg` span itself in a word-timed line, and give each group its own background row.
+
+### Patch Changes
+
+- Updated dependencies [ac28099]
+  - @braccato/types@1.1.0
+
+## 1.19.1
+
+### Patch Changes
+
+- 3279ba4: Scrolling unsynced lyrics while the song plays now pauses the drift instead of fighting it.
+
+## 1.19.0
+
+### Minor Changes
+
+- 6422491: A host that ticks every frame can set the new `countEveryUserScroll` tick option so a reader's scroll pauses autoscroll of synced lyrics. By default the view still holds one scroll back for the one a refocused window fires, which a host ticking every frame spends on each scroll the reader makes. It defaults to false, so existing hosts behave as before. Synced autoscroll also stops holding back a scroll for a write that left the position where it was, since no scroll event follows one.
+
 ## 1.18.0
 
 ### Minor Changes

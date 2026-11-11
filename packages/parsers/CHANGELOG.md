@@ -1,5 +1,19 @@
 # @braccato/parsers
 
+## 0.4.2
+
+### Patch Changes
+
+- d12c6dd: Long songs play with less work per frame: off-screen lines are skipped from the positions relayout measured instead of an IntersectionObserver over every line, line animation checks stop building an array per line, and `TTMLParser.metadata` reuses the parse `TTMLParser.parse` just did on the same document.
+
+## 0.4.1
+
+### Patch Changes
+
+- ac28099: Number each background vocal group of a TTML line with a new `backgroundGroup` on its parts, read timing written on an `x-bg` span itself in a word-timed line, and give each group its own background row.
+- Updated dependencies [ac28099]
+  - @braccato/types@1.1.0
+
 ## 0.4.0
 
 ### Minor Changes

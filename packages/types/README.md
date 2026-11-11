@@ -35,7 +35,8 @@ everything else describes a capability a given source may or may not have.
 | `isInstrumental` | A synthetic line standing in for a gap nobody sings over |
 
 `LyricPart` is a word or syllable inside a line: `startTimeMs`, `words` and `durationMs`, plus
-`isBackground` for backing vocals and `explicit` for a word a source has flagged.
+`isBackground` for backing vocals, `backgroundGroup` for which of the line's background groups
+(`x-bg` spans, counted from 0) it is in, and `explicit` for a word a source has flagged.
 
 `LyricSyncType` is `"richsync" | "synced" | "none"`, how finely a line is timed.
 `@braccato/parsers` exports the same union as `SyncType`.

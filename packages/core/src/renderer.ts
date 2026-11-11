@@ -15,22 +15,23 @@ import { CUSTOM_THEME_STYLE_ID } from "./constants";
 import {
   clearLyrics,
   clearOnScreenLyrics as clearEngineOnScreenLyrics,
-  clearStyleCaches as clearEngineStyleCaches,
-  createAnimationEngineInstance,
   getRenderedLines,
   getRenderedSyncType,
-  hasUnsyncedLyrics,
-  noteContainerResize,
-  noteUserScroll as noteEngineUserScroll,
-  noteVisibilityChange as noteEngineVisibilityChange,
-  relayout,
-  resetScrollResume,
-  resolveTickOptions,
   settleSwappedLines,
+} from "./engine/renderedLines";
+import { clearStyleCaches as clearEngineStyleCaches } from "./engine/cssValues";
+import { createAnimationEngineInstance } from "./engine/instance";
+import { hasUnsyncedLyrics } from "./engine/passiveScroll";
+import { hasContainerResized, noteUserScroll as noteEngineUserScroll, resetScrollResume } from "./engine/userScroll";
+import { noteVisibilityChange as noteEngineVisibilityChange } from "./engine/timingLogs";
+import {
+  relayout,
+  resolveTickOptions,
+  retickAtLastTime,
   retickFromPlaybackClock as retickEngineFromPlaybackClock,
   scheduleLyricPositionUpdate as scheduleEngineLyricPositionUpdate,
   tickView,
-} from "./engine";
+} from "./engine/tick";
 import type { LineData } from "./inject";
 import { parseThemeConfig, setThemeSettings } from "./themeSettings";
 import type { Lyric, LyricsRenderer, LyricsRendererHost, LyricsRendererOptions } from "./types";
@@ -212,7 +213,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
    */
   function measure(measureLines = true): void {
     forgetScrollElement();
-    relayout(engine, measureLines && areLinesMeasurable(getRenderedLines(engine)));
+    if (relayout(engine, measureLines && areLinesMeasurable(getRenderedLines(engine)))) retickAtLastTime(engine);
   }
 
   function stopObservingContainer(): void {
@@ -243,7 +244,7 @@ export function createLyricsRenderer(rendererOptions: LyricsRendererOptions): Ly
     const observer = new rendererWindow.ResizeObserver(entries => {
       const target = entries[entries.length - 1]?.target;
       if (!target) return;
-      if (noteContainerResize(engine, target.clientWidth, target.clientHeight)) measure();
+      if (hasContainerResized(engine, target.clientWidth, target.clientHeight)) measure();
     });
     observer.observe(container);
     containerResizeObserver = observer;

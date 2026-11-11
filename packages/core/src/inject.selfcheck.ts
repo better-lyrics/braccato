@@ -147,10 +147,15 @@ assert.equal(
   wrappedHighlight,
   "Given a timed word, When animation data is built, Then it retains its real highlight target"
 );
+assert.deepEqual(
+  lineData.parts[1].sweep?.flatMap(cell => cell.glows.map(({ glow }) => glow.textContent)),
+  [wrappedWord?.textContent, wrappedWord?.textContent],
+  "Given a wrapping word, When both runs are built, Then each glow copy matches the visible text"
+);
 assert.equal(
-  wrappedWord?.textContent,
-  wrappedHighlight?.textContent,
-  "Given a wrapping word, When both runs are built, Then the visible and highlighted text are identical"
+  lineData.parts[1].sweep?.[0].text.textContent,
+  `${wrappedWord?.textContent}`.repeat(3),
+  "Given a wrapping word, When both runs are built, Then the sweep's text holds the word and its two glow copies"
 );
 assert.deepEqual(
   lineData.parts.map(part => part.highlightElement.dataset.content),
@@ -769,6 +774,62 @@ for (const letterWaveSetting of ["true", "false"]) {
   assert.ok(
     sameTextTarget.querySelector(`.${TRANSLATED_LYRICS_CLASS}`),
     `Given letter wave ${letterWaveSetting}, When a translation differs from the line, Then it is shown`
+  );
+}
+
+{
+  let clock = 0;
+  const sung = (words: string, backgroundGroup?: number): LyricPart => ({
+    startTimeMs: (clock += 300),
+    durationMs: 300,
+    words,
+    ...(backgroundGroup === undefined ? {} : { isBackground: true, backgroundGroup }),
+  });
+  const backgroundRows = (parts: LyricPart[], splitBackgroundLine = true) => {
+    const rowDoc = new FakeDocument();
+    const target = rowDoc.createElement("div");
+    createLyricsLine(
+      asDocument(rowDoc),
+      parts,
+      newLineData(asElement<HTMLElement>(target), 0, 9000),
+      asElement<HTMLElement>(target),
+      { splitBackgroundLine }
+    );
+    return target.childNodes
+      .filter(row => row.classList.contains(BACKGROUND_LINE_CLASS))
+      .map(row =>
+        collectTree(row)
+          .filter(node => node.classList.contains(WORD_CLASS) && !node.classList.contains(WORD_HIGHLIGHT_CLASS))
+          .map(node => node.dataset.content)
+          .join(" ")
+      );
+  };
+
+  assert.deepEqual(
+    backgroundRows([
+      sung("Walk "),
+      sung("on"),
+      sung("(slow ", 0),
+      sung("down)", 0),
+      sung("(come)", 1),
+      sung("(back)", 2),
+    ]),
+    ["(slow down)", "(come)", "(back)"],
+    "Given a line with three background groups, When it is built, Then each group gets its own row in order"
+  );
+  assert.deepEqual(
+    backgroundRows([
+      sung("Walk"),
+      { ...sung("(slow)"), isBackground: true },
+      { ...sung("(come)"), isBackground: true },
+    ]),
+    ["(slow) (come)"],
+    "Given background parts with no group numbers, When the line is built, Then they share one row"
+  );
+  assert.deepEqual(
+    backgroundRows([sung("Walk"), sung("(slow ", 0), sung("down)", 0), sung("(come)", 1)], false),
+    [],
+    "Given a line built as one row, When it has background groups, Then no background row is added"
   );
 }
 

@@ -12,8 +12,7 @@
 // split by character count. A line that arrives with no timed parts at all is rebuilt the same way
 // into zero duration words, so line synced lyrics reach the DOM the sweep already knows.
 
-import { releasePart } from "./engine";
-import { alignImageGlowRun, wrapImageHighlight, type ImageHighlightLayers } from "./imageHighlights";
+import { releasePart } from "./engine/lineAnimationState";
 import { normalizeLanguage } from "./language";
 import {
   BACKGROUND_LINE_CLASS,
@@ -29,11 +28,17 @@ import {
   LONG_WORD_GROUP_CLASS,
   ROMANIZED_LYRICS_CLASS,
   RTL_CLASS,
+  SWEEP_CELL_CLASS,
+  SWEEP_GLOW_CLASS,
+  SWEEP_MASK_CLASS,
+  SWEEP_TEXT_CLASS,
   TRANSLATED_LYRICS_CLASS,
   WORD_CLASS,
   WORD_GROUP_CLASS,
   WORD_HIGHLIGHT_CLASS,
+  WORD_HIGHLIGHT_CONTEXT_CLASS,
   WORD_HIGHLIGHT_LETTERED_CLASS,
+  WORD_HIGHLIGHT_SWEEP_CLASS,
   WORD_STATE_ATTR,
   WORD_STATE_UPCOMING,
   type WordState,
@@ -113,9 +118,46 @@ export interface AnimationData {
   animations: Animation[];
 }
 
+/** A copy of the word under a text shadow that never changes, faded in and out by opacity. */
+export interface SweepGlow {
+  glow: HTMLElement;
+  letters?: HTMLElement[];
+}
+
+/**
+ * One box of a word's sweep, run by the compositor: the whole word when it is its own inline-block
+ * box, or one letter of a word that flows inline. Its mask holds a static soft edge and slides one way
+ * while the text inside it slides the other, so the glyphs hold still and only the edge crosses them.
+ * The glow is a pair of halos at two radii inside the same text, so the edge reveals them with it,
+ * crossfaded so the glow tightens as it fades. With nothing animating, the mask rests with the cell
+ * fully lit.
+ */
+export interface SweepCell {
+  mask: HTMLElement;
+  text: HTMLElement;
+  letters?: HTMLElement[];
+  glows: SweepGlow[];
+  /** Where the cell sits along the word, as fractions of the word's width; equal shares if unset. */
+  span?: { start: number; width: number };
+}
+
+/**
+ * The sweep of a word that flows inline without letters: a word in a bidi-sensitive row or a long
+ * group whose script joins or whose letters are not split. Such a word can break across lines and
+ * shape with its neighbours, so no box of its own can hold the sweep. The engine places a cell over
+ * each box the word breaks into, drawing the word from a copy of its line, once the line is laid out.
+ */
+export interface SweepContext {
+  host?: HTMLElement;
+  placedAt?: string;
+  unplaced?: boolean;
+}
+
 export interface PartData extends AnimationData {
   highlightElement: HTMLElement;
-  imageLayers?: ImageHighlightLayers;
+  /** The sweep's cells in reading order. */
+  sweep?: SweepCell[];
+  sweepContext?: SweepContext;
   letterElements?: HTMLElement[];
   highlightLetterElements?: HTMLElement[];
   // Only a word's first syllable holds its groups, so a word split into syllables wobbles once, whole.
@@ -163,6 +205,7 @@ type PartialRenderToken = {
 interface WordGroup {
   text: string;
   isBackground: boolean;
+  backgroundGroup?: number;
   tokens: RenderToken[];
 }
 
@@ -172,14 +215,16 @@ function newPartData(
   highlight: HTMLElement,
   wobbleElements: HTMLElement[],
   letterElements?: HTMLElement[],
-  highlightLetterElements?: HTMLElement[]
+  highlightLetterElements?: HTMLElement[],
+  sweep?: SweepCell[]
 ): PartData {
   return {
     time: part.startTimeMs / 1000,
     duration: part.durationMs / 1000,
     lyricElement: span,
     highlightElement: highlight,
-    imageLayers: wrapImageHighlight(highlight),
+    sweep,
+    sweepContext: highlight.classList.contains(WORD_HIGHLIGHT_CONTEXT_CLASS) ? {} : undefined,
     letterElements,
     highlightLetterElements,
     wobbleElements,
@@ -253,6 +298,7 @@ function splitPartIntoTokens(part: LyricPart): RenderToken[] {
       part: {
         words: chunk,
         isBackground: part.isBackground,
+        backgroundGroup: part.backgroundGroup,
         explicit: part.explicit,
       },
     });
@@ -283,7 +329,7 @@ function normalizeParts(parts: LyricPart[]): RenderToken[] {
   return parts.flatMap(splitPartIntoTokens);
 }
 
-function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
+function groupTokensByWord(tokens: RenderToken[], splitBackgroundGroups: boolean): (WordGroup | RenderToken)[] {
   const groups: (WordGroup | RenderToken)[] = [];
   let current: WordGroup | null = null;
 
@@ -302,9 +348,10 @@ function groupTokensByWord(tokens: RenderToken[]): (WordGroup | RenderToken)[] {
     }
 
     const isBackground = token.part?.isBackground === true;
-    if (!current || current.isBackground !== isBackground) {
+    const backgroundGroup = splitBackgroundGroups ? token.part?.backgroundGroup : undefined;
+    if (!current || current.isBackground !== isBackground || current.backgroundGroup !== backgroundGroup) {
       flush();
-      current = { text: "", isBackground, tokens: [] };
+      current = { text: "", isBackground, backgroundGroup, tokens: [] };
     }
 
     current.text += token.text;
@@ -332,9 +379,6 @@ function appendLongWordBreaks(doc: Document, span: HTMLElement, clusters: string
 
 function appendLetters(doc: Document, wordElement: HTMLElement, chars: string[]): HTMLElement[] {
   wordElement.style.setProperty("--letters", String(chars.length));
-  // Width of the reveal mask's soft edge as a percentage of its (n+2)-letter-wide box, so the fade
-  // spans the same 0.1*letters of a letter that the old gradient did. See the mask rule in lyrics.css.
-  wordElement.style.setProperty("--mask-fade", `${(10 * chars.length) / (chars.length + 2)}%`);
   return chars.map(char => {
     const letter = doc.createElement("span");
     letter.classList.add(LETTER_CLASS);
@@ -344,21 +388,74 @@ function appendLetters(doc: Document, wordElement: HTMLElement, chars: string[])
   });
 }
 
+function fillWordText(
+  doc: Document,
+  host: HTMLElement,
+  clusters: string[],
+  wrapThreshold: number,
+  perLetter: boolean,
+  preserveJoining: boolean
+): HTMLElement[] | undefined {
+  if (perLetter) return appendLetters(doc, host, clusters);
+  if (preserveJoining) host.textContent = clusters.join("");
+  else appendLongWordBreaks(doc, host, clusters, wrapThreshold);
+  return undefined;
+}
+
+const SWEEP_GLOW_RADII = ["wide", "tight"] as const;
+
+/** Puts a copy of the cell's text into an element, returning its letters if the word is split. */
+export type FillSweepText = (into: HTMLElement) => HTMLElement[] | undefined;
+
+export function createSweepCell(doc: Document, host: HTMLElement, fill: FillSweepText): SweepCell {
+  const mask = doc.createElement("span");
+  mask.classList.add(SWEEP_MASK_CLASS);
+  const text = doc.createElement("span");
+  text.classList.add(SWEEP_TEXT_CLASS);
+  mask.appendChild(text);
+  const letters = fill(text);
+  const glows = SWEEP_GLOW_RADII.map(radius => {
+    const glow = doc.createElement("span");
+    glow.classList.add(SWEEP_GLOW_CLASS, `${SWEEP_GLOW_CLASS}--${radius}`);
+    const glowLetters = fill(glow);
+    text.appendChild(glow);
+    return { glow, letters: glowLetters };
+  });
+  host.classList.add(SWEEP_CELL_CLASS);
+  host.appendChild(mask);
+  return { mask, text, letters, glows };
+}
+
+/** Makes each letter of a word that flows inline its own sweep cell, holding the letter's text. */
+function createLetterSweepCells(doc: Document, letters: HTMLElement[]): SweepCell[] {
+  return letters.map(letter => {
+    const text = letter.textContent ?? "";
+    letter.textContent = "";
+    return createSweepCell(doc, letter, into => {
+      into.appendChild(doc.createTextNode(text));
+      return undefined;
+    });
+  });
+}
+
 function createTimedWordSpan(
   doc: Document,
   part: LyricPart,
   wrapThreshold: number,
   perLetter: boolean,
-  preserveJoining: boolean
+  preserveJoining: boolean,
+  atomic: boolean
 ): {
   span: HTMLSpanElement;
   highlight: HTMLSpanElement;
   letters?: HTMLElement[];
   highlightLetters?: HTMLElement[];
+  sweep?: SweepCell[];
 } {
   const span = doc.createElement("span");
   const highlight = doc.createElement("span");
   highlight.classList.add(WORD_HIGHLIGHT_CLASS);
+  let sweep: SweepCell[] | undefined;
 
   let letters: HTMLElement[] | undefined;
   let highlightLetters: HTMLElement[] | undefined;
@@ -379,31 +476,36 @@ function createTimedWordSpan(
 
     if (perLetter) {
       wordElement.classList.add("blyrics-word--lettered");
-      const collected = appendLetters(doc, wordElement, clusters);
-      if (wordElement === span) {
-        letters = collected;
-      } else {
-        highlightLetters = collected;
-        wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
-      }
-    } else if (preserveJoining) {
-      wordElement.textContent = part.words;
-    } else {
-      appendLongWordBreaks(doc, wordElement, clusters, wrapThreshold);
+      if (wordElement === highlight) wordElement.classList.add(WORD_HIGHLIGHT_LETTERED_CLASS);
     }
+    if (wordElement === highlight && atomic) {
+      const cell = createSweepCell(doc, highlight, into =>
+        fillWordText(doc, into, clusters, wrapThreshold, perLetter, preserveJoining)
+      );
+      sweep = [cell];
+      highlightLetters = cell.letters;
+    } else {
+      const collected = fillWordText(doc, wordElement, clusters, wrapThreshold, perLetter, preserveJoining);
+      if (wordElement === span) letters = collected;
+      else highlightLetters = collected;
+      if (wordElement === highlight && collected) sweep = createLetterSweepCells(doc, collected);
+    }
+    if (wordElement === highlight && sweep) highlight.classList.add(WORD_HIGHLIGHT_SWEEP_CLASS);
+    else if (wordElement === highlight) highlight.classList.add(WORD_HIGHLIGHT_CONTEXT_CLASS);
     wordElement.dataset.time = String(part.startTimeMs / 1000);
     wordElement.dataset.duration = String(part.durationMs / 1000);
     wordElement.dataset.content = part.words;
     wordElement.setAttribute(WORD_STATE_ATTR, WORD_STATE_UPCOMING);
     wordElement.style.setProperty("--blyrics-duration", part.durationMs + "ms");
   }
-  return { span, highlight, letters, highlightLetters };
+  return { span, highlight, letters, highlightLetters, sweep };
 }
 
 function createWordGroup(
   doc: Document,
   group: WordGroup,
-  lineData: LineData
+  lineData: LineData,
+  wordsFlowInline: boolean
 ): { lyricGroup: HTMLElement; highlightGroup: HTMLElement } {
   const wrapThreshold = Math.max(1, longWordWrapThreshold.getNumberValue());
   // Atomic grapheme spans disrupt the browser's bidi ordering inside a mixed word.
@@ -414,6 +516,9 @@ function createWordGroup(
   const isLongGroup = group.text.length > wrapThreshold * 2 && letterClusters(group.text).length > wrapThreshold * 2;
   const lyricGroup = doc.createElement("span");
   const highlightGroup = doc.createElement("span");
+  // A word that is its own inline-block box can hold the sweep's block layers. Long groups and
+  // bidi-sensitive rows lay their words out inline, where a word can break across lines.
+  const atomic = !wordsFlowInline && !isLongGroup;
 
   for (const groupElement of [lyricGroup, highlightGroup]) {
     groupElement.classList.add(WORD_GROUP_CLASS);
@@ -432,15 +537,16 @@ function createWordGroup(
   for (const token of group.tokens) {
     if (token.kind === "space") continue;
 
-    const { span, highlight, letters, highlightLetters } = createTimedWordSpan(
+    const { span, highlight, letters, highlightLetters, sweep } = createTimedWordSpan(
       doc,
       token.part,
       wrapThreshold,
       perLetter,
-      preserveJoining
+      preserveJoining,
+      atomic
     );
     const wobbleElements = lyricGroup.childNodes.length === 0 ? [lyricGroup, highlightGroup] : [];
-    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters));
+    lineData.parts.push(newPartData(token.part, span, highlight, wobbleElements, letters, highlightLetters, sweep));
     lyricGroup.appendChild(span);
     highlightGroup.appendChild(highlight);
   }
@@ -493,25 +599,41 @@ export function createLyricsLine(
         .map(part => part.words)
         .join("")
     : lineText;
-  const backgroundText = parts
-    .filter(part => part.isBackground === true)
-    .map(part => part.words)
-    .join("");
+  const backgroundTextOf = (group: number) =>
+    parts
+      .filter(part => part.isBackground === true && (part.backgroundGroup ?? 0) === group)
+      .map(part => part.words)
+      .join("");
   const main = createContentLine(doc, LINE_MAIN_CLASS, mainText);
   const mainRun = createBidiRun(doc, mainText);
   const mainHighlightRun = createHighlightRun(doc, mainText);
-  const groupedTokens = groupTokensByWord(normalizeParts(parts));
-  const backgroundLine = createContentLine(doc, BACKGROUND_LINE_CLASS, backgroundText);
-  const backgroundRun = createBidiRun(doc, backgroundText);
-  const backgroundHighlightRun = createHighlightRun(doc, backgroundText);
-  let hasBackground = false;
+  const groupedTokens = groupTokensByWord(normalizeParts(parts), options.splitBackgroundLine);
+  const backgroundRows = new Map<
+    number,
+    { line: HTMLElement; run: HTMLElement; highlightRun: HTMLElement; used: boolean }
+  >();
+  const backgroundRowOf = (group: number) => {
+    let row = backgroundRows.get(group);
+    if (!row) {
+      const text = backgroundTextOf(group);
+      row = {
+        line: createContentLine(doc, BACKGROUND_LINE_CLASS, text),
+        run: createBidiRun(doc, text),
+        highlightRun: createHighlightRun(doc, text),
+        used: false,
+      };
+      row.line.appendChild(row.highlightRun);
+      row.line.appendChild(row.run);
+      backgroundRows.set(group, row);
+    }
+    return row;
+  };
+  backgroundRowOf(0);
   let pendingForegroundSpace = "";
   let pendingBackgroundSpace = "";
 
   main.appendChild(mainHighlightRun);
   main.appendChild(mainRun);
-  backgroundLine.appendChild(backgroundHighlightRun);
-  backgroundLine.appendChild(backgroundRun);
 
   for (const item of groupedTokens) {
     if ("kind" in item) {
@@ -520,18 +642,25 @@ export function createLyricsLine(
       pendingBackgroundSpace += item.text;
     } else {
       const shouldUseBackgroundLine = options.splitBackgroundLine && item.isBackground;
-      const target = shouldUseBackgroundLine ? backgroundRun : mainRun;
-      const highlightRun = shouldUseBackgroundLine ? backgroundHighlightRun : mainHighlightRun;
+      const backgroundRow = shouldUseBackgroundLine ? backgroundRowOf(item.backgroundGroup ?? 0) : null;
+      const target = backgroundRow ? backgroundRow.run : mainRun;
+      const highlightRun = backgroundRow ? backgroundRow.highlightRun : mainHighlightRun;
       const pendingSpace = shouldUseBackgroundLine ? pendingBackgroundSpace : pendingForegroundSpace;
       if (target.childNodes.length > 0 && pendingSpace.length > 0) {
         target.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
         highlightRun.appendChild(createSpaceNode(doc, pendingSpace, shouldUseBackgroundLine));
       }
-      const { lyricGroup, highlightGroup } = createWordGroup(doc, item, line);
+      const contentLine = backgroundRow ? backgroundRow.line : main;
+      const { lyricGroup, highlightGroup } = createWordGroup(
+        doc,
+        item,
+        line,
+        contentLine.classList.contains(BIDI_SENSITIVE_CLASS)
+      );
       target.appendChild(lyricGroup);
       highlightRun.appendChild(highlightGroup);
-      if (shouldUseBackgroundLine) {
-        hasBackground = true;
+      if (backgroundRow) {
+        backgroundRow.used = true;
         pendingBackgroundSpace = "";
       } else {
         pendingForegroundSpace = "";
@@ -539,12 +668,12 @@ export function createLyricsLine(
     }
   }
 
-  alignImageGlowRun(mainHighlightRun, line.parts);
-  if (hasBackground) alignImageGlowRun(backgroundHighlightRun, line.parts);
+  const usedBackgroundRows = [...backgroundRows]
+    .filter(([, row]) => row.used)
+    .sort(([a], [b]) => a - b)
+    .map(([, row]) => row);
   lyricElement.appendChild(main);
-  if (hasBackground) {
-    lyricElement.appendChild(backgroundLine);
-  }
+  for (const row of usedBackgroundRows) lyricElement.appendChild(row.line);
   return main;
 }
 

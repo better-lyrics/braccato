@@ -99,7 +99,9 @@ function startedAnimations(lines: readonly LineData[]): Animation[] {
 }
 
 function slides(element: HTMLElement): unknown[] {
-  return asFakeNode(element).animations.filter(animation => animation.options?.composite === "add");
+  return asFakeNode(element).animations.filter(animation =>
+    (animation.keyframes as Keyframe[]).some(keyframe => "translate" in keyframe)
+  );
 }
 
 function playingView(): Fixture {

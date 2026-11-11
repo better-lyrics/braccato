@@ -1,7 +1,7 @@
 // The renderer's own contract composes the rest of the module's, so this file reaches back into it.
 // Every one of those imports is type only, so nothing here is part of any bundle's dependency graph.
 import type { Lyric, LyricPart, LyricSyncType } from "@braccato/types";
-import type { AnimationTickStatus } from "./engine";
+import type { AnimationTickStatus } from "./engine/tick";
 import type { LineData } from "./inject";
 import type { StageBox } from "./stage";
 import type { SetLyricsOptions } from "./view";
@@ -57,6 +57,14 @@ export interface TickOptions {
    * new time, as an editor scrubbing a paused song needs. Defaults to false.
    */
   followPausedSeeks?: boolean;
+
+  /**
+   * Whether every user scroll the host reports can pause autoscroll of synced lyrics. By default
+   * the view always holds one scroll back, for the one a refocused window fires, and a host that
+   * ticks every frame spends that reserve on each scroll the reader makes. Unsynced lyrics drifting
+   * on their own are not covered. Defaults to false.
+   */
+  countEveryUserScroll?: boolean;
 }
 
 /**

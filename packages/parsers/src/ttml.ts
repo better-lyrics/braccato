@@ -110,6 +110,12 @@ function parseLyricPart(
 	let text = "";
 	let parts: LyricPart[] = [];
 	let isWordSynced = false;
+	let backgroundGroups = 0;
+	const isTimedText = (span: { ":@"?: { "@_begin"?: string }; span?: NestedSpan[] }) =>
+		Boolean(span[":@"]?.["@_begin"]) && collectSpanText(span.span) !== "";
+	const lineHasTimedSpans = paragraph.some((element) =>
+		element[":@"]?.["@_role"] === "x-bg" ? (element.span ?? []).some(isTimedText) : isTimedText(element),
+	);
 
 	for (const element of paragraph) {
 		let isBackground = false;
@@ -119,7 +125,13 @@ function parseLyricPart(
 			// traverse one span in. This is a bg lyric
 			isBackground = true;
 			localP = element.span ?? [];
+			const timedInside = localP.some((child) => child[":@"]?.["@_begin"]);
+			// Timing on the x-bg span itself means the same as timing on one span inside it, in a line that is timed by word.
+			const isTimedItself = element[":@"]?.["@_begin"] && element[":@"]?.["@_end"];
+			if (lineHasTimedSpans && isTimedItself && !timedInside) localP = [element];
 		}
+		const group = isBackground ? { backgroundGroup: backgroundGroups } : {};
+		const partsBefore = parts.length;
 
 		for (const subPart of localP) {
 			if (subPart["#text"]) {
@@ -131,6 +143,7 @@ function parseLyricPart(
 					durationMs: 0,
 					words: subPart["#text"],
 					isBackground,
+					...group,
 				});
 			} else if (subPart.span) {
 				const spanText = collectSpanText(subPart.span);
@@ -144,6 +157,7 @@ function parseLyricPart(
 					startTimeMs,
 					durationMs: endTimeMs - startTimeMs,
 					isBackground,
+					...group,
 					words: spanText,
 					explicit,
 				});
@@ -152,6 +166,7 @@ function parseLyricPart(
 				isWordSynced = true;
 			}
 		}
+		if (isBackground && parts.length > partsBefore) backgroundGroups++;
 	}
 
 	if (!isWordSynced) {
@@ -291,8 +306,17 @@ function readSongwriters(metadataElements: MetadataElement[]): string[] {
 	return uniqueNames(names);
 }
 
+// A caller reading lines and credits from one document parses its XML once: the credits of the last parse are kept.
+let lastParsedCredits: { xml: string; songwriters: string[] } | null = null;
+
+function songwritersOf(xml: string): string[] {
+	if (lastParsedCredits?.xml === xml) return [...lastParsedCredits.songwriters];
+	return readSongwriters(readMetadataElements(readTtmlRoot(xml)));
+}
+
 export function parseTTMLContent(xml: string, options: ParseTTMLOptions = {}): ParsedTTML {
 	const ttContainer = readTtmlRoot(xml);
+	lastParsedCredits = { xml, songwriters: readSongwriters(readMetadataElements(ttContainer)) };
 	if (!ttContainer) return { lyrics: [], isWordSynced: false };
 
 	const tt = ttContainer.tt;
@@ -436,6 +460,6 @@ export const TTMLParser: LyricParser = {
 		return parseTTMLContent(input).lyrics;
 	},
 	metadata(input: string): LyricMetadata {
-		return { songwriters: readSongwriters(readMetadataElements(readTtmlRoot(input))) };
+		return { songwriters: songwritersOf(input) };
 	},
 };

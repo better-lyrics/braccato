@@ -1,30 +1,28 @@
 import { strict as assert } from "node:assert";
 import { CREDITS_CLASS, CREDITS_NAMES_CLASS, CREDITS_TEXT_CLASS, LINE_CLASS, USER_SCROLLING_CLASS } from "./constants";
+import { type AnimationEngineInstance, createAnimationEngineInstance } from "./engine/instance";
 import {
-  type AnimationEngineInstance,
   clearLyrics,
   clearOnScreenLyrics,
-  computeActiveLinesScrollTop,
-  computeLetterSwipeWindows,
-  computeScrollPadding,
-  createAnimationEngineInstance,
-  findScrollAnchor,
-  forEveryLiveView,
   getRenderedLines,
   getRenderedSyncType,
   hasRenderedLines,
-  noteUserScroll,
-  parseColorAlpha,
-  planLetterMaskSweep,
-  planLetterWave,
-  relayout,
+} from "./engine/renderedLines";
+import {
+  computeActiveLinesScrollTop,
+  computeScrollPadding,
+  findScrollAnchor,
   resolveScrollInsets,
-  resolveTickOptions,
-  scheduleLyricPositionUpdate,
-  setupLineCullObserver,
-  smoothedPlaybackTime,
-  tickView,
-} from "./engine";
+} from "./engine/scrollViewport";
+import { linearForwardSwipeWindows, planLetterWave } from "./engine/letterPlans";
+import { forEveryLiveView } from "./engine/liveViews";
+import { noteUserScroll } from "./engine/userScroll";
+import { parseColorAlpha } from "./engine/glow";
+import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
+import { measureContentOffset, setupLineCulling, updateLineCulling } from "./engine/culling";
+import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
+import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
+import { smoothedPlaybackTime } from "./engine/clock";
 import {
   asDocument,
   asElement,
@@ -32,7 +30,7 @@ import {
   asFakeNode,
   collectTree,
   FakeDocument,
-  type FakeNode,
+  FakeNode,
 } from "./selfcheck/fakeDom";
 import {
   asWindow,
@@ -103,8 +101,25 @@ class FakeScrollElement {
     this.currentScrollTop = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight));
   }
 
-  getBoundingClientRect(): { height: number } {
-    return { height: this.viewportHeight };
+  readonly scrollListeners = new Set<() => void>();
+  readonly clientTop = 0;
+  isConnected = false;
+
+  getBoundingClientRect(): { y: number; height: number } {
+    return { y: 0, height: this.viewportHeight };
+  }
+
+  addEventListener(type: string, listener: () => void): void {
+    if (type === "scroll") this.scrollListeners.add(listener);
+  }
+
+  removeEventListener(type: string, listener: () => void): void {
+    if (type === "scroll") this.scrollListeners.delete(listener);
+  }
+
+  scrollBy(deltaPx: number): void {
+    this.scrollTop += deltaPx;
+    for (const listener of this.scrollListeners) listener();
   }
 }
 
@@ -588,7 +603,7 @@ const TAIL_SPACE_DEMANDED = VIEWPORT_HEIGHT_FULLSCREEN * (1 - TARGET_SCROLL_RATI
 const renderedMeasurements = {
   viewportHeight: VIEWPORT_HEIGHT_FULLSCREEN,
   targetScrollRatio: TARGET_SCROLL_RATIO,
-  contentHeight: 5939,
+  contentHeightWithoutBottomPadding: 5939,
   firstLineHeight: 100,
   lastLineCentre: 5543,
   lastLineHeight: 120,
@@ -598,7 +613,8 @@ const renderedMeasurements = {
 const rendered = computeScrollPadding(renderedMeasurements);
 
 assert.ok(
-  rendered.bottom + (renderedMeasurements.contentHeight - renderedMeasurements.lastLineCentre) >= TAIL_SPACE_DEMANDED,
+  rendered.bottom + (renderedMeasurements.contentHeightWithoutBottomPadding - renderedMeasurements.lastLineCentre) >=
+    TAIL_SPACE_DEMANDED,
   "Given a rendering view, When its padding is sized, Then the last line can reach the target scroll position"
 );
 
@@ -606,7 +622,7 @@ assert.ok(
 const unrendered = computeScrollPadding({
   viewportHeight: VIEWPORT_HEIGHT_FULLSCREEN,
   targetScrollRatio: TARGET_SCROLL_RATIO,
-  contentHeight: 0,
+  contentHeightWithoutBottomPadding: 0,
   firstLineHeight: 0,
   lastLineCentre: 0,
   lastLineHeight: 0,
@@ -622,7 +638,7 @@ assert.equal(
   computeScrollPadding({
     viewportHeight: VIEWPORT_HEIGHT_FULLSCREEN,
     targetScrollRatio: TARGET_SCROLL_RATIO,
-    contentHeight: 99999,
+    contentHeightWithoutBottomPadding: 99999,
     firstLineHeight: 0,
     lastLineCentre: null,
     lastLineHeight: 0,
@@ -892,6 +908,46 @@ assert.ok(
 );
 leadInEngine.destroy();
 
+const NEGATIVE_WORD_LYRICS: Lyric[] = [
+  {
+    startTimeMs: 1000,
+    durationMs: 2000,
+    words: "Bent word",
+    parts: [
+      { startTimeMs: 1000, durationMs: -10, words: "Bent " },
+      { startTimeMs: 1100, durationMs: 900, words: "word" },
+    ],
+  },
+];
+setThemeSettings(parseThemeConfig("/* blyrics-letter-wave = false; */"));
+const negativeWordDocument = new FakeDocument();
+const negativeWordEngine = createAnimationEngineInstance(
+  asDocument(negativeWordDocument),
+  asWindow(new FakeWindow(PANEL_STYLE)),
+  new FakeHost(undefined, negativeWordDocument)
+);
+setLyrics(negativeWordEngine, asElement<HTMLElement>(negativeWordDocument.createElement("div")), NEGATIVE_WORD_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+placeLines(negativeWordEngine);
+const fakeAnimate = FakeNode.prototype.animate;
+FakeNode.prototype.animate = function (this: FakeNode, keyframes?: unknown, options?: KeyframeAnimationOptions) {
+  if (typeof options?.duration === "number" && options.duration < 0) throw new TypeError("negative duration");
+  return fakeAnimate.call(this, keyframes, options);
+};
+try {
+  tickView(negativeWordEngine, 1.5, resolveTickOptions(newTickOptions()));
+} finally {
+  FakeNode.prototype.animate = fakeAnimate;
+}
+assert.ok(
+  getRenderedLines(negativeWordEngine)[0].parts[1].animations.length > 0,
+  "regression: Given a provider word with a negative duration, When its line sets up, Then the word after it still animates"
+);
+negativeWordEngine.destroy();
+setThemeSettings(new Map());
+
 // A loop shorter than the jump threshold steps back by less than half a second on every pass. With
 // no player snapshot the reading is the media clock itself, which only runs backwards on a seek.
 function armLeadInAt(tickOptions: () => TickOptions) {
@@ -1063,6 +1119,58 @@ assert.equal(
 
 placeholderEngine.destroy();
 
+// -- A reader can take over unsynced lyrics while they drift -----------------------------------
+
+const driftDocument = new FakeDocument();
+const driftWindow = new FakeWindow(PANEL_STYLE);
+const driftHost = new FakeHost();
+const driftEngine = createAnimationEngineInstance(asDocument(driftDocument), asWindow(driftWindow), driftHost);
+
+setLyrics(driftEngine, asElement<HTMLElement>(driftDocument.createElement("div")), UNSYNCED_LYRICS, {
+  loaderVisible: false,
+  noLyrics: false,
+});
+tickView(driftEngine, PLAYBACK_TIME_S, resolveTickOptions(passiveTickOptions));
+
+const runDriftFrame = (): void => {
+  driftEngine.passiveScrollAccumulatedTime += 0.016;
+  const frame = driftWindow.pendingFrames.get(driftEngine.passiveRAFId!);
+  assert.ok(frame, "The passive scroll loop has a frame waiting");
+  frame(0);
+};
+
+driftEngine.passiveScrollAccumulatedTime = 5;
+runDriftFrame();
+assert.ok(
+  driftHost.scrollElement.scrollTop > 0,
+  "Given unsynced lyrics mid song, When a frame runs, Then the view drifts down"
+);
+
+noteUserScroll(driftEngine, true);
+assert.ok(
+  driftEngine.scrollResumeTime <= Date.now(),
+  "Given unsynced lyrics drifting, When the scroll event for the drift itself arrives, Then autoscroll keeps going"
+);
+
+// A browser folds the drift's scroll and the reader's into one event when they land in the same frame.
+runDriftFrame();
+driftHost.scrollElement.scrollTop = driftHost.scrollElement.scrollTop + 200;
+noteUserScroll(driftEngine, true);
+assert.ok(
+  driftEngine.scrollResumeTime > Date.now(),
+  "regression: Given unsynced lyrics drifting while playing, When the reader scrolls in the same frame as a drift, Then autoscroll pauses"
+);
+
+const readerScrollTop = driftHost.scrollElement.scrollTop;
+runDriftFrame();
+assert.equal(
+  driftHost.scrollElement.scrollTop,
+  readerScrollTop,
+  "Given the reader paused the drift, When the next frame runs, Then the view stays where they left it"
+);
+
+driftEngine.destroy();
+
 // -- The end of the song is somewhere the scroll can actually reach -----------------------------
 
 const OUTRO_LINE_HEIGHT_PX = 60;
@@ -1185,105 +1293,143 @@ assert.equal(
 
 // -- Off-screen line culling --------------------------------------------
 
-// A window offering an IntersectionObserver skips off-screen lines; one without leaves all rendered.
+// Lines more than a viewport outside the scroll are skipped by their measured positions, so no observer runs per frame.
 
 const cullDocument = new FakeDocument();
 const cullWindow = new FakeWindow(PANEL_STYLE, { intersectionObserver: true });
 const cullHost = new FakeHost();
+cullHost.scrollElement.isConnected = true;
 const cullMount = cullDocument.createElement("div");
 const cullEngine = createAnimationEngineInstance(asDocument(cullDocument), asWindow(cullWindow), cullHost);
+const CULL_LYRICS: Lyric[] = Array.from({ length: 8 }, (_, index) => ({
+  startTimeMs: 200000 + index * 3000,
+  durationMs: 3000,
+  words: `Line ${index + 1}`,
+}));
 
-setLyrics(cullEngine, asElement<HTMLElement>(cullMount), LINE_SYNCED_LYRICS, { loaderVisible: false, noLyrics: false });
+setLyrics(cullEngine, asElement<HTMLElement>(cullMount), CULL_LYRICS, { loaderVisible: false, noLyrics: false });
 
 const cullLines = renderedLineElements(cullMount);
-const cullObserver = cullWindow.intersectionObservers.at(-1);
-assert(cullObserver, "Given a window offering an IntersectionObserver, When lyrics are set, Then one is created");
+const isSkipped = (index: number) => cullLines[index].style.getPropertyValue("content-visibility") === "auto";
 assert.equal(
-  cullObserver.targets.length,
-  cullLines.length,
-  "Given lyrics are set, When the culling observer arms, Then it observes every line"
+  cullWindow.resizeObservers.length,
+  0,
+  "Given lyrics are set, When culling waits for its start-up rendering, Then it creates no resize observer, which a relayout running inside a resize callback would leave undelivered"
+);
+assert.deepEqual(
+  cullWindow.intersectionObservers.map(observer => observer.targets.length),
+  [1],
+  "Given lyrics are set, When culling waits for its start-up rendering, Then one observer watches one element and no line is observed"
 );
 assert.equal(
   cullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
   "none",
-  "Given culling arms, When the observer is set up, Then scroll anchoring is disabled on the container so a cull height-shift cannot fire a scroll the engine misreads as the user's"
+  "Given culling arms, When lyrics are set, Then scroll anchoring is disabled on the container so a cull height-shift cannot fire a scroll the engine misreads as the user's"
 );
-for (const line of cullLines) {
+for (const [index, line] of cullLines.entries()) {
   assert.notEqual(
     line.style.getPropertyValue("contain-intrinsic-block-size"),
     "",
-    "Given lyrics are set, When the observer arms, Then each line carries a skipped-size placeholder"
+    "Given lyrics are set, When culling arms, Then each line carries a skipped-size placeholder"
   );
-  assert.equal(
-    line.style.getPropertyValue("content-visibility"),
-    "",
-    "Given lyrics are set, When no line has been reported off-screen, Then none is skipped"
-  );
+  assert.equal(isSkipped(index), false, "Given lines not yet measured, When culling arms, Then none is skipped");
 }
 
-cullObserver.report(cullLines[0], false);
+cullEngine.lines.forEach((line, index) => {
+  line.position = index * VIEWPORT_HEIGHT_PX;
+  line.height = VIEWPORT_HEIGHT_PX;
+});
+const framesBeforeCulling = cullWindow.requestedFrames.length;
+// A rendering update lays the container out and delivers the observation waiting on it.
+const runCullFrames = () => {
+  for (const observer of cullWindow.intersectionObservers.filter(candidate => !candidate.disconnected)) {
+    for (const target of observer.targets) observer.report(target, true);
+  }
+};
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
 assert.equal(
-  cullLines[0].style.getPropertyValue("content-visibility"),
-  "auto",
-  "Given a line, When it is reported off-screen, Then it is skipped"
+  cullLines.some((_, index) => isSkipped(index)),
+  false,
+  "Given culling armed one frame ago, When the scroll is read, Then no line is skipped before a frame has rendered every line at its own height"
+);
+runCullFrames();
+assert.deepEqual(
+  cullLines.map((_, index) => isSkipped(index)),
+  [false, false, false, true, true, true, true, true],
+  "Given a paused view that never ticks, When two frames have rendered every line, Then the viewport and one viewport past it render and the rest are skipped"
+);
+assert.equal(
+  cullWindow.requestedFrames.length,
+  framesBeforeCulling,
+  "Given a paused view that never ticks, When culling starts, Then it asked for no animation frame"
 );
 
-cullObserver.report(cullLines[0], true);
-assert.equal(
-  cullLines[0].style.getPropertyValue("content-visibility"),
-  "",
-  "Given a skipped line, When it is reported back on-screen, Then it renders again"
+cullHost.scrollElement.scrollBy(3 * VIEWPORT_HEIGHT_PX);
+assert.deepEqual(
+  cullLines.map((_, index) => isSkipped(index)),
+  [true, false, false, false, false, false, true, true],
+  "Given a reader scrolls with no tick, When the scroll event arrives, Then the lines around the new scroll render and those left behind are skipped"
 );
 
-cullObserver.report(cullLines[1], true);
-assert.equal(
-  cullLines[1].style.getPropertyValue("content-visibility"),
-  "",
-  "Given an on-screen line, When it is reported, Then it is never skipped"
+updateLineCulling(cullEngine, 0, 6 * VIEWPORT_HEIGHT_PX, VIEWPORT_HEIGHT_PX);
+assert.deepEqual(
+  cullLines.map((_, index) => isSkipped(index)),
+  [false, false, false, false, false, false, false, false],
+  "Given a line scroll from the top to six viewports down, When it is planned, Then every line between the two positions renders"
 );
 
-cullObserver.report(cullLines[2], false);
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+setupLineCulling(cullEngine);
+updateLineCulling(cullEngine, 0, 0, VIEWPORT_HEIGHT_PX);
+runCullFrames();
+assert.equal(
+  cullLines.some((_, index) => isSkipped(index)),
+  false,
+  "Given lines measured again, When one frame has passed, Then none is skipped yet, so a line changed by the relayout renders once first"
+);
+runCullFrames();
+assert.equal(isSkipped(7), true, "Given lines measured again, When two frames have passed, Then skipping resumes");
+
+setupLineCulling(cullEngine);
 clearLyrics(cullEngine);
 assert.equal(
-  cullObserver.disconnected,
+  cullWindow.intersectionObservers.every(observer => observer.disconnected),
   true,
-  "Given a song with a culling observer, When it is cleared, Then the observer is disconnected"
+  "Given culling waiting for its start-up rendering, When the song is cleared, Then nothing is left observing"
 );
 assert.equal(
-  cullLines[2].style.getPropertyValue("content-visibility"),
-  "",
-  "Given a skipped line, When the song is cleared, Then it is un-skipped"
-);
-
-// A window without an IntersectionObserver leaves every line rendered rather than failing.
-const noCullDocument = new FakeDocument();
-const noCullWindow = new FakeWindow(PANEL_STYLE);
-const noCullHost = new FakeHost();
-const noCullEngine = createAnimationEngineInstance(asDocument(noCullDocument), asWindow(noCullWindow), noCullHost);
-const noCullMount = noCullDocument.createElement("div");
-setLyrics(noCullEngine, asElement<HTMLElement>(noCullMount), LINE_SYNCED_LYRICS, {
-  loaderVisible: false,
-  noLyrics: false,
-});
-assert.equal(
-  noCullWindow.intersectionObservers.length,
+  cullHost.scrollElement.scrollListeners.size,
   0,
-  "Given a window with no IntersectionObserver, When lyrics are set, Then culling arms nothing and the lines render"
+  "Given a song with culling armed, When it is cleared, Then culling stops following the scroller"
 );
+assert.equal(isSkipped(7), false, "Given a skipped line, When the song is cleared, Then it is un-skipped");
+setupLineCulling(cullEngine);
+clearLyrics(cullEngine);
+
+const pageScrollPx = 5000;
+const documentScroller = {
+  clientTop: 0,
+  scrollTop: pageScrollPx,
+  getBoundingClientRect: () => ({ y: -pageScrollPx }),
+  ownerDocument: { scrollingElement: null as unknown },
+};
+documentScroller.ownerDocument.scrollingElement = documentScroller;
 assert.equal(
-  noCullHost.scrollElement.style.getPropertyValue("overflow-anchor"),
-  "",
-  "Given no IntersectionObserver, When culling cannot arm, Then anchoring is left untouched because no cull height-shift occurs"
+  measureContentOffset(
+    documentScroller as unknown as HTMLElement,
+    { getBoundingClientRect: () => ({ y: 300 - pageScrollPx }) } as unknown as HTMLElement
+  ),
+  300,
+  "Given the page itself scrolls, When the lyrics start 300px down the page, Then their offset ignores how far the page was scrolled"
 );
-setupLineCullObserver(noCullEngine); // safe to call directly with no observer support
-clearLyrics(noCullEngine);
 
 // Per-letter swipe windows: each letter owns the slice of the sweep where its own reveal happens,
 // holding hidden before and shown after, so only the letters under the moving edge keep animating.
 const SWIPE_RAMP = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
 const SWIPE_DURATION_MS = 1000;
 const SWIPE_LETTERS = 5;
-const swipeWindows = computeLetterSwipeWindows(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS);
+const swipeWindows = linearForwardSwipeWindows(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS);
 assert.ok(swipeWindows, "Given a linear forward ramp, When windows are computed, Then it returns them");
 assert.equal(swipeWindows.length, SWIPE_LETTERS, "Given N letters, Then there is one window each");
 const SWIPE_EPS = 1e-6;
@@ -1313,58 +1459,19 @@ swipeWindows.forEach((window, index) => {
   }
 });
 assert.equal(
-  computeLetterSwipeWindows({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  linearForwardSwipeWindows({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
   null,
   "Given a non-linear ramp, When windows are computed, Then it defers to the single-property sweep"
 );
 assert.equal(
-  computeLetterSwipeWindows({ ...SWIPE_RAMP, startTo: "-0.4" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
+  linearForwardSwipeWindows({ ...SWIPE_RAMP, startTo: "-0.4" }, SWIPE_LETTERS, SWIPE_DURATION_MS),
   null,
   "Given a ramp that does not move forward, Then it defers to the single-property sweep"
 );
 assert.equal(
-  computeLetterSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
+  linearForwardSwipeWindows(SWIPE_RAMP, 0, SWIPE_DURATION_MS),
   null,
   "Given a word with no letters, Then there are no per-letter windows"
-);
-
-// planLetterMaskSweep hands every letter-split word a reveal, even where computeLetterSwipeWindows
-// bails: the whole-word gradient is off for letter words, so without the fallback they snap to fully
-// highlighted instead of sweeping.
-const linearSweep = planLetterMaskSweep(SWIPE_RAMP, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
-assert.equal(linearSweep.length, SWIPE_LETTERS, "Given a linear ramp, Then every letter gets a mask sweep");
-assert.ok(
-  linearSweep.every(sweep => sweep.easing === "linear" && sweep.keyframes.length === 2),
-  "Given a linear ramp, Then each letter rides the short windowed plan"
-);
-
-for (const easing of ["ease", "cubic-bezier(0.4, 0, 0.2, 1)"]) {
-  const sweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
-  assert.equal(sweep.length, SWIPE_LETTERS, "Given a non-linear ramp, When planned, Then every letter still reveals");
-  assert.ok(
-    sweep.every(entry => entry.easing === easing && entry.durationMs === SWIPE_DURATION_MS && entry.delayMs === 0),
-    "Given a non-linear ramp, Then each letter runs the whole duration under the theme easing"
-  );
-  assert.ok(
-    sweep.every(entry => entry.keyframes[0].offset === 0 && entry.keyframes.at(-1)?.offset === 1),
-    "Given a non-linear ramp, Then each letter's reveal spans the whole timeline"
-  );
-  assert.ok(
-    sweep.every(
-      (entry, index) => entry.keyframes.at(-1)?.maskPosition === linearSweep[index].keyframes.at(-1)?.maskPosition
-    ),
-    "Given a non-linear ramp, Then each letter ends at the same fully-revealed mask as the linear plan, not swept past"
-  );
-  assert.ok(
-    sweep.every((entry, index) => entry.keyframes[0].maskPosition === linearSweep[index].keyframes[0].maskPosition),
-    "Given a non-linear ramp, Then each letter starts hidden, the same as the linear plan"
-  );
-}
-
-assert.deepEqual(
-  planLetterMaskSweep(SWIPE_RAMP, 0, SWIPE_DURATION_MS, false),
-  [],
-  "Given a word with no letters, Then there is nothing to sweep"
 );
 
 // With the default ramp the swipe touches letter i at i/n of the word and has lit it 1/n + 0.1 of the
@@ -1397,13 +1504,6 @@ assert.deepEqual(
     [80, 900],
   ],
   "Given a short word, Then each letter starts early enough to crest as it is lit"
-);
-
-const ltrSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, false);
-const rtlSweep = planLetterMaskSweep({ ...SWIPE_RAMP, easing: "ease" }, SWIPE_LETTERS, SWIPE_DURATION_MS, true);
-assert.ok(
-  ltrSweep.some((entry, index) => entry.keyframes[0].maskPosition !== rtlSweep[index].keyframes[0].maskPosition),
-  "Given RTL, Then the mask sweeps from the mirrored edge"
 );
 
 // Glow alpha parsing: the engine skips a word's per-frame blur only when its resolved glow color
@@ -1464,8 +1564,8 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.equal(engine.skipScrolls, firstScrollCount, "B must not scroll again when it starts");
   assert.equal(host.scrollElement.scrollTop, firstPosition, "The committed target remains stationary");
   tick(1.7);
-  const previousAnimations = engine.lineScrollAnimations.map(record => record.animation);
-  assert.ok(previousAnimations.length > 0, "The previous scroll animations are still running");
+  const previousScrolls = [...engine.runningLineScrolls];
+  assert.ok(previousScrolls.length > 0, "The previous scrolls are still running");
   tick(1.8);
   assert.equal(
     engine.skipScrolls,
@@ -1475,14 +1575,101 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   assert.ok(host.scrollElement.scrollTop > firstPosition);
   assert.deepEqual(engine.lastScrollElements, [lines[2], lines[3]], "C's scroll includes upcoming D");
   assert.ok(
-    previousAnimations.every(animation => engine.lineScrollAnimations.some(record => record.animation === animation)),
-    "A new scroll preserves the previous additive animations"
+    previousScrolls.every(scroll => engine.runningLineScrolls.includes(scroll)),
+    "A new scroll keeps the previous scrolls running"
   );
   tick(2.1);
   assert.equal(engine.skipScrolls, firstScrollCount + 1, "D must not trigger a duplicate scroll");
   tick(1);
   assert.equal(engine.skipScrolls, firstScrollCount + 2, "Seeking backwards must still retarget the viewport");
   engine.destroy();
+}
+
+// -- Overlapping motions --------------------------------------------
+
+{
+  const easeOut = () => (progress: number) => 1 - (1 - progress) ** 3;
+  const nowMs = 10_000;
+  const curve = (startMs: number, durationMs: number, fromPx: number, toPx: number): MotionCurve => ({
+    startMs,
+    durationMs,
+    fromPx,
+    toPx,
+    easing: "ease-out",
+    endEasing: "linear",
+  });
+  const curves = [curve(nowMs - 300, 800, -120, 0), curve(nowMs, 900, -80, 0), curve(nowMs - 100, 500, 40, 6)];
+  const baked = bakeMotion(curves, nowMs, easeOut);
+  const fullScalePx = Number.parseFloat(String(baked.keyframes[1].translate).split(" ")[1]);
+  const stops = [...String(baked.keyframes[0].easing).matchAll(/(-?[\d.e-]+) (-?[\d.e-]+)%/g)].map(([, value, at]) => ({
+    timeMs: baked.startMs + (Number(at) / 100) * baked.durationMs,
+    offsetPx: Number(value) * fullScalePx,
+  }));
+  const bakedOffsetAt = (timeMs: number) => {
+    const after = stops.findIndex(stop => stop.timeMs > timeMs);
+    const from = stops[after - 1];
+    const to = stops[after];
+    return from.offsetPx + ((to.offsetPx - from.offsetPx) * (timeMs - from.timeMs)) / (to.timeMs - from.timeMs);
+  };
+  const worstPx = Math.max(
+    ...Array.from({ length: 900 }, (_, step) => {
+      const timeMs = nowMs + step + 0.5;
+      return Math.abs(bakedOffsetAt(timeMs) - offsetAt(curves, timeMs, easeOut));
+    })
+  );
+  assert.ok(
+    worstPx < 0.15,
+    `Given scrolls that overlap, When they are baked into one animation, Then it follows their sum (off by ${worstPx}px)`
+  );
+}
+
+// -- Sweep cells --------------------------------------------
+
+// Each cell's mask edge follows the word's swipe across that cell, and its text cancels the mask's motion.
+{
+  const swipe = { easing: "linear", startFrom: "-0.2", startTo: "1.4", endFrom: "-0.1", endTo: "1.5" };
+  const translateOf = (keyframes: Keyframe[], progress: number): number => {
+    const after = keyframes.findIndex(frame => Number(frame.offset) >= progress);
+    const to = keyframes[Math.max(after, 0)];
+    const from = keyframes[Math.max(after - 1, 0)];
+    const value = (frame: Keyframe) => Number.parseFloat(String(frame.translate));
+    const span = Number(to.offset) - Number(from.offset);
+    if (span <= 0) return value(to);
+    return value(from) + ((value(to) - value(from)) * (progress - Number(from.offset))) / span;
+  };
+  const spans: CellSpan[] = [
+    { start: 0, width: 1 },
+    { start: 0, width: 0.25 },
+    { start: 0.25, width: 0.35 },
+    { start: 0.6, width: 0.4 },
+  ];
+  let worstEdge = 0;
+  let worstGlyph = 0;
+  for (const rtl of [false, true]) {
+    for (const span of spans) {
+      const plan = planCellSweep(swipe, span, rtl);
+      assert.ok(plan, "Given a usable swipe, When a cell is planned, Then it has a plan");
+      const fade = cellFade(swipe, span);
+      const maskWidths = 3 + fade;
+      for (let step = 0; step <= 200; step++) {
+        const progress = step / 200;
+        const wordStart = -0.2 + 1.6 * progress;
+        const expected = Math.min(Math.max((wordStart - span.start) / span.width, -fade), SWEEP_REST);
+        const maskCells = (translateOf(plan.mask, progress) * maskWidths) / 100;
+        const textCells = translateOf(plan.text, progress) / 100;
+        worstEdge = Math.max(worstEdge, Math.abs(SWEEP_REST + (rtl ? -maskCells : maskCells) - expected));
+        worstGlyph = Math.max(worstGlyph, Math.abs(maskCells + textCells));
+      }
+    }
+  }
+  assert.ok(
+    worstEdge < 1e-9,
+    `Given a word split into cells, When the swipe runs, Then each cell's edge sits where the word's is (off by ${worstEdge} cells)`
+  );
+  assert.ok(
+    worstGlyph < 1e-9,
+    `Given a sweep cell, When its mask slides, Then its text slides back by as much (off by ${worstGlyph} cells)`
+  );
 }
 
 // -- Line scroll stagger --------------------------------------------
@@ -1532,19 +1719,19 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
 
   const scroll = (time: number) => {
     lastTickTime = time;
-    const before = new Set(engine.lineScrollAnimations);
+    const before = new Set(engine.runningLineScrolls);
     const fromScrollTop = host.scrollElement.scrollTop;
     assert.equal(tickView(engine, time, resolveTickOptions(newTickOptions())), "ok");
     const deltaPx = host.scrollElement.scrollTop - fromScrollTop;
     const activeIndex = lines.indexOf(engine.lastScrollElements[engine.lastScrollElements.length - 1]);
-    const scrolled = engine.lineScrollAnimations
-      .filter(record => !before.has(record))
-      .map(record => {
-        const relativeIndex = lines.findIndex(line => line.lyricElement === record.lineElement) - activeIndex;
+    const scrolled = engine.runningLineScrolls
+      .filter(scroll => !before.has(scroll))
+      .map(scroll => {
+        const relativeIndex = lines.findIndex(line => line.lyricElement === scroll.lineElement) - activeIndex;
         const leading = relativeIndex !== 0 && relativeIndex > 0 === deltaPx < 0;
         const side = relativeIndex === 0 ? "active" : leading ? "above" : "below";
         return {
-          durationMs: asFakeAnimation(record.animation).options.duration as number,
+          durationMs: scroll.durationMs,
           themedMs: expectedDurationMs(side, Math.abs(relativeIndex)),
         };
       });

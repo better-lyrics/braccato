@@ -15,6 +15,8 @@ export interface LyricPart {
 	words: string;
 	durationMs: number;
 	isBackground?: boolean;
+	/** Which of the line's background groups (`x-bg` spans) the part is in, counted from 0. */
+	backgroundGroup?: number;
 	explicit?: boolean;
 }
 
