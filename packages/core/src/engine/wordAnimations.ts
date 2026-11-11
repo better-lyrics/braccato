@@ -3,6 +3,7 @@ import type { PartData, SweepCell } from "../inject";
 import { registerThemeSetting } from "../themeSettings";
 import type { AnimationConfig } from "./animationConfig";
 import { correctedAnimationTimeMs, mirrorHighlightAnimations, followSongClock } from "./animationTiming";
+import { easingLookup } from "./elementMotion";
 import type { AnimationEngineInstance } from "./instance";
 import {
   GECKO_REDRAW,
@@ -14,7 +15,7 @@ import {
   swipeRamp,
 } from "./letterPlans";
 import { resetPartAnimations } from "./lineAnimationState";
-import { type CellSpan, cellReachedAt, planCellSweep } from "./sweepPlans";
+import { type CellSpan, cellLitAt, cellReachedAt, planCellSweep } from "./sweepPlans";
 import { acquireWaveAnimation } from "./wavePool";
 
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
@@ -26,6 +27,9 @@ const INSTANT_MS = 1;
 const SHOWN: Keyframe[] = [{ opacity: 1 }, { opacity: 1 }];
 const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }];
 const FADE_OUT: Keyframe[] = [{ opacity: 1 }, { opacity: 0 }];
+
+// A line's exit leaves the started ones running so a glow fades out under the text instead of cutting off.
+const glowDelaysMs = new WeakMap<Animation, number>();
 
 interface WordTimeline {
   engine: AnimationEngineInstance;
@@ -65,6 +69,8 @@ export function startWordAnimations(
 }
 
 export function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
+  const glows = part.animations.filter(animation => glowStarted(animation));
+  part.animations = part.animations.filter(animation => !glows.includes(animation));
   resetPartAnimations(part);
   const fades = config.enabled.highlightFade;
   const durationMs = fades ? config.highlight.fadeOutDurationMs : INSTANT_MS;
@@ -73,8 +79,13 @@ export function startWordExitAnimation(part: PartData, config: AnimationConfig):
     easing: fades ? config.highlight.fadeOutEasing : "linear",
     fill: "none",
   });
-  part.animations = [fadeOut, ...mirrorHighlightAnimations(part, [fadeOut])];
+  part.animations = [fadeOut, ...mirrorHighlightAnimations(part, [fadeOut]), ...glows];
   fadeOut.addEventListener("finish", () => resetPartAnimations(part), { once: true });
+}
+
+function glowStarted(animation: Animation): boolean {
+  const delayMs = glowDelaysMs.get(animation);
+  return delayMs !== undefined && Number(animation.currentTime) >= delayMs;
 }
 
 function wordTimeline(
@@ -190,28 +201,28 @@ function glow(word: WordTimeline, durationMs: number, followsSwipe: boolean): An
 
 // Where the shrinking radius reaches the tight halo's, as a fraction of the glow's eased progress.
 const TIGHT_GLOW_AT = 0.6;
+// The latest a halo may finish rising, so the crossfade after it keeps room to run.
+const LATEST_GLOW_PEAK = TIGHT_GLOW_AT / 2;
 
 /**
  * Stands in for a glow whose radius shrinks to nothing: the wide halo crossfades into the tight one
  * while the radius would shrink between them, and the tight one then fades out. The keyframe offsets
  * are in eased progress, since the glow's easing applies to the whole effect. Under a swipe each
- * cell's glow starts when the edge reaches it, so a halo never shows ahead of its lit text. The wait
- * is exact for a linear swipe and taken as linear for any other.
+ * cell's glow starts when the edge reaches it and rises while the edge crosses it, the way a glow
+ * drawn from the lit text grows with it. Both are exact for a linear swipe and taken as linear for
+ * any other.
  */
 function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number, followsSwipe: boolean): Animation[] {
-  const { config, swipeLeadMs, swipeDurationMs } = word;
+  const { engine, config, swipeLeadMs, swipeDurationMs } = word;
   const fades = config.highlight.glowRestingInvisible;
-  const wide: Keyframe[] = fades
-    ? [{ opacity: 1 }, { opacity: 0, offset: TIGHT_GLOW_AT }, { opacity: 0 }]
-    : [{ opacity: 1 }, { opacity: 1 }];
-  const tight: Keyframe[] = fades
-    ? [{ opacity: 0 }, { opacity: 1, offset: TIGHT_GLOW_AT }, { opacity: 0 }]
-    : [{ opacity: 0 }, { opacity: 0 }];
+  const easeGlow = easingLookup(engine)(config.highlight.glowEasing);
+  const ramp = swipeRamp(config);
   return cells.flatMap((cell, cellIndex) => {
     const span: CellSpan = cell.span ?? { start: cellIndex / cells.length, width: 1 / cells.length };
-    const delayMs = followsSwipe
-      ? Math.max(0, cellReachedAt(swipeRamp(config), span) * swipeDurationMs - swipeLeadMs)
-      : 0;
+    const delayMs = followsSwipe ? Math.max(0, cellReachedAt(ramp, span) * swipeDurationMs - swipeLeadMs) : 0;
+    const litMs = followsSwipe ? cellLitAt(ramp, span) * swipeDurationMs - swipeLeadMs : delayMs;
+    const riseMs = Math.max(0, litMs - delayMs);
+    const peak = durationMs > 0 ? Math.min(easeGlow(riseMs / durationMs), LATEST_GLOW_PEAK) : 0;
     const timing: KeyframeAnimationOptions = {
       delay: delayMs,
       duration: durationMs,
@@ -219,11 +230,24 @@ function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number, f
       fill: fades ? "none" : "forwards",
     };
     const currentTimeMs = scheduledTimeMs(word, word.elapsedMs, delayMs + durationMs);
+    const halos = haloKeyframes(fades, peak);
     return cell.glows.map((halo, index) => {
-      const fade = halo.glow.animate(index === 0 ? wide : tight, timing);
+      const fade = halo.glow.animate(index === 0 ? halos.wide : halos.tight, timing);
+      glowDelaysMs.set(fade, delayMs);
       return followSong(word, fade, currentTimeMs, { skipDriftSample: true });
     });
   });
+}
+
+function haloKeyframes(fades: boolean, peak: number): { wide: Keyframe[]; tight: Keyframe[] } {
+  const rises = peak > 0;
+  const wideRise: Keyframe[] = rises ? [{ opacity: 0 }, { opacity: 1, offset: peak }] : [{ opacity: 1 }];
+  const tightWait: Keyframe[] = rises ? [{ opacity: 0 }, { opacity: 0, offset: peak }] : [{ opacity: 0 }];
+  if (!fades) return { wide: [...wideRise, { opacity: 1 }], tight: [{ opacity: 0 }, { opacity: 0 }] };
+  return {
+    wide: [...wideRise, { opacity: 0, offset: TIGHT_GLOW_AT }, { opacity: 0 }],
+    tight: [...tightWait, { opacity: 1, offset: TIGHT_GLOW_AT }, { opacity: 0 }],
+  };
 }
 
 function wobble(word: WordTimeline): Animation[] {

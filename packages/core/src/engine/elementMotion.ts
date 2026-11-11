@@ -87,7 +87,7 @@ function playCurves(
   animation.addEventListener("cancel", settle, { once: true });
 }
 
-function easingLookup(engine: AnimationEngineInstance): EasingLookup {
+export function easingLookup(engine: AnimationEngineInstance): EasingLookup {
   return easing => {
     let table = engine.easingTables.get(easing);
     if (!table) {

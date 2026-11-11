@@ -1667,6 +1667,50 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   );
 }
 
+// A halo is revealed by its cell's mask, so a step in its opacity shows as a flash behind the edge.
+{
+  const glowDocument = new FakeDocument();
+  const glowEngine = createAnimationEngineInstance(
+    asDocument(glowDocument),
+    asWindow(new FakeWindow(PANEL_STYLE)),
+    new FakeHost(undefined, glowDocument)
+  );
+  setLyrics(glowEngine, asElement<HTMLElement>(glowDocument.createElement("div")), LEAD_IN_LYRICS, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  placeLines(glowEngine);
+  const [heldLine] = getRenderedLines(glowEngine);
+  const halos = () =>
+    heldLine.parts.flatMap(part =>
+      (part.sweep ?? []).flatMap(cell => cell.glows.flatMap(halo => asFakeNode(halo.glow).animations))
+    );
+  const opacityAt = (keyframes: unknown, index: number) => Number((keyframes as Keyframe[]).at(index)?.opacity);
+  const firstOpacity = (keyframes: unknown) => opacityAt(keyframes, 0);
+
+  tickView(glowEngine, 3.5, resolveTickOptions(newTickOptions()));
+  const started = halos();
+  assert.ok(
+    started.length > 0 && started.every(animation => firstOpacity(animation.keyframes) === 0),
+    "regression: Given a swiped word, When its glow starts, Then every halo starts clear and rises with the edge"
+  );
+
+  const [heldWord] = heldLine.parts;
+  const fadingOut = () =>
+    asFakeNode(heldWord.highlightElement).animations.some(
+      animation => firstOpacity(animation.keyframes) === 1 && opacityAt(animation.keyframes, -1) === 0
+    );
+  for (let hundredths = 355; hundredths <= 600 && !fadingOut(); hundredths += 5) {
+    tickView(glowEngine, hundredths / 100, resolveTickOptions(newTickOptions()));
+  }
+  const kept = heldWord.animations.map(asFakeAnimation);
+  assert.ok(
+    fadingOut() && started.every(animation => !animation.cancelled && kept.includes(animation)),
+    "regression: Given a word still glowing, When its line exits, Then its glow keeps fading under the text"
+  );
+  glowEngine.destroy();
+}
+
 // -- Line scroll stagger --------------------------------------------
 
 // A natural advance keeps the theme's stagger exactly; any other scroll keeps one step's worth of it.
