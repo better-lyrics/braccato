@@ -1,5 +1,11 @@
 # @braccato/core
 
+## 1.21.3
+
+### Patch Changes
+
+- 4a5bcaa: Keep letter clusters, conjuncts and spacing vowel signs whole when long words wrap and when the letter wave splits a word. The long word wrap threshold now counts letters, not UTF-16 code units.
+
 ## 1.21.2
 
 ### Patch Changes
