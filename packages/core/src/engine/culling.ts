@@ -97,8 +97,10 @@ function isMeasured(line: LineData): boolean {
   return line.position >= 0 && line.height >= 0;
 }
 
-function measureContentOffset(scroller: HTMLElement, container: HTMLElement): number {
-  const scrollerTop = scroller.getBoundingClientRect().y + scroller.clientTop;
+// The document's scrolling element moves with the page, so its content starts at the viewport's top edge.
+export function measureContentOffset(scroller: HTMLElement, container: HTMLElement): number {
+  const scrollsDocument = scroller === scroller.ownerDocument?.scrollingElement;
+  const scrollerTop = scrollsDocument ? 0 : scroller.getBoundingClientRect().y + scroller.clientTop;
   return container.getBoundingClientRect().y - scrollerTop + scroller.scrollTop;
 }
 

@@ -19,7 +19,7 @@ import { forEveryLiveView } from "./engine/liveViews";
 import { noteUserScroll } from "./engine/userScroll";
 import { parseColorAlpha } from "./engine/glow";
 import { relayout, resolveTickOptions, scheduleLyricPositionUpdate, tickView } from "./engine/tick";
-import { setupLineCulling, updateLineCulling } from "./engine/culling";
+import { measureContentOffset, setupLineCulling, updateLineCulling } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
 import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
@@ -1374,6 +1374,23 @@ assert.equal(
 assert.equal(isSkipped(7), false, "Given a skipped line, When the song is cleared, Then it is un-skipped");
 setupLineCulling(cullEngine);
 clearLyrics(cullEngine);
+
+const pageScrollPx = 5000;
+const documentScroller = {
+  clientTop: 0,
+  scrollTop: pageScrollPx,
+  getBoundingClientRect: () => ({ y: -pageScrollPx }),
+  ownerDocument: { scrollingElement: null as unknown },
+};
+documentScroller.ownerDocument.scrollingElement = documentScroller;
+assert.equal(
+  measureContentOffset(
+    documentScroller as unknown as HTMLElement,
+    { getBoundingClientRect: () => ({ y: 300 - pageScrollPx }) } as unknown as HTMLElement
+  ),
+  300,
+  "Given the page itself scrolls, When the lyrics start 300px down the page, Then their offset ignores how far the page was scrolled"
+);
 
 // Per-letter swipe windows: each letter owns the slice of the sweep where its own reveal happens,
 // holding hidden before and shown after, so only the letters under the moving edge keep animating.
