@@ -46,7 +46,7 @@ function parseTime(timeStr: string | number | undefined): number {
  * Parse an LRC document, plain or enhanced, into lines with optional word level parts.
  *
  * Timings are returned as the document states them. `LRCParser.parse` runs `lrcFixers` over the
- * result afterwards, which is right for Musixmatch word-by-word lyrics and wrong for sources whose
+ * result afterwards, which is right for word-by-word LRC with paired timestamps and wrong for sources whose
  * timings are already clean, so callers that know their source can stay on this function.
  *
  * Blank lines are not lyrics. Each one ends the line before it, and the silences that leaves, along
@@ -94,9 +94,9 @@ export function parseLRC(lrcText: string, songDurationMs: number, options: Instr
 
 		const leadFragments = leadText.split(ENHANCED_WORD_REGEX);
 
-		// Musixmatch wraps each word with paired <ts>, separated by whitespace-only "gap" fragments;
+		// Some sources wrap each word with paired <ts>, separated by whitespace-only "gap" fragments;
 		// canonical LRC has none.
-		const isMusixmatchStyle = leadFragments.some(
+		const isPairedStyle = leadFragments.some(
 			(f, i) => i % 2 === 0 && i > 0 && i < leadFragments.length - 1 && f.length > 0 && f.trim() === "",
 		);
 
@@ -106,7 +106,7 @@ export function parseLRC(lrcText: string, songDurationMs: number, options: Instr
 			segmentText.split(ENHANCED_WORD_REGEX).forEach((rawFragment, index) => {
 				if (index % 2 === 0) {
 					let fragment = rawFragment;
-					if (isMusixmatchStyle) {
+					if (isPairedStyle) {
 						const trimmed = fragment.trim();
 						fragment = trimmed === "" && fragment.length > 0 ? " " : trimmed;
 					}

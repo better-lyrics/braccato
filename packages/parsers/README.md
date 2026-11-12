@@ -79,7 +79,7 @@ It reads syllable timing, `ttm:role="x-bg"` background vocals, `ttm:agent` (mapp
 
 ### LRC
 
-`LRCParser.parse` runs a set of timing fixers suited to Musixmatch word by word lyrics. For a source whose timings are already clean, use `parseLRC`, which returns the document exactly as stated:
+`LRCParser.parse` runs a set of timing fixers suited to word-by-word LRC with paired timestamps. For a source whose timings are already clean, use `parseLRC`, which returns the document exactly as stated:
 
 ```typescript
 import { parseLRC, lrcFixers } from "@braccato/parsers";

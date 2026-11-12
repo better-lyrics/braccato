@@ -426,8 +426,8 @@ ends up with one copy. The parser also reads `ttm:agent` vocalists, `ttm:role="x
 vocals, Apple's translations and transliterations, explicit flags and `itunes:key`, and recovers
 namespace prefixes a document uses without declaring.
 
-LRC keeps the spacing between words that Musixmatch word-by-word lyrics carry. `LRCParser.parse`
-still runs the timing fixers those lyrics need. `parseLRC` is published beside it for a source whose
+LRC keeps the spacing between words in enhanced LRC that closes every word with a second timestamp.
+`LRCParser.parse` still runs the timing fixers that word-by-word LRC needs. `parseLRC` is published beside it for a source whose
 timings are already clean, and returns the document exactly as stated.
 
 The [package README](packages/parsers/README.md) covers the entry points each of these added.

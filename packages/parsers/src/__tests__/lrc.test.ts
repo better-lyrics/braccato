@@ -281,7 +281,7 @@ describe("LRCParser", () => {
 				expect(line.parts![1]).toMatchObject({ words: "world", durationMs: 3000 });
 			});
 
-			it("finds the breaks between Musixmatch paired lines", () => {
+			it("finds the breaks between paired-timestamp lines", () => {
 				const lrc = [
 					"[00:01.00]<00:01.00>Hello<00:01.40> <00:01.44>world<00:01.90> ",
 					"[00:02.00]<00:02.00>Again<00:02.50> ",
@@ -509,8 +509,8 @@ describe("LRCParser", () => {
 		});
 	});
 
-	describe("Musixmatch paired timestamps", () => {
-		// Musixmatch closes every word with a second timestamp, so the whitespace between words lands
+	describe("paired timestamps", () => {
+		// Some sources close every word with a second timestamp, so the whitespace between words lands
 		// in its own fragment. Trimming those fragments the way canonical LRC needs would swallow the
 		// space and run the words together.
 		const paired = "[00:10.00]<00:10.00>Hello<00:10.40> <00:10.44>world<00:10.90> ";
@@ -533,7 +533,7 @@ describe("LRCParser", () => {
 	});
 
 	describe("parseLRC", () => {
-		// The extension applies `lrcFixers` to Musixmatch word-by-word lyrics only, so the raw parse
+		// The extension applies `lrcFixers` to paired-timestamp word-by-word lyrics only, so the raw parse
 		// has to be reachable on its own.
 		const paired = "[00:10.00]<00:10.00>Hello<00:10.40> <00:10.44>world<00:10.90> ";
 
