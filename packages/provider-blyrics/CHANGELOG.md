@@ -1,5 +1,13 @@
 # @braccato/provider-blyrics
 
+## 0.2.4
+
+### Patch Changes
+
+- 5ef68a7: Describe paired-timestamp LRC by its format instead of a vendor name, and drop the outdated `musixmatch` package keyword.
+- Updated dependencies [5ef68a7]
+  - @braccato/parsers@0.4.3
+
 ## 0.2.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @braccato/parsers
 
+## 0.4.3
+
+### Patch Changes
+
+- 5ef68a7: Describe paired-timestamp LRC by its format instead of a vendor name, and drop the outdated `musixmatch` package keyword.
+
 ## 0.4.2
 
 ### Patch Changes
