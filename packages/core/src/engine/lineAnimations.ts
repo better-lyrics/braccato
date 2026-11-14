@@ -1,6 +1,6 @@
 import type { LineData } from "../inject";
 import type { AnimationConfig } from "./animationConfig";
-import { correctedAnimationTimeMs, followSongClock } from "./animationTiming";
+import { correctedAnimationTimeMs, followSongClock, seekAnimation } from "./animationTiming";
 import { placeContextSweeps } from "./contextSweep";
 import { suppressInvisibleWordGlows } from "./glow";
 import type { AnimationEngineInstance } from "./instance";
@@ -59,7 +59,7 @@ function startLineEntrance(
   });
   followSongClock(engine, entrance, { appliedTimingOffsetMs, offsetMs: 0 });
   const elapsedMs = (lyricTimeS - line.time) * 1000;
-  entrance.currentTime = correctedAnimationTimeMs(elapsedMs, appliedTimingOffsetMs, durationMs);
+  seekAnimation(engine, entrance, correctedAnimationTimeMs(elapsedMs, appliedTimingOffsetMs, durationMs));
   line.animations = [entrance];
 }
 

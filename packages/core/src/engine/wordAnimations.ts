@@ -2,7 +2,7 @@ import { RTL_CLASS } from "../constants";
 import type { PartData, SweepCell } from "../inject";
 import { registerThemeSetting } from "../themeSettings";
 import type { AnimationConfig } from "./animationConfig";
-import { correctedAnimationTimeMs, mirrorHighlightAnimations, followSongClock } from "./animationTiming";
+import { correctedAnimationTimeMs, followSongClock, mirrorHighlightAnimations, seekAnimation } from "./animationTiming";
 import type { AnimationEngineInstance } from "./instance";
 import {
   GECKO_REDRAW,
@@ -121,7 +121,7 @@ function followSong(
 ): Animation {
   const { appliedTimingOffsetMs } = word;
   followSongClock(word.engine, animation, { appliedTimingOffsetMs, offsetMs, skipDriftSample });
-  animation.currentTime = currentTimeMs;
+  seekAnimation(word.engine, animation, currentTimeMs);
   return animation;
 }
 

@@ -20,6 +20,17 @@ export interface DriftSample {
 
 const songClockTracks = new WeakMap<Animation, SongClockTrack>();
 
+// A current time set before an animation starts holds until its first frame, which a long setup frame delays.
+export function seekAnimation(engine: AnimationEngineInstance, animation: Animation, timeMs: number): void {
+  const timelineMs = animation.timeline?.currentTime;
+  const rate = animation.playbackRate;
+  if (!engine.lastTickOptions?.isPlaying || typeof timelineMs !== "number" || rate === 0) {
+    animation.currentTime = timeMs;
+    return;
+  }
+  animation.startTime = timelineMs - timeMs / rate;
+}
+
 export function followSongClock(
   engine: AnimationEngineInstance,
   animation: Animation,
@@ -43,7 +54,8 @@ export function mirrorHighlightAnimations(part: PartData, animations: Animation[
     if (!effect || effect.target !== part.highlightElement) continue;
     const mirror = target.animate(effect.getKeyframes(), effect.getTiming());
     mirror.playbackRate = animation.playbackRate;
-    mirror.currentTime = animation.currentTime;
+    if (animation.playState === "running" && animation.startTime !== null) mirror.startTime = animation.startTime;
+    else mirror.currentTime = animation.currentTime;
     const track = songClockTracks.get(animation);
     if (track) songClockTracks.set(mirror, { ...track, skipDriftSample: true });
     mirrors.push(mirror);
