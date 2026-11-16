@@ -36,6 +36,7 @@ export interface AnimationConfig {
     swipeEndFrom: string;
     swipeStartTo: string;
     swipeEndTo: string;
+    glowFrom: string;
     glowTo: string;
     glowDurationRatio: number;
     glowMinDurationMs: number;
@@ -100,6 +101,7 @@ export function getAnimationSettings(engine: AnimationEngineInstance, lyricsElem
 
 function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTMLElement): AnimationConfig {
   const css = createThemeReader(engine, lyricsElement);
+  const glowFrom = resolveGlowFilter(engine, lyricsElement, "from", "0.8rem");
   const glowTo = resolveGlowFilter(engine, lyricsElement, "to", "0");
   return {
     enabled: {
@@ -130,6 +132,7 @@ function readAnimationConfig(engine: AnimationEngineInstance, lyricsElement: HTM
       swipeEndFrom: css.string("--blyrics-highlight-swipe-end-from", "-0.1"),
       swipeStartTo: css.string("--blyrics-highlight-swipe-start-to", "1.4"),
       swipeEndTo: css.string("--blyrics-highlight-swipe-end-to", "1.5"),
+      glowFrom,
       glowTo,
       glowDurationRatio: css.number("--blyrics-highlight-glow-duration-ratio", 1.2),
       glowMinDurationMs: css.durationMs("--blyrics-highlight-glow-min-duration", "1.2s"),

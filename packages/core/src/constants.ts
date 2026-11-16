@@ -53,7 +53,6 @@ export const SWEEP_CLONE_CLASS = "blyrics-sweep-clone" as const;
 export const SWEEP_TARGET_CLASS = "blyrics-sweep-target" as const;
 export const SWEEP_MASK_CLASS = "blyrics-sweep-mask" as const;
 export const SWEEP_TEXT_CLASS = "blyrics-sweep-text" as const;
-export const SWEEP_GLOW_CLASS = "blyrics-sweep-glow" as const;
 export const HIGHLIGHT_RUN_CLASS = "blyrics-highlight-run" as const;
 export const LINE_SYNCED_WORD_CLASS = "blyrics-line-synced-word" as const;
 export const BIDI_RUN_CLASS = "blyrics-bidi-run" as const;

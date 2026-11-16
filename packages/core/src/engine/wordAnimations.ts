@@ -3,7 +3,6 @@ import type { PartData, SweepCell } from "../inject";
 import { registerThemeSetting } from "../themeSettings";
 import type { AnimationConfig } from "./animationConfig";
 import { correctedAnimationTimeMs, mirrorHighlightAnimations, followSongClock } from "./animationTiming";
-import { easingLookup } from "./elementMotion";
 import type { AnimationEngineInstance } from "./instance";
 import {
   GECKO_REDRAW,
@@ -15,7 +14,7 @@ import {
   swipeRamp,
 } from "./letterPlans";
 import { resetPartAnimations } from "./lineAnimationState";
-import { type CellSpan, cellLitAt, cellReachedAt, planCellSweep } from "./sweepPlans";
+import { planCellSweep } from "./sweepPlans";
 import { acquireWaveAnimation } from "./wavePool";
 
 const SWIPE_LEAD_RATIO = registerThemeSetting("blyrics-swipe-lead-ratio", 0.1);
@@ -26,10 +25,6 @@ const INSTANT_MS = 1;
 // The sweep holds a word's reveal in its own layers, so the word's own opacity is all that animates on it.
 const SHOWN: Keyframe[] = [{ opacity: 1 }, { opacity: 1 }];
 const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }];
-const FADE_OUT: Keyframe[] = [{ opacity: 1 }, { opacity: 0 }];
-
-// A line's exit leaves the started ones running so a glow fades out under the text instead of cutting off.
-const glowDelaysMs = new WeakMap<Animation, number>();
 
 interface WordTimeline {
   engine: AnimationEngineInstance;
@@ -69,23 +64,23 @@ export function startWordAnimations(
 }
 
 export function startWordExitAnimation(part: PartData, config: AnimationConfig): void {
-  const glows = part.animations.filter(animation => glowStarted(animation));
-  part.animations = part.animations.filter(animation => !glows.includes(animation));
   resetPartAnimations(part);
   const fades = config.enabled.highlightFade;
   const durationMs = fades ? config.highlight.fadeOutDurationMs : INSTANT_MS;
-  const fadeOut = part.highlightElement.animate(FADE_OUT, {
-    duration: durationMs,
-    easing: fades ? config.highlight.fadeOutEasing : "linear",
-    fill: "none",
-  });
-  part.animations = [fadeOut, ...mirrorHighlightAnimations(part, [fadeOut]), ...glows];
+  const filter = config.highlight.glowTo;
+  const fadeOut = part.highlightElement.animate(
+    [
+      { opacity: 1, filter },
+      { opacity: 0, filter },
+    ],
+    {
+      duration: durationMs,
+      easing: fades ? config.highlight.fadeOutEasing : "linear",
+      fill: "none",
+    }
+  );
+  part.animations = [fadeOut, ...mirrorHighlightAnimations(part, [fadeOut])];
   fadeOut.addEventListener("finish", () => resetPartAnimations(part), { once: true });
-}
-
-function glowStarted(animation: Animation): boolean {
-  const delayMs = glowDelaysMs.get(animation);
-  return delayMs !== undefined && Number(animation.currentTime) >= delayMs;
 }
 
 function wordTimeline(
@@ -136,11 +131,10 @@ function glowShows(part: PartData, config: AnimationConfig): boolean {
 
 function richSyncedHighlight(word: WordTimeline): Animation[] {
   const { part, config } = word;
-  const swipes = config.enabled.highlightSwipe;
-  const animations = swipes ? swipe(word) : [];
+  const animations = config.enabled.highlightSwipe ? swipe(word) : [];
   const show = part.highlightElement.animate(SHOWN, { duration: INSTANT_MS, easing: "linear", fill: "forwards" });
   animations.push(followSong(word, show, scheduledTimeMs(word, word.elapsedMs, INSTANT_MS)));
-  if (glowShows(part, config)) animations.push(...glow(word, word.glowDurationMs, swipes));
+  if (glowShows(part, config)) animations.push(glow(word, word.glowDurationMs));
   return animations;
 }
 
@@ -154,7 +148,7 @@ function lineSyncedHighlight(word: WordTimeline): Animation[] {
     fill: "forwards",
   });
   const animations = [followSong(word, fadeIn, scheduledTimeMs(word, word.elapsedMs, durationMs))];
-  if (glowShows(part, config)) animations.push(...glow(word, config.highlight.glowMinDurationMs, false));
+  if (glowShows(part, config)) animations.push(glow(word, config.highlight.glowMinDurationMs));
   return animations;
 }
 
@@ -195,59 +189,15 @@ function compositedSwipe(word: WordTimeline, cells: SweepCell[], currentTimeMs: 
   return animations;
 }
 
-function glow(word: WordTimeline, durationMs: number, followsSwipe: boolean): Animation[] {
-  return word.part.sweep ? sweepGlow(word, word.part.sweep, durationMs, followsSwipe) : [];
-}
-
-// Where the shrinking radius reaches the tight halo's, as a fraction of the glow's eased progress.
-const TIGHT_GLOW_AT = 0.6;
-// The latest a halo may finish rising, so the crossfade after it keeps room to run.
-const LATEST_GLOW_PEAK = TIGHT_GLOW_AT / 2;
-
-/**
- * Stands in for a glow whose radius shrinks to nothing: the wide halo crossfades into the tight one
- * while the radius would shrink between them, and the tight one then fades out. The keyframe offsets
- * are in eased progress, since the glow's easing applies to the whole effect. Under a swipe each
- * cell's glow starts when the edge reaches it and rises while the edge crosses it, the way a glow
- * drawn from the lit text grows with it. Both are exact for a linear swipe and taken as linear for
- * any other.
- */
-function sweepGlow(word: WordTimeline, cells: SweepCell[], durationMs: number, followsSwipe: boolean): Animation[] {
-  const { engine, config, swipeLeadMs, swipeDurationMs } = word;
-  const fades = config.highlight.glowRestingInvisible;
-  const easeGlow = easingLookup(engine)(config.highlight.glowEasing);
-  const ramp = swipeRamp(config);
-  return cells.flatMap((cell, cellIndex) => {
-    const span: CellSpan = cell.span ?? { start: cellIndex / cells.length, width: 1 / cells.length };
-    const delayMs = followsSwipe ? Math.max(0, cellReachedAt(ramp, span) * swipeDurationMs - swipeLeadMs) : 0;
-    const litMs = followsSwipe ? cellLitAt(ramp, span) * swipeDurationMs - swipeLeadMs : delayMs;
-    const riseMs = Math.max(0, litMs - delayMs);
-    const peak = durationMs > 0 ? Math.min(easeGlow(riseMs / durationMs), LATEST_GLOW_PEAK) : 0;
-    const timing: KeyframeAnimationOptions = {
-      delay: delayMs,
-      duration: durationMs,
-      easing: config.highlight.glowEasing,
-      fill: fades ? "none" : "forwards",
-    };
-    const currentTimeMs = scheduledTimeMs(word, word.elapsedMs, delayMs + durationMs);
-    const halos = haloKeyframes(fades, peak);
-    return cell.glows.map((halo, index) => {
-      const fade = halo.glow.animate(index === 0 ? halos.wide : halos.tight, timing);
-      glowDelaysMs.set(fade, delayMs);
-      return followSong(word, fade, currentTimeMs, { skipDriftSample: true });
-    });
+function glow(word: WordTimeline, durationMs: number): Animation {
+  const { part, config } = word;
+  const keyframes: Keyframe[] = [{ filter: config.highlight.glowFrom }, { filter: config.highlight.glowTo }];
+  const shrink = part.highlightElement.animate(keyframes, {
+    duration: durationMs,
+    easing: config.highlight.glowEasing,
+    fill: config.highlight.glowRestingInvisible ? "none" : "forwards",
   });
-}
-
-function haloKeyframes(fades: boolean, peak: number): { wide: Keyframe[]; tight: Keyframe[] } {
-  const rises = peak > 0;
-  const wideRise: Keyframe[] = rises ? [{ opacity: 0 }, { opacity: 1, offset: peak }] : [{ opacity: 1 }];
-  const tightWait: Keyframe[] = rises ? [{ opacity: 0 }, { opacity: 0, offset: peak }] : [{ opacity: 0 }];
-  if (!fades) return { wide: [...wideRise, { opacity: 1 }], tight: [{ opacity: 0 }, { opacity: 0 }] };
-  return {
-    wide: [...wideRise, { opacity: 0, offset: TIGHT_GLOW_AT }, { opacity: 0 }],
-    tight: [...tightWait, { opacity: 1, offset: TIGHT_GLOW_AT }, { opacity: 0 }],
-  };
+  return followSong(word, shrink, scheduledTimeMs(word, word.elapsedMs, durationMs), { skipDriftSample: true });
 }
 
 function wobble(word: WordTimeline): Animation[] {
@@ -266,19 +216,15 @@ function wobble(word: WordTimeline): Animation[] {
 }
 
 function letterWave(word: WordTimeline): Animation[] {
-  const { part, config } = word;
+  const { part } = word;
   const letterCount = part.letterElements?.length ?? 0;
   if (letterCount === 0) return [];
 
   const run = planLetterWaveRun(word, letterCount);
-  const glowLetterSets = glowShows(part, config)
-    ? (part.sweep?.flatMap(cell => cell.glows.map(glow => glow.letters)) ?? [])
-    : [];
 
   const animations: Animation[] = [];
   floatLetters(word, run, part.letterElements, true, animations);
   floatLetters(word, run, part.highlightLetterElements, false, animations);
-  for (const glowLetters of glowLetterSets) floatLetters(word, run, glowLetters, false, animations);
   return animations;
 }
 
