@@ -91,7 +91,10 @@ class FakeStyle {
 // `playState` and a `currentTime` that moves, which is a fake of a different size.
 export class FakeAnimation {
   currentTime: number | null = null;
-  readonly playState = "idle";
+  startTime: number | null = null;
+  timeline: { currentTime: number | null } | null = null;
+  effect: Pick<KeyframeEffect, "target" | "getKeyframes" | "getTiming"> | null = null;
+  playState: AnimationPlayState = "idle";
   cancelled = false;
   playbackRate = 1;
   onfinish: (() => void) | null = null;
@@ -425,6 +428,10 @@ export function asElement<T extends Node>(fake: FakeNode): T {
  */
 export function asFakeNode(element: Node): FakeNode {
   return element as unknown as FakeNode;
+}
+
+export function asAnimation(fake: FakeAnimation): Animation {
+  return fake as unknown as Animation;
 }
 
 export function asFakeAnimation(animation: Animation): FakeAnimation {

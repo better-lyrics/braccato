@@ -23,7 +23,9 @@ import { setupLineCullObserver } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
 import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
+import { mirrorHighlightAnimations, seekAnimation } from "./engine/animationTiming";
 import {
+  asAnimation,
   asDocument,
   asElement,
   asFakeAnimation,
@@ -1705,6 +1707,52 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
     "regression: Given a theme with the glow off and a resting radius, When a line exits, Then its words fade out with no drop shadow"
   );
   offEngine.destroy();
+}
+
+// Playing, a seek pins the start time to the timeline, so a long setup frame cannot hold the animation back.
+{
+  const seekDocument = new FakeDocument();
+  const seekEngine = createAnimationEngineInstance(
+    asDocument(seekDocument),
+    asWindow(new FakeWindow(PANEL_STYLE)),
+    new FakeHost(undefined, seekDocument)
+  );
+  setLyrics(seekEngine, asElement<HTMLElement>(seekDocument.createElement("div")), LEAD_IN_LYRICS, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  const [seekWord] = getRenderedLines(seekEngine)[0].parts;
+  seekWord.sweepContext = { host: asElement<HTMLElement>(seekDocument.createElement("span")) };
+  const TIMELINE_MS = 5000;
+  const SEEK_MS = 400;
+  const seek = (isPlaying: boolean, rate: number) => {
+    seekEngine.lastTickOptions = resolveTickOptions({ ...newTickOptions(), isPlaying });
+    const animation = asFakeNode(seekWord.highlightElement).animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 1000,
+    });
+    animation.timeline = { currentTime: TIMELINE_MS };
+    animation.playbackRate = rate;
+    animation.effect = { target: seekWord.highlightElement, getKeyframes: () => [], getTiming: () => ({}) };
+    seekAnimation(seekEngine, asAnimation(animation), SEEK_MS);
+    if (animation.startTime !== null) animation.playState = "running";
+    const [mirror] = mirrorHighlightAnimations(seekWord, [asAnimation(animation)]).map(asFakeAnimation);
+    return { animation, mirror };
+  };
+  for (const rate of [1, 1.5]) {
+    const { animation, mirror } = seek(true, rate);
+    assert.ok(
+      animation.startTime === TIMELINE_MS - SEEK_MS / rate &&
+        animation.currentTime === null &&
+        mirror?.startTime === animation.startTime,
+      `Given a word set up while playing at ${rate}x, When it is seeked, Then it and its mirror start at the timeline less the seek over the rate`
+    );
+  }
+  const { animation: paused, mirror: pausedMirror } = seek(false, 1);
+  assert.ok(
+    paused.currentTime === SEEK_MS && paused.startTime === null && pausedMirror?.currentTime === SEEK_MS,
+    "Given a word set up while paused, When it is seeked, Then it and its mirror hold the seek as their current time"
+  );
+  seekEngine.destroy();
 }
 
 // -- Line scroll stagger --------------------------------------------
