@@ -1670,6 +1670,43 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   glowEngine.destroy();
 }
 
+{
+  const offDocument = new FakeDocument();
+  const offEngine = createAnimationEngineInstance(
+    asDocument(offDocument),
+    asWindow(
+      new FakeWindow({
+        ...PANEL_STYLE,
+        "--blyrics-animate-highlight-glow": "false",
+        "--blyrics-highlight-glow-radius-to": "4px",
+      })
+    ),
+    new FakeHost(undefined, offDocument)
+  );
+  setLyrics(offEngine, asElement<HTMLElement>(offDocument.createElement("div")), LEAD_IN_LYRICS, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  placeLines(offEngine);
+  const [offWord] = getRenderedLines(offEngine)[0].parts;
+  const keyframesOf = (animation: FakeAnimation) => animation.keyframes as Keyframe[];
+  const fadeOuts = () =>
+    asFakeNode(offWord.highlightElement).animations.filter(
+      animation => keyframesOf(animation).at(0)?.opacity === 1 && keyframesOf(animation).at(-1)?.opacity === 0
+    );
+  for (let hundredths = 350; hundredths <= 600 && fadeOuts().length === 0; hundredths += 5) {
+    tickView(offEngine, hundredths / 100, resolveTickOptions(newTickOptions()));
+  }
+  assert.ok(
+    fadeOuts().length > 0 &&
+      asFakeNode(offWord.highlightElement).animations.every(animation =>
+        keyframesOf(animation).every(keyframe => keyframe.filter === undefined)
+      ),
+    "regression: Given a theme with the glow off and a resting radius, When a line exits, Then its words fade out with no drop shadow"
+  );
+  offEngine.destroy();
+}
+
 // -- Line scroll stagger --------------------------------------------
 
 // A natural advance keeps the theme's stagger exactly; any other scroll keeps one step's worth of it.

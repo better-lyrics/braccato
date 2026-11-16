@@ -67,11 +67,11 @@ export function startWordExitAnimation(part: PartData, config: AnimationConfig):
   resetPartAnimations(part);
   const fades = config.enabled.highlightFade;
   const durationMs = fades ? config.highlight.fadeOutDurationMs : INSTANT_MS;
-  const filter = config.highlight.glowTo;
+  const glowRest: Keyframe = glowShows(part, config) ? { filter: config.highlight.glowTo } : {};
   const fadeOut = part.highlightElement.animate(
     [
-      { opacity: 1, filter },
-      { opacity: 0, filter },
+      { opacity: 1, ...glowRest },
+      { opacity: 0, ...glowRest },
     ],
     {
       duration: durationMs,
