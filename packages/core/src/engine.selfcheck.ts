@@ -1751,6 +1751,16 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
       `Given a word set up while playing at ${rate}x, When it is seeked, Then it and its mirror start at now less the seek over the rate`
     );
   }
+  const OTHER_WINDOW_NOW_MS = 1_000_000;
+  const otherView = { performance: { now: () => OTHER_WINDOW_NOW_MS } };
+  Object.defineProperty(seekDocument, "defaultView", { value: otherView, configurable: true });
+  const { animation: otherWindow } = seek(true, 1);
+  Reflect.deleteProperty(seekDocument, "defaultView");
+  assert.equal(
+    otherWindow.startTime,
+    OTHER_WINDOW_NOW_MS - SEEK_MS,
+    "regression: Given a word in another window's document, When it is seeked while playing, Then its start time uses that window's clock"
+  );
   const { animation: paused, mirror: pausedMirror } = seek(false, 1);
   assert.ok(
     paused.currentTime === SEEK_MS && paused.startTime === null && pausedMirror?.currentTime === SEEK_MS,

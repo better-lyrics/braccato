@@ -27,14 +27,20 @@ export function seekAnimation(engine: AnimationEngineInstance, animation: Animat
     animation.currentTime = timeMs;
     return;
   }
-  animation.startTime = performance.now() - timeMs / rate;
+  animation.startTime = timelineNow(animation) - timeMs / rate;
+}
+
+// A document's timeline counts from its own window's time origin, which differs in another window or frame.
+function timelineNow(animation: Animation): number {
+  const target = (animation.effect as KeyframeEffect | null)?.target;
+  return target?.ownerDocument.defaultView?.performance.now() ?? performance.now();
 }
 
 // The timeline's time is held per task and per frame, so a running animation is read against now, the clock it was placed on.
 function liveCurrentTimeMs(animation: Animation): number | null {
   const startTimeMs = animation.startTime;
   if (animation.playState === "running" && typeof startTimeMs === "number") {
-    return (performance.now() - startTimeMs) * animation.playbackRate;
+    return (timelineNow(animation) - startTimeMs) * animation.playbackRate;
   }
   return timingValueToMs(animation.currentTime);
 }
