@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- Dev server only (`pnpm -C demo dev`, then /compare.html): it needs packages/core-rs built. -->
+<html lang="en" data-page-rules="on">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>braccato: DOM and Rust renderers side by side</title>
+    <link rel="preconnect" href="https://api.fontshare.com" />
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" />
+  </head>
+  <body>
+    <audio id="player" preload="auto"></audio>
+    <header class="bar">
+      <select id="song"></select>
+      <select id="timing">
+        <option value="syllables">Syllable timing</option>
+        <option value="lines">Line synced</option>
+        <option value="plain">Unsynced</option>
+      </select>
+      <select id="theme"></select>
+      <button id="play" type="button">Play</button>
+      <input id="seek" type="range" min="0" max="60" step="0.01" value="0" />
+      <output id="clock">0.00</output>
+      <span class="stats" id="stats"></span>
+    </header>
+    <main class="panes" id="panes">
+      <section class="stage" data-renderer="dom">
+        <h2>DOM (@braccato/core)</h2>
+        <div class="view" id="view-dom"><braccato-lyrics id="dom" source="#player"></braccato-lyrics></div>
+      </section>
+      <section class="stage" data-renderer="rs">
+        <h2>Rust + WebGL2 (@braccato/core-rs)</h2>
+        <div class="view" id="view-rs"><braccato-lyrics-rs id="rs" source="#player"></braccato-lyrics-rs></div>
+      </section>
+    </main>
+    <script type="module" src="./compare.js"></script>
+  </body>
+</html>
