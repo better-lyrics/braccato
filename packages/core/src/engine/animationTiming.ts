@@ -22,13 +22,21 @@ const songClockTracks = new WeakMap<Animation, SongClockTrack>();
 
 // A current time set before an animation starts holds until its first frame, which a long setup frame delays.
 export function seekAnimation(engine: AnimationEngineInstance, animation: Animation, timeMs: number): void {
-  const timelineMs = animation.timeline?.currentTime;
   const rate = animation.playbackRate;
-  if (!engine.lastTickOptions?.isPlaying || typeof timelineMs !== "number" || rate === 0) {
+  if (!engine.lastTickOptions?.isPlaying || typeof animation.timeline?.currentTime !== "number" || rate === 0) {
     animation.currentTime = timeMs;
     return;
   }
-  animation.startTime = timelineMs - timeMs / rate;
+  animation.startTime = performance.now() - timeMs / rate;
+}
+
+// The timeline's time is held per task and per frame, so a running animation is read against now, the clock it was placed on.
+function liveCurrentTimeMs(animation: Animation): number | null {
+  const startTimeMs = animation.startTime;
+  if (animation.playState === "running" && typeof startTimeMs === "number") {
+    return (performance.now() - startTimeMs) * animation.playbackRate;
+  }
+  return timingValueToMs(animation.currentTime);
 }
 
 export function followSongClock(
@@ -118,7 +126,7 @@ function driftSample(part: AnimationData, animation: Animation, lyricTimeS: numb
   const track = songClockTracks.get(animation);
   if (!track || track.skipDriftSample || animation.playState === "idle") return null;
 
-  const rawActualTimeMs = timingValueToMs(animation.currentTime);
+  const rawActualTimeMs = liveCurrentTimeMs(animation);
   if (rawActualTimeMs === null) return null;
   const expectedTimeMs = normalizedTimeMs(animation, (lyricTimeS - part.time) * 1000 + track.offsetMs, track);
   const actualTimeMs = normalizedTimeMs(animation, rawActualTimeMs, track);

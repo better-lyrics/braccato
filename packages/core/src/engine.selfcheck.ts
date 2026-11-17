@@ -1709,7 +1709,7 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   offEngine.destroy();
 }
 
-// Playing, a seek pins the start time to the timeline, so a long setup frame cannot hold the animation back.
+// Playing, a seek pins the start time to now, so a long setup frame cannot hold the animation back.
 {
   const seekDocument = new FakeDocument();
   const seekEngine = createAnimationEngineInstance(
@@ -1733,18 +1733,22 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
     animation.timeline = { currentTime: TIMELINE_MS };
     animation.playbackRate = rate;
     animation.effect = { target: seekWord.highlightElement, getKeyframes: () => [], getTiming: () => ({}) };
+    const beforeMs = performance.now();
     seekAnimation(seekEngine, asAnimation(animation), SEEK_MS);
+    const afterMs = performance.now();
     if (animation.startTime !== null) animation.playState = "running";
     const [mirror] = mirrorHighlightAnimations(seekWord, [asAnimation(animation)]).map(asFakeAnimation);
-    return { animation, mirror };
+    return { animation, mirror, beforeMs, afterMs };
   };
   for (const rate of [1, 1.5]) {
-    const { animation, mirror } = seek(true, rate);
+    const { animation, mirror, beforeMs, afterMs } = seek(true, rate);
+    const startTimeMs = animation.startTime ?? Number.NaN;
     assert.ok(
-      animation.startTime === TIMELINE_MS - SEEK_MS / rate &&
+      startTimeMs >= beforeMs - SEEK_MS / rate &&
+        startTimeMs <= afterMs - SEEK_MS / rate &&
         animation.currentTime === null &&
         mirror?.startTime === animation.startTime,
-      `Given a word set up while playing at ${rate}x, When it is seeked, Then it and its mirror start at the timeline less the seek over the rate`
+      `Given a word set up while playing at ${rate}x, When it is seeked, Then it and its mirror start at now less the seek over the rate`
     );
   }
   const { animation: paused, mirror: pausedMirror } = seek(false, 1);
