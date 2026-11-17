@@ -148,15 +148,10 @@ assert.equal(
   wrappedHighlight,
   "Given a timed word, When animation data is built, Then it retains its real highlight target"
 );
-assert.deepEqual(
-  lineData.parts[1].sweep?.flatMap(cell => cell.glows.map(({ glow }) => glow.textContent)),
-  [wrappedWord?.textContent, wrappedWord?.textContent],
-  "Given a wrapping word, When both runs are built, Then each glow copy matches the visible text"
-);
 assert.equal(
   lineData.parts[1].sweep?.[0].text.textContent,
-  `${wrappedWord?.textContent}`.repeat(3),
-  "Given a wrapping word, When both runs are built, Then the sweep's text holds the word and its two glow copies"
+  wrappedWord?.textContent,
+  "Given a wrapping word, When both runs are built, Then the sweep's text holds the word"
 );
 assert.deepEqual(
   lineData.parts.map(part => part.highlightElement.dataset.content),

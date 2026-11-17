@@ -29,7 +29,6 @@ import {
   ROMANIZED_LYRICS_CLASS,
   RTL_CLASS,
   SWEEP_CELL_CLASS,
-  SWEEP_GLOW_CLASS,
   SWEEP_MASK_CLASS,
   SWEEP_TEXT_CLASS,
   TRANSLATED_LYRICS_CLASS,
@@ -118,25 +117,16 @@ export interface AnimationData {
   animations: Animation[];
 }
 
-/** A copy of the word under a text shadow that never changes, faded in and out by opacity. */
-export interface SweepGlow {
-  glow: HTMLElement;
-  letters?: HTMLElement[];
-}
-
 /**
  * One box of a word's sweep, run by the compositor: the whole word when it is its own inline-block
  * box, or one letter of a word that flows inline. Its mask holds a static soft edge and slides one way
  * while the text inside it slides the other, so the glyphs hold still and only the edge crosses them.
- * The glow is a pair of halos at two radii inside the same text, so the edge reveals them with it,
- * crossfaded so the glow tightens as it fades. With nothing animating, the mask rests with the cell
- * fully lit.
+ * With nothing animating, the mask rests with the cell fully lit.
  */
 export interface SweepCell {
   mask: HTMLElement;
   text: HTMLElement;
   letters?: HTMLElement[];
-  glows: SweepGlow[];
   /** Where the cell sits along the word, as fractions of the word's width; equal shares if unset. */
   span?: { start: number; width: number };
 }
@@ -402,8 +392,6 @@ function fillWordText(
   return undefined;
 }
 
-const SWEEP_GLOW_RADII = ["wide", "tight"] as const;
-
 /** Puts a copy of the cell's text into an element, returning its letters if the word is split. */
 export type FillSweepText = (into: HTMLElement) => HTMLElement[] | undefined;
 
@@ -414,16 +402,9 @@ export function createSweepCell(doc: Document, host: HTMLElement, fill: FillSwee
   text.classList.add(SWEEP_TEXT_CLASS);
   mask.appendChild(text);
   const letters = fill(text);
-  const glows = SWEEP_GLOW_RADII.map(radius => {
-    const glow = doc.createElement("span");
-    glow.classList.add(SWEEP_GLOW_CLASS, `${SWEEP_GLOW_CLASS}--${radius}`);
-    const glowLetters = fill(glow);
-    text.appendChild(glow);
-    return { glow, letters: glowLetters };
-  });
   host.classList.add(SWEEP_CELL_CLASS);
   host.appendChild(mask);
-  return { mask, text, letters, glows };
+  return { mask, text, letters };
 }
 
 /** Makes each letter of a word that flows inline its own sweep cell, holding the letter's text. */

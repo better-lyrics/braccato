@@ -20,6 +20,31 @@ export interface DriftSample {
 
 const songClockTracks = new WeakMap<Animation, SongClockTrack>();
 
+// A current time set before an animation starts holds until its first frame, which a long setup frame delays.
+export function seekAnimation(engine: AnimationEngineInstance, animation: Animation, timeMs: number): void {
+  const rate = animation.playbackRate;
+  if (!engine.lastTickOptions?.isPlaying || typeof animation.timeline?.currentTime !== "number" || rate === 0) {
+    animation.currentTime = timeMs;
+    return;
+  }
+  animation.startTime = timelineNow(animation) - timeMs / rate;
+}
+
+// A document's timeline counts from its own window's time origin, which differs in another window or frame.
+function timelineNow(animation: Animation): number {
+  const target = (animation.effect as KeyframeEffect | null)?.target;
+  return target?.ownerDocument.defaultView?.performance.now() ?? performance.now();
+}
+
+// The timeline's time is held per task and per frame, so a running animation is read against now, the clock it was placed on.
+function liveCurrentTimeMs(animation: Animation): number | null {
+  const startTimeMs = animation.startTime;
+  if (animation.playState === "running" && typeof startTimeMs === "number") {
+    return (timelineNow(animation) - startTimeMs) * animation.playbackRate;
+  }
+  return timingValueToMs(animation.currentTime);
+}
+
 export function followSongClock(
   engine: AnimationEngineInstance,
   animation: Animation,
@@ -43,7 +68,8 @@ export function mirrorHighlightAnimations(part: PartData, animations: Animation[
     if (!effect || effect.target !== part.highlightElement) continue;
     const mirror = target.animate(effect.getKeyframes(), effect.getTiming());
     mirror.playbackRate = animation.playbackRate;
-    mirror.currentTime = animation.currentTime;
+    if (animation.playState === "running" && animation.startTime !== null) mirror.startTime = animation.startTime;
+    else mirror.currentTime = animation.currentTime;
     const track = songClockTracks.get(animation);
     if (track) songClockTracks.set(mirror, { ...track, skipDriftSample: true });
     mirrors.push(mirror);
@@ -106,7 +132,7 @@ function driftSample(part: AnimationData, animation: Animation, lyricTimeS: numb
   const track = songClockTracks.get(animation);
   if (!track || track.skipDriftSample || animation.playState === "idle") return null;
 
-  const rawActualTimeMs = timingValueToMs(animation.currentTime);
+  const rawActualTimeMs = liveCurrentTimeMs(animation);
   if (rawActualTimeMs === null) return null;
   const expectedTimeMs = normalizedTimeMs(animation, (lyricTimeS - part.time) * 1000 + track.offsetMs, track);
   const actualTimeMs = normalizedTimeMs(animation, rawActualTimeMs, track);

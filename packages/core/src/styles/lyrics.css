@@ -152,9 +152,8 @@
    to half a cell past the cell's end (SWEEP_REST in sweepPlans.ts), then a soft edge `fade` cells
    wide, where fade is the swipe's width from its last start stop to its last end stop, in cells. The
    engine slides the mask back to where the swipe begins and the text inside it the other way by the
-   same distance, so the glyphs hold still while the edge crosses them. The glow's two halos sit in
-   that same text, so the edge reveals them with it. With nothing animating the mask rests with the
-   cell lit and its halos whole. */
+   same distance, so the glyphs hold still while the edge crosses them. With nothing animating the
+   mask rests with the cell lit. */
 .blyrics--word.blyrics-word-highlight.blyrics-word-highlight--sweep {
 	color: var(--blyrics-lyric-active-color);
 	--blyrics-sweep-angle: 90deg;
@@ -216,26 +215,6 @@
 	width: calc(100% / var(--blyrics-sweep-widths));
 }
 
-/* A halo is a copy of the text whose own glyphs are clear, under a text shadow that never changes; the
-   engine fades it by opacity. */
-.blyrics-sweep-glow {
-	--blyrics-sweep-glow-radius: var(--blyrics-highlight-glow-radius-from, 0.8rem);
-	color: transparent;
-	inset: 0;
-	opacity: 0;
-	pointer-events: none;
-	position: absolute;
-	text-shadow: 0 0 var(--blyrics-sweep-glow-radius) var(--blyrics-glow-color);
-	user-select: none;
-	z-index: -1;
-}
-
-/* The glow shrinks as it fades. The engine crossfades from the wide halo to this one, which sits where
-   the radius has shrunk to by the time the wide one is gone. */
-.blyrics-sweep-glow--tight {
-	--blyrics-sweep-glow-radius: calc(var(--blyrics-highlight-glow-radius-from, 0.8rem) * 0.4);
-}
-
 /* A word that flows inline keeps its text here only for layout; its sweep is drawn by cells placed over
    each box it breaks into, which show the word from copies of its line. */
 .blyrics--word.blyrics-word-highlight.blyrics-word-highlight--context {
@@ -274,11 +253,6 @@
 
 .blyrics-sweep-clone .blyrics--word.blyrics-sweep-target {
 	color: var(--blyrics-lyric-active-color);
-}
-
-.blyrics-sweep-glow .blyrics-sweep-clone .blyrics--word.blyrics-sweep-target {
-	color: transparent;
-	text-shadow: 0 0 var(--blyrics-sweep-glow-radius) var(--blyrics-glow-color);
 }
 
 /* text-decoration skips inline-block letters and rides the wave, so draw on the word box instead, from its

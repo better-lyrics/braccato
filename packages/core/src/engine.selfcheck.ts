@@ -23,7 +23,9 @@ import { setupLineCullObserver } from "./engine/culling";
 import { bakeMotion, type MotionCurve, offsetAt } from "./engine/motionCurves";
 import { cellFade, type CellSpan, planCellSweep, SWEEP_REST } from "./engine/sweepPlans";
 import { smoothedPlaybackTime } from "./engine/clock";
+import { mirrorHighlightAnimations, seekAnimation } from "./engine/animationTiming";
 import {
+  asAnimation,
   asDocument,
   asElement,
   asFakeAnimation,
@@ -1618,7 +1620,7 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   );
 }
 
-// A halo is revealed by its cell's mask, so a step in its opacity shows as a flash behind the edge.
+// The glow is one drop shadow on the word, drawn from its lit text, and a line's exit cuts it off.
 {
   const HUM = "M".padEnd(25, "m");
   const glowLyrics: Lyric[] = [
@@ -1637,35 +1639,25 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   });
   placeLines(glowEngine);
   const [heldLine] = getRenderedLines(glowEngine);
-  const halos = () =>
-    heldLine.parts.flatMap(part =>
-      (part.sweep ?? []).flatMap(cell => cell.glows.flatMap(halo => asFakeNode(halo.glow).animations))
-    );
+  const [heldWord] = heldLine.parts;
+  const filterAt = (keyframes: unknown, index: number) => String((keyframes as Keyframe[]).at(index)?.filter);
   const opacityAt = (keyframes: unknown, index: number) => Number((keyframes as Keyframe[]).at(index)?.opacity);
+  const shadows = () =>
+    asFakeNode(heldWord.highlightElement).animations.filter(animation =>
+      filterAt(animation.keyframes, 0).startsWith("drop-shadow(")
+    );
 
   tickView(glowEngine, 3.5, resolveTickOptions(newTickOptions()));
-  const started = halos();
-  const cells = heldLine.parts.flatMap(part => part.sweep ?? []);
-  // The word is long enough to sweep letter by letter. It lasts 1s, so the edge crosses each letter in
-  // 1000ms / cells and its glow lasts 1200ms.
-  const expectedPeak = Math.min(1000 / cells.length / 1200, 0.3);
-  const keyframesOf = (element: HTMLElement) => asFakeNode(element).animations[0]?.keyframes as Keyframe[];
+  const [glowing] = shadows().filter(animation => opacityAt(animation.keyframes, 0) !== 1);
   assert.ok(
-    cells.length === HUM.length &&
-      cells.every(cell => {
-        const [wide, tight] = cell.glows.map(halo => keyframesOf(halo.glow));
-        return (
-          wide[0].opacity === 0 &&
-          wide[1].opacity === 1 &&
-          Math.abs(Number(wide[1].offset) - expectedPeak) < 1e-9 &&
-          tight[1].opacity === 0 &&
-          tight[1].offset === wide[1].offset
-        );
-      }),
-    "regression: Given a swiped word, When its glow starts, Then each halo starts clear and peaks as the edge leaves its cell"
+    glowing !== undefined &&
+      filterAt(glowing.keyframes, 0).includes("0.8rem") &&
+      Number(glowing.options.duration) === 1200 &&
+      glowing.options.easing === "ease" &&
+      glowing.options.fill === "none",
+    "regression: Given a swiped word, When its glow starts, Then the word's drop shadow shrinks from the glow's full radius over 1.2s"
   );
 
-  const [heldWord] = heldLine.parts;
   const fadingOut = () =>
     asFakeNode(heldWord.highlightElement).animations.some(
       animation => opacityAt(animation.keyframes, 0) === 1 && opacityAt(animation.keyframes, -1) === 0
@@ -1673,17 +1665,108 @@ assert.equal(parseColorAlpha("var(--x)"), null, "reports nothing for an unresolv
   for (let hundredths = 355; hundredths <= 600 && !fadingOut(); hundredths += 5) {
     tickView(glowEngine, hundredths / 100, resolveTickOptions(newTickOptions()));
   }
-  const kept = heldWord.animations.map(asFakeAnimation);
-  const hasStarted = (animation: FakeAnimation) => Number(animation.currentTime) >= Number(animation.options.delay);
-  const [glowing, waiting] = [started.filter(hasStarted), started.filter(animation => !hasStarted(animation))];
   assert.ok(
-    fadingOut() &&
-      glowing.length > 0 &&
-      glowing.every(animation => !animation.cancelled && kept.includes(animation)) &&
-      waiting.every(animation => animation.cancelled && !kept.includes(animation)),
-    "regression: Given a word still glowing, When its line exits, Then its started glows keep fading under the text and the rest never start"
+    fadingOut() && glowing.cancelled,
+    "regression: Given a word still glowing, When its line exits, Then its glow is cut and the word fades out"
   );
   glowEngine.destroy();
+}
+
+{
+  const offDocument = new FakeDocument();
+  const offEngine = createAnimationEngineInstance(
+    asDocument(offDocument),
+    asWindow(
+      new FakeWindow({
+        ...PANEL_STYLE,
+        "--blyrics-animate-highlight-glow": "false",
+        "--blyrics-highlight-glow-radius-to": "4px",
+      })
+    ),
+    new FakeHost(undefined, offDocument)
+  );
+  setLyrics(offEngine, asElement<HTMLElement>(offDocument.createElement("div")), LEAD_IN_LYRICS, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  placeLines(offEngine);
+  const [offWord] = getRenderedLines(offEngine)[0].parts;
+  const keyframesOf = (animation: FakeAnimation) => animation.keyframes as Keyframe[];
+  const fadeOuts = () =>
+    asFakeNode(offWord.highlightElement).animations.filter(
+      animation => keyframesOf(animation).at(0)?.opacity === 1 && keyframesOf(animation).at(-1)?.opacity === 0
+    );
+  for (let hundredths = 350; hundredths <= 600 && fadeOuts().length === 0; hundredths += 5) {
+    tickView(offEngine, hundredths / 100, resolveTickOptions(newTickOptions()));
+  }
+  assert.ok(
+    fadeOuts().length > 0 &&
+      asFakeNode(offWord.highlightElement).animations.every(animation =>
+        keyframesOf(animation).every(keyframe => keyframe.filter === undefined)
+      ),
+    "regression: Given a theme with the glow off and a resting radius, When a line exits, Then its words fade out with no drop shadow"
+  );
+  offEngine.destroy();
+}
+
+// Playing, a seek pins the start time to now, so a long setup frame cannot hold the animation back.
+{
+  const seekDocument = new FakeDocument();
+  const seekEngine = createAnimationEngineInstance(
+    asDocument(seekDocument),
+    asWindow(new FakeWindow(PANEL_STYLE)),
+    new FakeHost(undefined, seekDocument)
+  );
+  setLyrics(seekEngine, asElement<HTMLElement>(seekDocument.createElement("div")), LEAD_IN_LYRICS, {
+    loaderVisible: false,
+    noLyrics: false,
+  });
+  const [seekWord] = getRenderedLines(seekEngine)[0].parts;
+  seekWord.sweepContext = { host: asElement<HTMLElement>(seekDocument.createElement("span")) };
+  const TIMELINE_MS = 5000;
+  const SEEK_MS = 400;
+  const seek = (isPlaying: boolean, rate: number) => {
+    seekEngine.lastTickOptions = resolveTickOptions({ ...newTickOptions(), isPlaying });
+    const animation = asFakeNode(seekWord.highlightElement).animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 1000,
+    });
+    animation.timeline = { currentTime: TIMELINE_MS };
+    animation.playbackRate = rate;
+    animation.effect = { target: seekWord.highlightElement, getKeyframes: () => [], getTiming: () => ({}) };
+    const beforeMs = performance.now();
+    seekAnimation(seekEngine, asAnimation(animation), SEEK_MS);
+    const afterMs = performance.now();
+    if (animation.startTime !== null) animation.playState = "running";
+    const [mirror] = mirrorHighlightAnimations(seekWord, [asAnimation(animation)]).map(asFakeAnimation);
+    return { animation, mirror, beforeMs, afterMs };
+  };
+  for (const rate of [1, 1.5]) {
+    const { animation, mirror, beforeMs, afterMs } = seek(true, rate);
+    const startTimeMs = animation.startTime ?? Number.NaN;
+    assert.ok(
+      startTimeMs >= beforeMs - SEEK_MS / rate &&
+        startTimeMs <= afterMs - SEEK_MS / rate &&
+        animation.currentTime === null &&
+        mirror?.startTime === animation.startTime,
+      `Given a word set up while playing at ${rate}x, When it is seeked, Then it and its mirror start at now less the seek over the rate`
+    );
+  }
+  const OTHER_WINDOW_NOW_MS = 1_000_000;
+  const otherView = { performance: { now: () => OTHER_WINDOW_NOW_MS } };
+  Object.defineProperty(seekDocument, "defaultView", { value: otherView, configurable: true });
+  const { animation: otherWindow } = seek(true, 1);
+  Reflect.deleteProperty(seekDocument, "defaultView");
+  assert.equal(
+    otherWindow.startTime,
+    OTHER_WINDOW_NOW_MS - SEEK_MS,
+    "regression: Given a word in another window's document, When it is seeked while playing, Then its start time uses that window's clock"
+  );
+  const { animation: paused, mirror: pausedMirror } = seek(false, 1);
+  assert.ok(
+    paused.currentTime === SEEK_MS && paused.startTime === null && pausedMirror?.currentTime === SEEK_MS,
+    "Given a word set up while paused, When it is seeked, Then it and its mirror hold the seek as their current time"
+  );
+  seekEngine.destroy();
 }
 
 // -- Line scroll stagger --------------------------------------------
