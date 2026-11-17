@@ -1,0 +1,13 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"inputs": ["src/**", "build.rs", "js/**", "Cargo.toml", "Cargo.lock", "package.json", "scripts/**"],
+			"outputs": ["pkg/**"]
+		},
+		"test": {
+			"inputs": ["src/**", "build.rs", "Cargo.toml", "Cargo.lock", "scripts/**"]
+		}
+	}
+}

@@ -1,0 +1,16 @@
+{
+	"name": "@braccato/core-rs",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The braccato lyrics renderer, rewritten in Rust and drawn with WebGL2.",
+	"type": "module",
+	"license": "MIT",
+	"exports": {
+		"./element": "./js/element.js"
+	},
+	"files": ["js", "pkg/*.js", "pkg/*.wasm", "pkg/*.d.ts"],
+	"scripts": {
+		"build": "node scripts/run.mjs build",
+		"test": "node scripts/run.mjs test"
+	}
+}
