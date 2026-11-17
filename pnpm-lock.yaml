@@ -55,6 +55,8 @@ importers:
         specifier: workspace:^
         version: link:../types
 
+  packages/core-rs: {}
+
   packages/highlight:
     dependencies:
       '@braccato/parsers':
