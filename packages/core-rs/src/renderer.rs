@@ -21,6 +21,9 @@ use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlMediaElemen
 
 /// How often the element's place in the scroll element is read again (see `frame_with`).
 const HOST_RECHECK_MS: f64 = 250.0;
+/// Scrolls this soon after the lines were built or measured are the page settling (a scroll position
+/// clamped to new content), not a reader.
+const SETTLING_SCROLL_MS: f64 = 600.0;
 /// A user scroll stops autoscroll for this long, synced and unsynced.
 const USER_SCROLL_PAUSE_MS: f64 = 25_000.0;
 const USER_SCROLL_PAUSE_UNSYNCED_MS: f64 = 5_000.0;
@@ -56,6 +59,21 @@ struct Prior {
     scroll_top: f32,
     /// Whether lines that moved slide to their new places, holding the one being followed still.
     settle: bool,
+}
+
+/// An element of the host's that the renderer moves along with what it draws (see `find_riders`).
+struct Rider {
+    element: HtmlElement,
+    /// Inside the credits, rather than after the lines.
+    in_credits: bool,
+    /// The offset and opacity it was last given.
+    last: (f32, f32),
+}
+
+impl Rider {
+    fn new(element: Element, in_credits: bool) -> Rider {
+        Rider { element: element.unchecked_into(), in_credits, last: (f32::NAN, f32::NAN) }
+    }
 }
 
 /// A start time a host wrote onto a built line or part (`LineData.time`), which outlives a rebuild
@@ -128,7 +146,12 @@ pub struct View {
     /// Scroll glides running on the credits, which move with the lines.
     credits_curves: Vec<Curve>,
     /// The host elements the renderer moves with the credits, and where it last put them.
-    riders: Vec<(HtmlElement, (f32, f32))>,
+    riders: Vec<Rider>,
+    /// Until when scroll events are taken for the page settling rather than a reader.
+    settling_until: f64,
+    /// Whether the view watches its scroll element for readers itself. A host that reports scrolls
+    /// (`noteUserScroll`) turns this off, as the DOM renderer left it to the host.
+    pub own_scroll_detection: bool,
     prior: Option<Prior>,
     /// Image-highlight addresses already asked for, loaded or not.
     images_asked: std::collections::HashSet<String>,
@@ -232,6 +255,8 @@ impl View {
             credits_focus: (false, 0.0),
             credits_curves: Vec::new(),
             riders: Vec::new(),
+            settling_until: 0.0,
+            own_scroll_detection: true,
             prior: None,
             images_asked: Default::default(),
             pending_refresh: None,
@@ -329,6 +354,7 @@ impl View {
 
     /// Puts `song` on screen in place of the one there, given where each new line came from.
     fn apply_song(&mut self, song: Song, origins: &[Option<usize>], settle: bool) {
+        self.settle_scrolls();
         let now = dom::now_ms(&self.win);
         let (Some(old_song), Some(old_dom)) = (self.song.take(), self.dom.take()) else { return };
         let scroll_top = self.scroll_top();
@@ -527,6 +553,7 @@ impl View {
     /// Takes the lines off the screen, keeping the container and what the host put in it. Answers
     /// whether there were any.
     pub fn clear_on_screen(&mut self) -> bool {
+        self.settle_scrolls();
         let had = self.dom.as_ref().is_some_and(|d| !d.lines.is_empty() || d.credits.is_some());
         if let Some(dom_) = self.dom.take() {
             for line in &dom_.lines {
@@ -715,11 +742,18 @@ impl View {
         self.autoscroll.last_written = Some(self.scroll_top());
     }
 
-    /// A scroll event: if it is not the one autoscroll just caused, a reader is scrolling.
+    /// The page is about to move under the scroll element (lines built, measured, taken away), so
+    /// scrolls for a moment are its doing.
+    fn settle_scrolls(&mut self) {
+        self.settling_until = dom::now_ms(&self.win) + SETTLING_SCROLL_MS;
+    }
+
+    /// A scroll event: if it is not the one autoscroll just caused, nor the page settling after the
+    /// lines changed, a reader is scrolling.
     pub fn on_scroll(&mut self, now_ms: f64) {
         let top = self.scroll_top();
         let ours = self.autoscroll.last_written.is_some_and(|w| (w - top).abs() <= 1.0);
-        if ours || self.song.as_ref().is_none_or(|s| s.no_lyrics) {
+        if ours || now_ms < self.settling_until || self.song.as_ref().is_none_or(|s| s.no_lyrics) {
             return;
         }
         let unsynced = self.song.as_ref().is_some_and(|s| s.sync == SyncType::None);
@@ -785,6 +819,7 @@ impl View {
 
     fn build(&mut self) {
         self.needs_build = false;
+        self.settle_scrolls();
         self.pending_refresh = None;
         if !self.host.is_same_node(self.container.parent_node().as_ref()) {
             let _ = self.host.append_child(&self.container);
@@ -868,6 +903,7 @@ impl View {
             self.needs_layout = true;
             return;
         }
+        self.settle_scrolls();
         let prior = self.prior.take().unwrap_or_else(|| Prior {
             layouts: self.measured.take().map(|m| m.lines.into_iter().map(Some).collect()).unwrap_or_default(),
             credits: None,
@@ -1018,28 +1054,53 @@ impl View {
         }
     }
 
-    /// What the host put inside the credits (a source card): the renderer draws the credits
-    /// itself, so it moves these with them.
-    fn find_riders(&self) -> Vec<(HtmlElement, (f32, f32))> {
-        let Some(credits) = self.dom.as_ref().and_then(|d| d.credits.as_ref()) else { return Vec::new() };
-        let children = credits.children();
-        (0..children.length())
-            .filter_map(|i| children.item(i))
-            .filter(|child| !child.class_list().contains("blyrics-credits__text"))
-            .map(|child| (child.unchecked_into::<HtmlElement>(), (f32::NAN, f32::NAN)))
-            .collect()
+    /// What the host put among the lines, which the renderer moves along with what it draws: things
+    /// inside the credits (a source card) go with the credits, and things after the lines in the
+    /// container (a footer) glide with the last of them, so they do not jump ahead when autoscroll
+    /// does.
+    fn find_riders(&self) -> Vec<Rider> {
+        let Some(dom_) = &self.dom else { return Vec::new() };
+        let mut riders = Vec::new();
+        if let Some(credits) = &dom_.credits {
+            let children = credits.children();
+            riders.extend(
+                (0..children.length())
+                    .filter_map(|i| children.item(i))
+                    .filter(|child| !child.class_list().contains("blyrics-credits__text"))
+                    .map(|child| Rider::new(child, true)),
+            );
+        }
+        if !self.stage {
+            let children = dom_.container.children();
+            riders.extend(
+                (0..children.length())
+                    .filter_map(|i| children.item(i))
+                    .filter(|child| {
+                        !child.class_list().contains("blyrics--line")
+                            && dom_.credits.as_ref().is_none_or(|c| !c.is_same_node(Some(child)))
+                    })
+                    .map(|child| Rider::new(child, false)),
+            );
+        }
+        riders
     }
 
-    /// Moves the riders by `dy` from where the page laid them out, at `opacity`.
-    fn place_riders(&mut self, dy: f32, opacity: f32) {
+    /// Moves the riders in the credits by `credits_dy` from where the page laid them out, at
+    /// `opacity`, and the ones after the lines by `tail_dy`.
+    fn place_riders(&mut self, credits_dy: f32, opacity: f32, tail_dy: f32) {
         let mut changed = false;
-        for (rider, last) in &mut self.riders {
-            if (last.0 - dy).abs() < 0.25 && (last.1 - opacity).abs() < 0.002 {
+        for rider in &mut self.riders {
+            let (dy, opacity) = if rider.in_credits { (credits_dy, opacity) } else { (tail_dy, 1.0) };
+            if (rider.last.0 - dy).abs() < 0.25 && (rider.last.1 - opacity).abs() < 0.002 {
                 continue;
             }
-            *last = (dy, opacity);
-            changed = true;
-            set_style(rider, "translate", &format!("0 {dy:.2}px"));
+            rider.last = (dy, opacity);
+            changed |= rider.in_credits;
+            if dy.abs() < 0.25 {
+                let _ = rider.element.style().remove_property("translate");
+            } else {
+                set_style(&rider.element, "translate", &format!("0 {dy:.2}px"));
+            }
         }
         // The opacity goes on the credits, as the DOM renderer's stage set it: its stylesheet hides
         // whatever the stage has not made visible, riders and all.
@@ -1348,11 +1409,15 @@ impl View {
         self.draws.clear();
         let view_h = self.canvas_size.1;
         let mut prefetched = 0;
+        let mut last_line_offset = 0.0;
         let Some(measured) = self.measured.as_mut() else { return false };
         for (index, line) in song.lines.iter().enumerate() {
             let layout = &mut measured.lines[index];
             let state = &mut self.lines[index];
             let offset = scroll::offset(&mut state.curves, now_ms);
+            if index + 1 == song.lines.len() {
+                last_line_offset = offset;
+            }
             if !state.curves.is_empty() {
                 moving = true;
             }
@@ -1394,12 +1459,16 @@ impl View {
 
         // Credits.
         let mut rider_motion = None;
+        let mut tail_dy = last_line_offset;
         if let Some(credits) = measured.credits.as_mut() {
             let credits_index = song.lines.len();
             let (y, stage_opacity) = match self.stage_motion.get(credits_index) {
                 Some(motion) if self.stage => (motion.y(now_ms), motion.opacity(now_ms)),
                 _ if self.stage => (0.0, 0.0),
-                _ => (credits.top + scroll::offset(&mut self.credits_curves, now_ms) - canvas_top, 1.0),
+                _ => {
+                    tail_dy = scroll::offset(&mut self.credits_curves, now_ms);
+                    (credits.top + tail_dy - canvas_top, 1.0)
+                }
             };
             if !self.credits_curves.is_empty() {
                 moving = true;
@@ -1429,8 +1498,9 @@ impl View {
             }
         }
 
-        if let Some((dy, opacity)) = rider_motion {
-            self.place_riders(dy, opacity);
+        if !self.riders.is_empty() {
+            let (credits_dy, opacity) = rider_motion.unwrap_or((0.0, 1.0));
+            self.place_riders(credits_dy, opacity, tail_dy);
         }
 
         self.gpu.begin(&self.quads);

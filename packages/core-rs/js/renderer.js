@@ -306,6 +306,8 @@ export function createLyricsRenderer(rendererOptions) {
 			rust = new Renderer(nextMount);
 			rust.setLayout(layout);
 			rust.setDecorations(false, false);
+			// Core leaves telling a reader's scroll apart to the host, through noteUserScroll.
+			rust.setScrollDetection(false);
 			if (lastCss !== null) rust.setTheme(lastCss);
 			scrollElement = undefined;
 		} else if (nextMount !== mount || !attached) {
@@ -462,7 +464,9 @@ export function createLyricsRenderer(rendererOptions) {
 			records = [];
 		},
 		noteUserScroll() {
-			if (!destroyed) rust?.noteScroll();
+			// As core: a scroll while the host shows its loader (a new source on its way) is not a reader's.
+			if (destroyed || host.isLoaderActive()) return;
+			rust?.noteScroll();
 		},
 		noteVisibilityChange() {},
 		resumeAutoscroll() {

@@ -330,6 +330,9 @@ impl Renderer {
             None => self.shared.win.clone().into(),
         };
         let listener = listen(&self.shared, &target, "scroll", true, |shared, _| {
+            if !shared.view.borrow().own_scroll_detection {
+                return;
+            }
             let now = dom::now_ms(&shared.win);
             shared.view.borrow_mut().on_scroll(now);
             shared.flush_events();
@@ -587,6 +590,13 @@ impl Renderer {
         let context: web_sys::CanvasRenderingContext2d = copy.get_context("2d").ok()??.unchecked_into();
         context.draw_image_with_html_canvas_element(source, 0.0, 0.0).ok()?;
         Some(copy)
+    }
+
+    /// Whether the view watches its scroll element for a reader scrolling (the default), or leaves
+    /// it to the host to report scrolls through `noteScroll`.
+    #[wasm_bindgen(js_name = setScrollDetection)]
+    pub fn set_scroll_detection(&self, own: bool) {
+        self.shared.view.borrow_mut().own_scroll_detection = own;
     }
 
     /// Sends any events waiting on the next frame now.

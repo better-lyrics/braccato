@@ -543,6 +543,8 @@ fn push_note(
             };
             (1.0 - fade, 0.0, 1.2, 0.0)
         }
+        // Lines go live a little before they start, to be ready; the note fills only from its start.
+        Phase::Live if theme.animate_instrumental && t < 0.0 => return,
         Phase::Live if theme.animate_instrumental => {
             let progress = (t / span).clamp(0.0, 1.0);
             let rise = 18.72 + (-0.96 - 18.72) * progress;
