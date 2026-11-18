@@ -173,9 +173,10 @@ device pixel ratio 1.33, 240 Hz, the song playing. Medians of three 15 s runs:
 | Kettle, stage layout | 0.049 / 0.100 ms | 0.07 ms |
 
 At 240 Hz that is about 1.5% of a core and 3 to 10% of the GPU. A line costs about 1 ms more on the
-frame it is rasterized, as it scrolls into view. In Better Lyrics on YouTube Music, the main thread
-was 7% busy against 37% for `@braccato/core` over the same playback, and the compositor thread 3%
-against 13%.
+frame it is rasterized, as it scrolls into view. In Better Lyrics on YouTube Music, counting the whole
+page with the video playing, the main thread was 13 to 14% busy against 40 to 45% for
+`@braccato/core` 1.21.6, Chrome's renderer process used 32 to 34% of a core against 70 to 77%, and
+its GPU process 38 to 39% against 51%.
 
 ### Benchmarks and profiles
 
