@@ -43,6 +43,12 @@ struct Shared {
     media_listeners: RefCell<Vec<Listener>>,
     resize: RefCell<Option<ResizeWatch>>,
     on_page: RefCell<Option<IntersectionWatch>>,
+    /// A `(resolution)` query for the device pixel ratio the view draws at, which reports when the
+    /// ratio changes (zoom, another screen) so that frames need not read it.
+    pixel_ratio: RefCell<Option<Listener>>,
+    /// Set when that query fired: the next frame watches the new ratio. Not done in the listener,
+    /// which would drop itself while running.
+    rewatch_pixel_ratio: Cell<bool>,
 }
 
 /// An event listener kept alive for as long as it is attached.
@@ -114,10 +120,25 @@ impl Shared {
             self.load_image(url);
         }
         self.flush_events();
+        if self.rewatch_pixel_ratio.take() {
+            self.watch_pixel_ratio();
+        }
         self.view.borrow_mut().profile.end();
         if again {
             self.request_frame();
         }
+    }
+
+    /// Watches the window's current device pixel ratio for a change.
+    fn watch_pixel_ratio(self: &Rc<Self>) {
+        let query = format!("(resolution: {}dppx)", self.win.device_pixel_ratio());
+        let Ok(Some(list)) = self.win.match_media(&query) else { return };
+        let listener = listen(self, &list.unchecked_into(), "change", true, |shared, _| {
+            shared.view.borrow_mut().pixel_ratio_changed = true;
+            shared.rewatch_pixel_ratio.set(true);
+            shared.request_frame();
+        });
+        *self.pixel_ratio.borrow_mut() = Some(listener);
     }
 
     /// Loads an image-highlight image, CORS-enabled so the texture it is drawn into stays readable.
@@ -197,6 +218,8 @@ impl Renderer {
             media_listeners: RefCell::new(Vec::new()),
             resize: RefCell::new(None),
             on_page: RefCell::new(None),
+            pixel_ratio: RefCell::new(None),
+            rewatch_pixel_ratio: Cell::new(false),
         });
         let weak = Rc::downgrade(&shared);
         *shared.frame.borrow_mut() = Some(Closure::new(move |now: f64| {
@@ -242,6 +265,7 @@ impl Renderer {
             shared.request_frame();
         }));
         *shared.listeners.borrow_mut() = listeners;
+        shared.watch_pixel_ratio();
 
         let weak = Rc::downgrade(&shared);
         let on_resize = Closure::<dyn FnMut()>::new(move || {

@@ -255,6 +255,10 @@ pub struct View {
     passive: (f64, Option<f64>),
 
     dpr: f32,
+    /// The window's device pixel ratio may no longer be `dpr` (see `Shared::watch_pixel_ratio`).
+    pub pixel_ratio_changed: bool,
+    /// When the ratio was last read anyway, in case no event says it changed.
+    pixel_ratio_checked_ms: f64,
     needs_build: bool,
     needs_layout: bool,
     just_built: bool,
@@ -361,6 +365,8 @@ impl View {
             bleed_left: 0.0,
             passive: (0.0, None),
             dpr: 1.0,
+            pixel_ratio_changed: false,
+            pixel_ratio_checked_ms: 0.0,
             needs_build: false,
             needs_layout: false,
             just_built: false,
@@ -1281,7 +1287,7 @@ impl View {
             ] {
                 set_style(&self.canvas, property, &value);
             }
-            self.dpr = window.device_pixel_ratio() as f32;
+            self.set_pixel_ratio(window.device_pixel_ratio() as f32);
             self.gpu.resize(&self.canvas, width, height, self.dpr);
             return;
         }
@@ -1301,8 +1307,16 @@ impl View {
         set_style(&self.canvas, "height", &format!("{height}px"));
         set_style(&self.canvas, "margin-left", &format!("{}px", -self.bleed_left));
         set_style(&self.canvas, "margin-bottom", &format!("{}px", -height));
-        self.dpr = window.device_pixel_ratio() as f32;
+        self.set_pixel_ratio(window.device_pixel_ratio() as f32);
         self.gpu.resize(&self.canvas, width, height, self.dpr);
+    }
+
+    /// Lines rasterized at another ratio would draw blurred or oversized: they are drawn again.
+    fn set_pixel_ratio(&mut self, dpr: f32) {
+        if (dpr - self.dpr).abs() > 1e-3 {
+            self.dpr = dpr;
+            self.release_textures();
+        }
     }
 
     /// Where the element's top is in the scroll element's content.
@@ -1353,9 +1367,15 @@ impl View {
         if self.needs_layout {
             self.layout();
         }
-        if (self.win.device_pixel_ratio() as f32 - self.dpr).abs() > 1e-3 {
-            self.measure_viewport();
-            self.release_textures();
+        // Zoom and moving to another screen change the device pixel ratio. A media query reports
+        // it; a few times a second it is read anyway, as not every change sends the event.
+        let recheck = now_ms - self.pixel_ratio_checked_ms >= HOST_RECHECK_MS;
+        if std::mem::take(&mut self.pixel_ratio_changed) || recheck {
+            self.pixel_ratio_checked_ms = now_ms;
+            if (self.win.device_pixel_ratio() as f32 - self.dpr).abs() > 1e-3 {
+                self.measure_viewport();
+                self.release_textures();
+            }
         }
         // A line came out larger than the line pages hold: every line is drawn again into larger ones.
         if self.gpu.needs_page_reset() {
