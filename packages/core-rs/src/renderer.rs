@@ -127,6 +127,37 @@ impl Rider {
     }
 }
 
+/// Where the lines being sung are, as a range of line indices that moves smoothly from one set to
+/// the next, so a theme's distance effects follow the scroll rather than jump.
+#[derive(Clone, Copy, Debug, Default)]
+struct Focus {
+    from: (f32, f32),
+    to: (f32, f32),
+    start_ms: f64,
+    /// Zero until the first lines are followed.
+    duration_ms: f64,
+}
+
+impl Focus {
+    fn at(&self, now_ms: f64, easing: crate::easing::Easing) -> (f32, f32) {
+        if self.duration_ms <= 0.0 {
+            return self.to;
+        }
+        let t = easing.at((((now_ms - self.start_ms) / self.duration_ms) as f32).clamp(0.0, 1.0));
+        (self.from.0 + (self.to.0 - self.from.0) * t, self.from.1 + (self.to.1 - self.from.1) * t)
+    }
+
+    fn moving(&self, now_ms: f64) -> bool {
+        self.duration_ms > 0.0 && now_ms < self.start_ms + self.duration_ms
+    }
+}
+
+/// How long the distance effects take to follow the sung lines to their next place: the scroll's own
+/// glide, which they move with.
+const FOCUS_MS: f64 = 750.0;
+/// How long the distance effects take to ease out while a reader scrolls, and back.
+const EFFECTS_FADE_MS: f64 = 300.0;
+
 /// A start time a host wrote onto a built line or part (`LineData.time`), which outlives a rebuild
 /// of the same lyrics.
 #[derive(Clone, Copy, Debug)]
@@ -256,6 +287,11 @@ pub struct View {
     pub events: Vec<Event>,
     pub stats: Stats,
 
+    /// The theme's distance effects: where the sung lines are, and how strongly the effects apply
+    /// (1, easing to 0 while a reader scrolls): (from, to, since).
+    focus: Focus,
+    effects: (f32, f32, f64),
+
     /// The stage layout: only the lines being sung, at the bottom of the element.
     pub stage: bool,
     stage_motion: Vec<stage::Motion>,
@@ -352,6 +388,8 @@ impl View {
             line_blurs: Vec::new(),
             events: Vec::new(),
             stats: Stats::default(),
+            focus: Focus::default(),
+            effects: (1.0, 1.0, 0.0),
             stage: false,
             stage_motion: Vec::new(),
             stage_area: None,
@@ -1458,6 +1496,25 @@ impl View {
             }
         }
 
+        // The distance effects follow the lines being sung, and give way while a reader scrolls.
+        if let Some((first, last)) = self.autoscroll.followed_range() {
+            let to = (first as f32, last as f32);
+            if to != self.focus.to {
+                let from =
+                    if self.focus.duration_ms > 0.0 { self.focus.at(now_ms, self.theme.scroll_easing) } else { to };
+                self.focus = Focus { from, to, start_ms: now_ms, duration_ms: FOCUS_MS };
+            }
+        }
+        let wanted = if following { 1.0 } else { 0.0 };
+        if wanted != self.effects.1 {
+            let now = self.effect_strength(now_ms);
+            self.effects = (now, wanted, now_ms);
+        }
+        let effects_on = !self.stage && animating && !self.theme.line_effects.is_empty();
+        if effects_on && (self.focus.moving(now_ms) || now_ms < self.effects.2 + EFFECTS_FADE_MS) {
+            moving = true;
+        }
+
         // Unsynced lyrics have nothing to follow, so they drift instead.
         if song.sync == SyncType::None
             && !song.no_lyrics
@@ -1500,11 +1557,27 @@ impl View {
             if !state.curves.is_empty() {
                 moving = true;
             }
-            let (y, opacity) = match self.stage_motion.get(index) {
+            let (y, mut opacity) = match self.stage_motion.get(index) {
                 Some(motion) if self.stage => (motion.y(now_ms), motion.opacity(now_ms)),
                 _ if self.stage => (0.0, 0.0),
                 _ => (layout.top + offset - canvas_top, 1.0),
             };
+            let mut line_blur = 0.0;
+            if effects_on {
+                let (first, last) = self.focus.at(now_ms, self.theme.scroll_easing);
+                let at = index as f32;
+                let distance = if at < first {
+                    at - first
+                } else if at > last {
+                    at - last
+                } else {
+                    0.0
+                };
+                let (effect_opacity, blur) = self.theme.line_effects.at(distance);
+                let strength = effect_strength(self.effects, now_ms);
+                opacity *= 1.0 + (effect_opacity - 1.0) * strength;
+                line_blur = blur * strength;
+            }
             let margin = layout.font_px;
             let visible = opacity > 0.001 && y + layout.height + margin > 0.0 && y - margin < view_h;
             let near = y + layout.height > -view_h * PREFETCH_VIEWPORTS && y < view_h * (1.0 + PREFETCH_VIEWPORTS);
@@ -1543,6 +1616,14 @@ impl View {
                 placement,
                 &self.theme,
             );
+            // A line the theme blurs for its distance is drawn whole into the atlas, glows and all.
+            if line_blur * self.dpr >= MIN_BLUR_PX {
+                let mut quads: Vec<Quad> = self.line_blurs.drain(..).flat_map(|b| b.quads).collect();
+                quads.extend_from_slice(&self.line_quads);
+                self.blur_jobs.push(BlurJob { source: index, quads, sigma: line_blur, composite: self.quads.len() });
+                push_run(&mut self.draws, &mut self.quads, ATLAS, &[Quad::default()]);
+                continue;
+            }
             // Glows go under the line's text: blurred, or as they are once too small to blur.
             for blur in self.line_blurs.drain(..) {
                 if blur.sigma * self.dpr >= MIN_BLUR_PX {
@@ -1616,7 +1697,18 @@ impl View {
     }
 }
 
+/// How strongly the distance effects apply at `now_ms`: easing between `effects.0` and `effects.1`
+/// since `effects.2`.
+fn effect_strength(effects: (f32, f32, f64), now_ms: f64) -> f32 {
+    let t = (((now_ms - effects.2) / EFFECTS_FADE_MS) as f32).clamp(0.0, 1.0);
+    effects.0 + (effects.1 - effects.0) * crate::easing::Easing::EASE.at(t)
+}
+
 impl View {
+    fn effect_strength(&self, now_ms: f64) -> f32 {
+        effect_strength(self.effects, now_ms)
+    }
+
     /// Draws the frame: the blur jobs into the atlas and blurred there, then the canvas, where each
     /// job is one quad of the atlas in the place its quads would have been.
     fn submit(&mut self) {

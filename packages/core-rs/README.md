@@ -95,7 +95,21 @@ instrumental note with `--blyrics-highlight-image`. Selectors still scope these 
 held words glow.
 
 Rules that style the lines directly (filters, per-line opacity, `display: none`, keyframes) have no
-effect. The Sustain and Karaoke demo themes depend on those.
+effect. Blurring and fading lines by how far they are from the one being sung, which themes like
+Sustain do with chains of sibling selectors, is instead two lists:
+
+```css
+.blyrics-container {
+  /* opacity and blur for the sung line, then 1, 2, 3… lines away */
+  --blyrics-line-opacity-after: 1 0.88 0.72 0.52 0.28 0;
+  --blyrics-line-blur-after: 0 1.125px 2.5px 4.125px 6px;
+}
+```
+
+`--blyrics-line-opacity` and `--blyrics-line-blur` apply to both sides, and `-before` / `-after`
+replace one side: lines already sung, or still to come. Values between whole lines are interpolated,
+the last value holds past the end, and blurs are the standard deviation, as CSS `blur()` takes it.
+The distance follows the scroll smoothly, and the effects ease off while the reader scrolls.
 
 ## How it works
 
@@ -103,16 +117,19 @@ The lines are laid out by the browser in an invisible copy of `@braccato/core`'s
 element. That gives the same wrapping, bidi reordering and font fallback, and it stays in the page
 for scrolling, clicks and screen readers. It is measured once per layout.
 
-Each line is then drawn once into a texture with the browser's own text engine (Canvas 2D):
-
-- red: the text,
-- green: the text blurred to the glow's full radius,
-- blue: the text blurred to 45% of it.
+Each line is then drawn once into a texture with the browser's own text engine (Canvas 2D), as
+coverage the shader tints, with mipmaps.
 
 Every frame, Rust works out each visible line's state from the lyric clock: its scale, how far the
 sweep has got, the glow's radius, the wobble and the letter wave. It writes one quad per letter or
 word and draws each line with one instanced call. The fragment shader mixes the inactive and lit
-colours across the sweep's edge, and blends the blurred channels for a glow of any radius.
+colours across the sweep's edge.
+
+Glows, the instrumental note's glow and blurred lines are real Gaussian blurs of what is lit (the
+letters behind the sweep, the filled part of the note), made on the GPU each frame. What is to be
+blurred is drawn with the same quads into an atlas, scaled down so its standard deviation spans 1.5
+to 3 texels and reading the matching mip level, blurred across and then down with an instanced pass
+each, and drawn back onto the canvas as one quad. Six glowing words cost about 0.1 ms of GPU time.
 
 The shader is written in WGSL. `build.rs` parses and validates it with naga, a build-dependency
 only, and writes GLSL ES 3.00 for WebGL2, so a shader mistake fails `cargo build` with naga's report
@@ -131,7 +148,7 @@ Between draws only the bound texture and the instance range change: the texture'
 | `src/scroll.rs` | Autoscroll targets and the per-line glide |
 | `src/stage.rs` | The stage layout's roles and motion |
 | `src/clock.rs` | Smoothing the media clock between reports |
-| `src/shaders/quad.wgsl` | The one shader, in WGSL |
+| `src/shaders/*.wgsl` | The quad and blur shaders, in WGSL |
 | `build.rs` | Validates the WGSL with naga and writes GLSL ES 3.00 and its resource names at build time |
 | `src/gpu.rs` | WebGL2: the program, the instance buffer, the uniform buffer, line textures |
 | `src/renderer.rs` | The view: state, a frame, events |
@@ -148,7 +165,8 @@ the fastest demo song playing:
 - Main thread busy 7% against 37% for `@braccato/core` over the same playback, and the compositor
   thread 3% against 13%.
 
-`renderer.setProfiling(true)` and `renderer.stats()` report the per-frame numbers.
+With six words glowing, the GPU blur adds about 0.1 to 0.18 ms. `renderer.setProfiling(true)` and
+`renderer.stats()` report the per-frame numbers.
 
 ## Build and test
 

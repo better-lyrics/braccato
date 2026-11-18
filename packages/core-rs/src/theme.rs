@@ -307,6 +307,72 @@ pub struct Theme {
 
     pub credits_opacity: f32,
     pub credits_focused_opacity: f32,
+
+    /// How lines look by their distance from the lines being sung, before them (sung already) and
+    /// after them (still to come): an opacity and a blur (standard deviation, CSS pixels) for each
+    /// whole line away, starting at 0. Between whole lines the values are interpolated; past the
+    /// last, the last holds. Empty when the theme sets none.
+    pub line_effects: LineEffects,
+}
+
+/// A theme's distance curves (see `Theme::line_effects`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LineEffects {
+    pub opacity_before: Vec<f32>,
+    pub opacity_after: Vec<f32>,
+    pub blur_before: Vec<f32>,
+    pub blur_after: Vec<f32>,
+}
+
+impl LineEffects {
+    pub fn is_empty(&self) -> bool {
+        self.opacity_before.is_empty()
+            && self.opacity_after.is_empty()
+            && self.blur_before.is_empty()
+            && self.blur_after.is_empty()
+    }
+
+    /// Opacity and blur at `distance` lines away, before (negative) or after (positive).
+    pub fn at(&self, distance: f32) -> (f32, f32) {
+        let (opacity, blur) = if distance < 0.0 {
+            (&self.opacity_before, &self.blur_before)
+        } else {
+            (&self.opacity_after, &self.blur_after)
+        };
+        let d = distance.abs();
+        (sample(opacity, d, 1.0), sample(blur, d, 0.0))
+    }
+}
+
+/// `values` at `d`, between whole indices linearly, the last value past the end, `empty` with none.
+fn sample(values: &[f32], d: f32, empty: f32) -> f32 {
+    let Some(&last) = values.last() else { return empty };
+    let i = d.floor() as usize;
+    if i + 1 >= values.len() {
+        return last;
+    }
+    let t = d - i as f32;
+    values[i] + (values[i + 1] - values[i]) * t
+}
+
+/// A list of numbers or lengths, as `1 0.88 0.72` or `0 1.125px 2.5px`, separated by spaces or
+/// commas. Lengths are px or rem; anything else ends the list where it is.
+pub fn parse_list(value: &str, root_font_px: f32) -> Vec<f32> {
+    let mut out = Vec::new();
+    for token in value.split(|c: char| c.is_whitespace() || c == ',').filter(|t| !t.is_empty()) {
+        let parsed = if let Some(rem) = token.strip_suffix("rem") {
+            rem.parse::<f32>().map(|v| v * root_font_px)
+        } else if let Some(px) = token.strip_suffix("px") {
+            px.parse::<f32>()
+        } else {
+            token.parse::<f32>()
+        };
+        match parsed {
+            Ok(v) if v.is_finite() => out.push(v),
+            _ => break,
+        }
+    }
+    out
 }
 
 impl Theme {
@@ -431,6 +497,25 @@ impl Theme {
 
             credits_opacity: num("--blyrics-credits-opacity", 0.2),
             credits_focused_opacity: num("--blyrics-credits-focused-opacity", 0.85),
+            line_effects: {
+                // `--blyrics-line-opacity` and `--blyrics-line-blur` hold for both sides; a
+                // `-before` or `-after` variant replaces one side.
+                let list = |name: &str| parse_list(&raw(name), root_font_px);
+                let side = |both: &str, one: &str| {
+                    let own = list(one);
+                    if own.is_empty() {
+                        list(both)
+                    } else {
+                        own
+                    }
+                };
+                LineEffects {
+                    opacity_before: side("--blyrics-line-opacity", "--blyrics-line-opacity-before"),
+                    opacity_after: side("--blyrics-line-opacity", "--blyrics-line-opacity-after"),
+                    blur_before: side("--blyrics-line-blur", "--blyrics-line-blur-before"),
+                    blur_after: side("--blyrics-line-blur", "--blyrics-line-blur-after"),
+                }
+            },
             settings,
         }
     }
@@ -444,6 +529,20 @@ impl Theme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distance_curves_interpolate_and_hold_their_last_value() {
+        assert_eq!(parse_list("1 0.88, 0.72 0.52", 16.0), vec![1.0, 0.88, 0.72, 0.52]);
+        assert_eq!(parse_list("0 1.125px 0.25rem", 16.0), vec![0.0, 1.125, 4.0]);
+        assert!(parse_list("", 16.0).is_empty());
+        let effects =
+            LineEffects { opacity_after: vec![1.0, 0.5, 0.0], blur_after: vec![0.0, 2.0], ..Default::default() };
+        assert_eq!(effects.at(0.0), (1.0, 0.0));
+        assert_eq!(effects.at(0.5), (0.75, 1.0));
+        assert_eq!(effects.at(5.0), (0.0, 2.0));
+        // Nothing set for lines before: untouched.
+        assert_eq!(effects.at(-3.0), (1.0, 0.0));
+    }
 
     #[test]
     fn transforms_compose_in_order() {

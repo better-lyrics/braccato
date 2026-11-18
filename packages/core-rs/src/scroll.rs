@@ -96,6 +96,11 @@ impl AutoScroll {
         self.committed.first().copied()
     }
 
+    /// The first and last lines the last scroll followed.
+    pub fn followed_range(&self) -> Option<(usize, usize)> {
+        Some((*self.committed.iter().min()?, *self.committed.iter().max()?))
+    }
+
     /// Carries the lines being followed over a swap, given where each old line went.
     pub fn remap(&mut self, new_index: impl Fn(usize) -> Option<usize>) {
         self.committed = self.committed.iter().filter_map(|&i| new_index(i)).collect();
