@@ -268,6 +268,8 @@ async function startChrome(): Promise<{ cdp: Cdp; page: Page }> {
       "--disable-renderer-backgrounding",
       "--autoplay-policy=no-user-gesture-required",
       `--window-size=${WIDTH},${HEIGHT}`,
+      // The same screen every time: its refresh rate and pixel ratio change every number.
+      "--window-position=0,0",
       ...(args.headless ? ["--headless=new"] : []),
       ...args["chrome-flag"],
       "about:blank",
@@ -517,6 +519,10 @@ const fmt = (value: number) =>
 function printReport(report: Report, baseline?: Report) {
   for (const [name, entry] of Object.entries(report)) {
     console.log(`\n${name}  (${entry.runs} runs, ${entry.setup.viewport})`);
+    const before = baseline?.[name]?.setup.viewport;
+    if (before && before !== entry.setup.viewport) {
+      console.log(`  ! the baseline ran at ${before}: per-second and GPU numbers do not compare`);
+    }
     const rows: string[][] = [["", "median", "range", "unit", ...(baseline ? ["baseline", "change"] : [])]];
     for (const [key, { median, min, max }] of Object.entries(entry.numbers)) {
       const row = [key, fmt(median), `${fmt(min)}–${fmt(max)}`, unit(key)];

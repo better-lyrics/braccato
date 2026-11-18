@@ -20,16 +20,12 @@ use crate::theme::{CommentSettings, Theme};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement, Window};
 
-/// Draw sources besides lines: the credits' texture and the blur atlas.
-const CREDITS: usize = usize::MAX;
-const ATLAS: usize = usize::MAX - 1;
 /// A blur narrower than this many device pixels is not worth blurring: drawn as it is.
 const MIN_BLUR_PX: f32 = 1.0;
 
-/// Something drawn blurred this frame: quads from `source`'s texture, the blur's standard deviation
-/// in CSS pixels, and which canvas quad is its composite.
+/// Something drawn blurred this frame: quads already placed on the line pages, the blur's standard
+/// deviation in CSS pixels, and which canvas quad is its composite.
 struct BlurJob {
-    source: usize,
     quads: Vec<Quad>,
     sigma: f32,
     composite: usize,
@@ -49,26 +45,6 @@ fn blur_sigma(sigma_px: f32, ds: f32) -> f32 {
     } else {
         sigma_px
     }
-}
-
-/// Appends `quads` to the frame from `source`, extending the last draw when it has the same source.
-fn push_run(draws: &mut Vec<(usize, usize, usize)>, quads: &mut Vec<Quad>, source: usize, more: &[Quad]) {
-    if more.is_empty() {
-        return;
-    }
-    let first = quads.len();
-    quads.extend_from_slice(more);
-    push_draw(draws, source, first, more.len());
-}
-
-fn push_draw(draws: &mut Vec<(usize, usize, usize)>, source: usize, first: usize, count: usize) {
-    if let Some(last) = draws.last_mut() {
-        if last.0 == source && last.1 + last.2 == first {
-            last.2 += count;
-            return;
-        }
-    }
-    draws.push((source, first, count));
 }
 
 /// How often the element's place in the scroll element is read again (see `frame_with`).
@@ -262,6 +238,9 @@ pub struct View {
     last_lyric: f32,
 
     pub scroller: Option<Element>,
+    /// The scroller's `scrollTop`, as last read. Reading it can make the browser lay the page out,
+    /// so it is read again only after a scroll event, a write, or a change to the lines.
+    scroll_cache: std::cell::Cell<Option<f32>>,
     autoscroll: AutoScroll,
     user_paused_until: f64,
     host_top_in_scroll: f32,
@@ -277,10 +256,8 @@ pub struct View {
     needs_build: bool,
     needs_layout: bool,
     just_built: bool,
-    /// The canvas's quads this frame, and the draws that take them in runs from one texture:
-    /// (source, first, count), where the source is a line index, `CREDITS` or `ATLAS`.
+    /// The canvas's quads this frame, in the order they are drawn.
     quads: Vec<Quad>,
-    draws: Vec<(usize, usize, usize)>,
     /// What is drawn blurred this frame (see `gpu.rs`), and scratch space for a line's paint.
     blur_jobs: Vec<BlurJob>,
     line_quads: Vec<Quad>,
@@ -309,7 +286,7 @@ pub struct Stats {
     /// The slowest frame since the stats were last read.
     pub max_cpu_ms: f64,
     pub quads: usize,
-    /// Lines whose texture is on the GPU, and the bytes those textures take.
+    /// Lines whose texture is on the GPU, and the bytes the line pages take.
     pub resident: usize,
     pub texture_bytes: usize,
 }
@@ -371,6 +348,7 @@ impl View {
             started: false,
             last_lyric: 0.0,
             scroller: None,
+            scroll_cache: Default::default(),
             autoscroll: AutoScroll::default(),
             user_paused_until: 0.0,
             host_top_in_scroll: 0.0,
@@ -384,7 +362,6 @@ impl View {
             needs_layout: false,
             just_built: false,
             quads: Vec::new(),
-            draws: Vec::new(),
             blur_jobs: Vec::new(),
             line_quads: Vec::new(),
             line_blurs: Vec::new(),
@@ -696,8 +673,8 @@ impl View {
         self.stage_roles.clear();
         self.options.song_key = None;
         self.generation = self.generation.wrapping_add(1);
-        self.gpu.begin(&[]);
-        self.gpu.begin_canvas();
+        self.gpu.begin();
+        self.gpu.draw_canvas(&[]);
         self.gpu.end();
     }
 
@@ -850,10 +827,20 @@ impl View {
     }
 
     fn scroll_top(&self) -> f32 {
-        match &self.scroller {
+        if let Some(top) = self.scroll_cache.get() {
+            return top;
+        }
+        let top = match &self.scroller {
             Some(el) => el.scroll_top() as f32,
             None => self.win.scroll_y().unwrap_or(0.0) as f32,
-        }
+        };
+        self.scroll_cache.set(Some(top));
+        top
+    }
+
+    /// The scroller scrolled, or may have: the next `scroll_top` reads it.
+    pub fn scroll_changed(&self) {
+        self.scroll_cache.set(None);
     }
 
     fn write_scroll_top(&mut self, value: f32) {
@@ -864,6 +851,8 @@ impl View {
             Some(el) => el.set_scroll_top(value.round() as i32),
             None => self.win.scroll_to_with_x_and_y(self.win.scroll_x().unwrap_or(0.0), value.round() as f64),
         }
+        // Read back: the browser may have clamped it.
+        self.scroll_changed();
         self.autoscroll.last_written = Some(self.scroll_top());
     }
 
@@ -943,6 +932,7 @@ impl View {
     // -- Building and layout --------------------------------------------
 
     fn build(&mut self) {
+        self.scroll_changed();
         self.needs_build = false;
         self.settle_scrolls();
         self.pending_refresh = None;
@@ -1018,6 +1008,7 @@ impl View {
     }
 
     fn layout(&mut self) {
+        self.scroll_changed();
         self.needs_layout = false;
         if self.song.is_none() || self.dom.is_none() {
             return;
@@ -1363,6 +1354,11 @@ impl View {
             self.measure_viewport();
             self.release_textures();
         }
+        // A line came out larger than the line pages hold: every line is drawn again into larger ones.
+        if self.gpu.needs_page_reset() {
+            self.release_textures();
+            self.gpu.reset_pages();
+        }
         self.profile.lap(profile::Phase::Prepare);
         let Some(song) = self.song.take() else { return false };
         let keep_going = self.frame_with(&song, now_ms);
@@ -1552,7 +1548,6 @@ impl View {
         };
         self.profile.lap(profile::Phase::Update);
         self.quads.clear();
-        self.draws.clear();
         self.blur_jobs.clear();
         let view_h = self.canvas_size.1;
         let mut prefetched = 0;
@@ -1629,29 +1624,29 @@ impl View {
                 placement,
                 &self.theme,
             );
+            let texture = state.texture.as_ref().unwrap();
+            texture.place(&mut self.line_quads);
+            for blur in &mut self.line_blurs {
+                texture.place(&mut blur.quads);
+            }
             // A line the theme blurs for its distance is drawn whole into the atlas, glows and all.
             if line_blur * self.dpr >= MIN_BLUR_PX {
                 let mut quads: Vec<Quad> = self.line_blurs.drain(..).flat_map(|b| b.quads).collect();
                 quads.extend_from_slice(&self.line_quads);
-                self.blur_jobs.push(BlurJob { source: index, quads, sigma: line_blur, composite: self.quads.len() });
-                push_run(&mut self.draws, &mut self.quads, ATLAS, &[Quad::default()]);
+                self.blur_jobs.push(BlurJob { quads, sigma: line_blur, composite: self.quads.len() });
+                self.quads.push(Quad::default());
                 continue;
             }
             // Glows go under the line's text: blurred, or as they are once too small to blur.
             for blur in self.line_blurs.drain(..) {
                 if blur.sigma * self.dpr >= MIN_BLUR_PX {
-                    self.blur_jobs.push(BlurJob {
-                        source: index,
-                        quads: blur.quads,
-                        sigma: blur.sigma,
-                        composite: self.quads.len(),
-                    });
-                    push_run(&mut self.draws, &mut self.quads, ATLAS, &[Quad::default()]);
+                    self.blur_jobs.push(BlurJob { quads: blur.quads, sigma: blur.sigma, composite: self.quads.len() });
+                    self.quads.push(Quad::default());
                 } else {
-                    push_run(&mut self.draws, &mut self.quads, index, &blur.quads);
+                    self.quads.extend_from_slice(&blur.quads);
                 }
             }
-            push_run(&mut self.draws, &mut self.quads, index, &self.line_quads);
+            self.quads.extend_from_slice(&self.line_quads);
         }
 
         // Credits.
@@ -1689,11 +1684,14 @@ impl View {
                 if t < 1.0 && self.credits_focus.1 != 0.0 {
                     moving = true;
                 }
-                let first = self.quads.len();
-                let opacity = if self.stage { stage_opacity * self.theme.credits_focused_opacity } else { opacity };
-                let placement = Placement { x: self.bleed_left + credits.left, y, dpr: self.dpr, opacity, entry: 1.0 };
-                paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
-                self.draws.push((CREDITS, first, self.quads.len() - first));
+                if let Some(texture) = &self.credits_texture {
+                    let first = self.quads.len();
+                    let opacity = if self.stage { stage_opacity * self.theme.credits_focused_opacity } else { opacity };
+                    let placement =
+                        Placement { x: self.bleed_left + credits.left, y, dpr: self.dpr, opacity, entry: 1.0 };
+                    paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
+                    texture.place(&mut self.quads[first..]);
+                }
             }
         }
 
@@ -1708,10 +1706,9 @@ impl View {
         self.profile.lap(profile::Phase::Submit);
         self.stats.quads = self.quads.len();
         self.stats.resident = self.lines.iter().filter(|l| l.texture.is_some()).count();
-        self.stats.texture_bytes =
-            self.lines.iter().filter_map(|l| l.texture.as_ref()).map(|t| (t.width * t.height * 4) as usize).sum();
+        self.stats.texture_bytes = self.gpu.page_bytes();
 
-        (playing && animating) || moving
+        (playing && animating) || moving || self.gpu.needs_page_reset()
     }
 }
 
@@ -1735,7 +1732,6 @@ impl View {
         const ROW_WIDTH: f32 = 1024.0;
         let (mut x, mut y, mut row_h) = (0.0f32, 0.0f32, 0.0f32);
         let mut job_quads: Vec<Quad> = Vec::new();
-        let mut job_draws: Vec<(usize, usize, usize)> = Vec::new();
         let mut regions: Vec<BlurRegion> = Vec::new();
         let mut placed: Vec<(usize, [f32; 4], f32, Rect)> = Vec::new(); // job, atlas rect, scale, region
         for (job_index, job) in self.blur_jobs.iter().enumerate() {
@@ -1757,7 +1753,6 @@ impl View {
             if w > ROW_WIDTH || y + h > crate::gpu::MAX_ATLAS as f32 {
                 continue;
             }
-            let first = job_quads.len();
             for quad in &job.quads {
                 let mut q = *quad;
                 q.rect = [
@@ -1769,7 +1764,6 @@ impl View {
                 q.wave[3] = ds.log2();
                 job_quads.push(q);
             }
-            push_draw(&mut job_draws, job.source, first, job.quads.len());
             regions.push(BlurRegion { rect: [x, y, w, h], params: [blur_sigma(sigma_px, ds) / ds, 0.0, 0.0, 0.0] });
             placed.push((job_index, [x, y, w, h], scale, region));
             x += w;
@@ -1789,42 +1783,17 @@ impl View {
                 unlit: [1.0; 4],
                 lit: [1.0; 4],
                 ramp: [0.0, 0.0, 1.0, 0.0],
-                wave: [0.0, 0.0, Quad::COLOR, 0.0],
+                wave: [0.0, 0.0, Quad::BLURRED, 0.0],
             };
         }
         for region in &mut regions {
             region.rect[1] = atlas_h - (region.rect[1] + region.rect[3]);
         }
 
-        // Everything in one upload: the atlas's quads first, then the canvas's.
-        let offset = job_quads.len();
-        job_quads.extend_from_slice(&self.quads);
-        self.gpu.begin(&job_quads);
-        if !regions.is_empty() && self.gpu.begin_atlas(used.0, used.1) {
-            for &(source, first, count) in &job_draws {
-                if let Some(texture) = self.source_texture(source) {
-                    self.gpu.draw(texture, first, count);
-                }
-            }
-            self.gpu.blur(&mut regions);
-        }
-        self.gpu.begin_canvas();
-        for &(source, first, count) in &self.draws {
-            if source == ATLAS {
-                self.gpu.draw_atlas(first + offset, count);
-            } else if let Some(texture) = self.source_texture(source) {
-                self.gpu.draw(texture, first + offset, count);
-            }
-        }
+        self.gpu.begin();
+        self.gpu.draw_jobs(&job_quads, &mut regions, used);
+        self.gpu.draw_canvas(&self.quads);
         self.gpu.end();
-    }
-
-    fn source_texture(&self, source: usize) -> Option<&LineTexture> {
-        match source {
-            CREDITS => self.credits_texture.as_ref(),
-            ATLAS => None,
-            index => self.lines.get(index).and_then(|l| l.texture.as_ref()),
-        }
     }
 
     /// Down the lyrics at a fixed pace per line, a pause at the bottom, a quick return to the top, a

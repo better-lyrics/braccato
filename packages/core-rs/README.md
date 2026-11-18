@@ -117,41 +117,46 @@ The lines are laid out by the browser in an invisible copy of `@braccato/core`'s
 element. That gives the same wrapping, bidi reordering and font fallback, and it stays in the page
 for scrolling, clicks and screen readers. It is measured once per layout.
 
-Each line is then drawn once into a texture with the browser's own text engine (Canvas 2D), as
-coverage the shader tints, with mipmaps.
+Each line is then drawn once with the browser's own text engine (Canvas 2D), as coverage the shader
+tints, and copied into the line pages: one array texture with mipmaps, each layer packed with lines
+on shelves.
 
 Every frame, Rust works out each visible line's state from the lyric clock: its scale, how far the
 sweep has got, the glow's radius, the wobble and the letter wave. It writes one quad per letter or
-word and draws each line with one instanced call. The fragment shader mixes the inactive and lit
-colours across the sweep's edge.
+word, placed on its line's spot in the pages, and draws them all with one instanced call. The
+fragment shader mixes the inactive and lit colours across the sweep's edge.
 
 Glows, the instrumental note's glow and blurred lines are real Gaussian blurs of what is lit (the
 letters behind the sweep, the filled part of the note), made on the GPU each frame. What is to be
 blurred is drawn with the same quads into an atlas, scaled down so its standard deviation spans 1.5
 to 3 texels and reading the matching mip level, blurred across and then down with an instanced pass
-each, and drawn back onto the canvas as one quad. Six glowing words cost about 0.1 ms of GPU time.
+each, and drawn back onto the canvas as one quad among the rest. Six glowing words cost about 0.1 ms
+of GPU time. However many lines are on screen, a frame is four draws at most: the blur jobs, the two
+blur passes, and the canvas.
 
 The shader is written in WGSL. `build.rs` parses and validates it with naga, a build-dependency
 only, and writes GLSL ES 3.00 for WebGL2, so a shader mistake fails `cargo build` with naga's report
 rather than showing up as a compile log in the browser. naga renames the uniform buffer and the
-texture, and the build script writes those names out as Rust constants for `gpu.rs` to bind by.
-Between draws only the bound texture and the instance range change: the texture's size comes from
-`textureDimensions` in the shader, and the one uniform buffer is written when the canvas resizes.
+textures, and the build script writes those names out as Rust constants for `gpu.rs` to bind by.
+The two quad draws each have an instance buffer whose attributes are set up once, so a frame only
+uploads quads and draws. Texture sizes come from `textureDimensions` in the shader, and the one
+uniform buffer is written when the canvas resizes.
 
 | File | What it holds |
 | ---- | ------------- |
 | `src/model.rs` | The `Lyric` input shapes |
 | `src/song.rs` | Lyrics into lines, rows, word groups and timed parts (core's rules) |
 | `src/layout.rs`, `src/style.rs` | The hidden DOM and its measurement into drawable slots |
-| `src/raster.rs` | Drawing a line's slots into its texture |
+| `src/raster.rs` | Drawing a line's slots onto a canvas, for the line pages |
 | `src/paint.rs` | What every line looks like at a given moment, as quads |
 | `src/scroll.rs` | Autoscroll targets and the per-line glide |
 | `src/stage.rs` | The stage layout's roles and motion |
 | `src/clock.rs` | Smoothing the media clock between reports |
 | `src/shaders/*.wgsl` | The quad and blur shaders, in WGSL |
 | `build.rs` | Validates the WGSL with naga and writes GLSL ES 3.00 and its resource names at build time |
-| `src/gpu.rs` | WebGL2: the program, the instance buffer, the uniform buffer, line textures |
+| `src/gpu.rs` | WebGL2: the programs, instance buffers, the line pages and their allocator, the blur atlas |
 | `src/renderer.rs` | The view: state, a frame, events |
+| `src/profile.rs` | Per-frame timings by phase, for `takeProfile()` and `pnpm bench` |
 | `src/lib.rs` | The `Renderer` exported to JavaScript, and its event wiring |
 | `js/element.js` | The custom element |
 

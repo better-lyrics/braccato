@@ -352,7 +352,10 @@ impl Renderer {
             None => self.shared.win.clone().into(),
         };
         let listener = listen(&self.shared, &target, "scroll", true, |shared, _| {
+            // What is drawn is placed by the scroll position, so any scroll is drawn again.
+            shared.view.borrow().scroll_changed();
             if !shared.view.borrow().own_scroll_detection {
+                shared.request_frame();
                 return;
             }
             let now = dom::now_ms(&shared.win);
@@ -370,6 +373,7 @@ impl Renderer {
         }
         let mut view = self.shared.view.borrow_mut();
         view.scroller = scroller;
+        view.scroll_changed();
         view.invalidate_layout();
         drop(view);
         self.shared.request_frame();
