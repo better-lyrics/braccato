@@ -7,7 +7,8 @@
 //   theme   default | better-lyrics | sustain | karaoke
 //   t       seconds to start from (the view is paused there unless `play` is set)
 //   play    start playing, muted, from `t`
-//   mode    split | dom | rs
+//   mode    split | dom | rs (a hidden view is given no lyrics, so it does no work)
+//   bench   turn off the page's own per-frame work (`pnpm bench` sets it)
 
 import "@braccato/core/styles/variables.css";
 import "@braccato/core/styles/lyrics.css";
@@ -135,6 +136,7 @@ for (const view of [domView, rsView]) {
     plate.style.translate = `${view.offsetLeft + box.x - 14}px ${inset + box.y - 8}px`;
   });
 }
+const shownViews = { dom: [domView], rs: [rsView] }[state.mode] ?? [domView, rsView];
 domView.host = { getScrollElement: () => document.getElementById("view-dom") };
 rsView.host = { getScrollElement: () => document.getElementById("view-rs") };
 
@@ -163,7 +165,7 @@ function apply() {
     : (SONGS.find(s => s.id === state.song) ?? SONGS[0]);
   const lyrics = shape(mixed ? mixedSong() : buildScore(song.id).lyrics, state.timing);
   const theme = THEMES.find(t => t.id === state.theme) ?? THEMES[0];
-  for (const view of [domView, rsView]) {
+  for (const view of shownViews) {
     view.theme = theme.css;
     view.lyricsOptions = { songwriters: song.songwriters };
     view.lyrics = lyrics;

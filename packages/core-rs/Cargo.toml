@@ -35,3 +35,8 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# `pnpm build:profiling`: optimized like a release, but keeping function names so CPU profiles name
+# Rust functions instead of `wasm-function[123]`.
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ["-O", "-g"]

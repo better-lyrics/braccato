@@ -140,6 +140,8 @@ struct Timer {
     active: Option<web_sys::WebGlQuery>,
     /// Exponential average of GPU milliseconds per frame.
     pub average_ms: f64,
+    /// Each frame's GPU milliseconds, until taken.
+    samples: Vec<f32>,
 }
 
 const TIME_ELAPSED_EXT: u32 = 0x88BF;
@@ -306,9 +308,15 @@ impl Gpu {
         }
         let supported = self.gl.get_extension("EXT_disjoint_timer_query_webgl2").ok().flatten().is_some();
         if supported && self.timer.is_none() {
-            self.timer = Some(Timer { pending: Default::default(), active: None, average_ms: 0.0 });
+            self.timer =
+                Some(Timer { pending: Default::default(), active: None, average_ms: 0.0, samples: Vec::new() });
         }
         supported
+    }
+
+    /// The GPU milliseconds of each frame timed since the last call.
+    pub fn take_gpu_samples(&mut self) -> Vec<f32> {
+        self.timer.as_mut().map(|t| std::mem::take(&mut t.samples)).unwrap_or_default()
     }
 
     /// Average GPU milliseconds per frame, while profiling.
@@ -329,6 +337,9 @@ impl Gpu {
             if !disjoint {
                 let ns = gl.get_query_parameter(&query, Gl::QUERY_RESULT).as_f64().unwrap_or(0.0);
                 timer.average_ms = timer.average_ms * 0.9 + ns / 1e6 * 0.1;
+                if timer.samples.len() < 1 << 16 {
+                    timer.samples.push((ns / 1e6) as f32);
+                }
             }
             gl.delete_query(Some(&query));
         }

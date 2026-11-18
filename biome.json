@@ -7,7 +7,8 @@
 			".claude/**",
 			"demo/public/generated/**",
 			"packages/core-rs/target/**",
-			"packages/core-rs/pkg/**"
+			"packages/core-rs/pkg/**",
+			".bench/**"
 		]
 	},
 	"organizeImports": {

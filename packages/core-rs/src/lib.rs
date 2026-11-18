@@ -10,6 +10,7 @@ pub mod gpu;
 pub mod layout;
 pub mod model;
 pub mod paint;
+pub mod profile;
 pub mod raster;
 pub mod renderer;
 pub mod scroll;
@@ -93,6 +94,7 @@ impl Shared {
 
     fn run_frame(self: &Rc<Self>, now_ms: f64) {
         self.scheduled.set(None);
+        self.view.borrow_mut().profile.begin();
         let started = dom::now_ms(&self.win);
         let again = self.view.borrow_mut().frame(now_ms);
         {
@@ -110,6 +112,7 @@ impl Shared {
             self.load_image(url);
         }
         self.flush_events();
+        self.view.borrow_mut().profile.end();
         if again {
             self.request_frame();
         }
@@ -421,10 +424,31 @@ impl Renderer {
         self.shared.request_frame();
     }
 
-    /// Starts or stops measuring GPU time. Returns whether the browser can time the GPU.
+    /// Starts or stops profiling: GPU time, and each frame's CPU time by phase for `takeProfile()`.
+    /// Returns whether the browser can time the GPU.
     #[wasm_bindgen(js_name = setProfiling)]
     pub fn set_profiling(&self, on: bool) -> bool {
         self.shared.view.borrow_mut().set_profiling(on)
+    }
+
+    /// The frames profiled since profiling started or this was last called, which it forgets:
+    /// `{ fields, frames, gpu }`. `frames` holds one row of `fields.length` milliseconds per frame,
+    /// the frame's total and then its phases. `gpu` holds the GPU milliseconds of the frames timed so
+    /// far, which lag a few frames behind and are empty where the browser cannot time the GPU.
+    #[wasm_bindgen(js_name = takeProfile)]
+    pub fn take_profile(&self) -> JsValue {
+        let mut view = self.shared.view.borrow_mut();
+        let (frames, gpu) = view.take_profile();
+        let fields = js_sys::Array::new();
+        fields.push(&"total".into());
+        for phase in profile::PHASES {
+            fields.push(&phase.into());
+        }
+        let out = js_sys::Object::new();
+        dom::set(&out, "fields", &fields);
+        dom::set(&out, "frames", &js_sys::Float32Array::from(&frames[..]));
+        dom::set(&out, "gpu", &js_sys::Float32Array::from(&gpu[..]));
+        out.into()
     }
 
     /// `{ frames, cpuMs, maxCpuMs, gpuMs, quads, residentLines, textureBytes }`: averages over recent frames, and

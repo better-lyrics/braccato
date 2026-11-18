@@ -30,6 +30,7 @@
 	},
 	"scripts": {
 		"build": "node scripts/run.mjs build",
+		"build:profiling": "node scripts/run.mjs build:profiling",
 		"test": "node scripts/run.mjs test"
 	}
 }

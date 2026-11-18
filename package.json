@@ -17,7 +17,8 @@
 		"version-packages": "changeset version",
 		"release": "bash scripts/release.sh",
 		"package": "tsx tooling/build-package.ts",
-		"selfcheck": "tsx tooling/run-selfchecks.ts"
+		"selfcheck": "tsx tooling/run-selfchecks.ts",
+		"bench": "tsx tooling/bench.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

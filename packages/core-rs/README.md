@@ -74,7 +74,7 @@ The element takes the same `Lyric[]` as `@braccato/core` and keeps most of its s
 | `host`          | `{ getScrollElement? }`, the element autoscroll moves. |
 | `layout`        | `"scroll"` or `"stage"`. Also an attribute. |
 | `decorations`   | `{ translations, romanizations }`: whether to show the lyrics' own `translations` and `romanization` / `timedRomanization`. Both on by default. |
-| `renderer`      | The Rust `Renderer`, which has `resumeAutoscroll()`, `relayout()`, `setProfiling(on)` and `stats()`. |
+| `renderer`      | The Rust `Renderer`, which has `resumeAutoscroll()`, `relayout()`, `setProfiling(on)`, `stats()` and `takeProfile()`. |
 
 It dispatches the same events: `braccato:lyrics-loaded`, `braccato:line-click`,
 `braccato:scroll-state`, `braccato:stage-layout` and `braccato:error`.
@@ -165,8 +165,27 @@ the fastest demo song playing:
 - Main thread busy 7% against 37% for `@braccato/core` over the same playback, and the compositor
   thread 3% against 13%.
 
-With six words glowing, the GPU blur adds about 0.1 to 0.18 ms. `renderer.setProfiling(true)` and
-`renderer.stats()` report the per-frame numbers.
+With six words glowing, the GPU blur adds about 0.1 to 0.18 ms.
+
+### Benchmarks and profiles
+
+`pnpm bench` (`tooling/bench.ts`) plays demo songs on the compare page in a real Chrome, one
+renderer at a time, and reports for each scenario the median and range over several runs:
+
+- each frame's CPU time in the renderer, as percentiles and split by phase (preparing, updating
+  clock and scroll, rasterizing, painting quads, moving riders, submitting to the GPU), and its GPU
+  time;
+- the page's main thread (busy, script, layout, style) and Chrome's renderer and GPU processes, in
+  milliseconds per second, which compare this renderer with `@braccato/core` (`--renderers rs,dom`).
+
+`--save before.json`, then `--baseline before.json` after a change, prints each number's change and
+marks the ones within the runs' noise. `--profile` adds a run per scenario under Chrome's sampling
+profiler, writes a `.cpuprofile` for DevTools' Performance panel to `.bench/`, and prints the
+functions with the most time; build with `pnpm -C packages/core-rs build:profiling` first so Rust
+functions have names. `pnpm bench --help` lists the options.
+
+The numbers come from `renderer.setProfiling(true)`, after which `renderer.takeProfile()` returns
+every frame's phase times and `renderer.stats()` running averages.
 
 ## Build and test
 

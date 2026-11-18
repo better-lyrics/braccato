@@ -4,8 +4,9 @@
 // through `pnpm build` and `pnpm test`. The release sets BRACCATO_REQUIRE_RUST, which turns the
 // skip into a failure: a published package without its wasm would be broken.
 //
-//   node scripts/run.mjs build   wasm-pack into pkg/
-//   node scripts/run.mjs test    cargo test --lib
+//   node scripts/run.mjs build             wasm-pack into pkg/
+//   node scripts/run.mjs build:profiling   the same, keeping function names for CPU profiles
+//   node scripts/run.mjs test              cargo test --lib
 
 import { spawnSync } from "node:child_process";
 
@@ -13,6 +14,10 @@ const STEPS = {
 	build: {
 		needs: ["cargo", "wasm-pack"],
 		run: ["wasm-pack", ["build", "--target", "web", "--release", "--out-dir", "pkg", "--no-pack"]],
+	},
+	"build:profiling": {
+		needs: ["cargo", "wasm-pack"],
+		run: ["wasm-pack", ["build", "--target", "web", "--profiling", "--out-dir", "pkg", "--no-pack"]],
 	},
 	test: {
 		needs: ["cargo"],

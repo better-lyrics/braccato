@@ -149,7 +149,7 @@ export interface LyricsRenderer {
 	readonly container: HTMLElement | null;
 	readonly lines: readonly LineData[];
 	readonly syncType: LyricSyncType;
-	/** The Rust renderer underneath, for `stats()` and `setProfiling()`; null before the first `setLyrics`. */
+	/** The Rust renderer underneath, for `setProfiling()`, `stats()` and `takeProfile()`; null before the first `setLyrics`. */
 	readonly renderer: Renderer | null;
 }
 

@@ -98,6 +98,9 @@ sets `BRACCATO_REQUIRE_RUST`, which turns the skip into a failure.
   build-dependency only and must stay out of `[dependencies]`.
 - Rust doc comments are copied into the generated JavaScript as block comments, so one containing
   `*/` breaks the glue file. Write theme settings as `blyrics-key = value;` in docs.
+- Performance is measured with `pnpm bench` (`tooling/bench.ts`, options in its header): save a
+  baseline before a change that could cost or save time, then compare against it. A change smaller
+  than the runs' range is noise. `--profile` with a `build:profiling` wasm names Rust functions.
 - Visual parity is checked on `demo/compare.html` (dev server only: the deployed demo has no Rust),
   which puts both renderers on one clock. Diff the
   two panes rather than eyeballing them; `window.compareRects()` gives the crop rectangles.

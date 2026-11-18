@@ -10,6 +10,7 @@ use crate::gpu::{BlurRegion, Gpu, LineTexture, Quad};
 use crate::layout::{self, LayoutDom, LineDom, LineLayout, Measured, Owner, Rect};
 use crate::model::{Lyric, LyricPart, LyricsOptions, SyncType};
 use crate::paint::{self, Moment, Phase, Placement};
+use crate::profile::{self, Profile};
 use crate::raster::Rasterizer;
 use crate::scroll::{self, AutoScroll, Curve, ScrollLine, ScrollParams, Viewport};
 use crate::song::{self, Decorations, Hung, Song};
@@ -286,6 +287,7 @@ pub struct View {
     line_blurs: Vec<paint::Blur>,
     pub events: Vec<Event>,
     pub stats: Stats,
+    pub profile: Profile,
 
     /// The theme's distance effects: where the sung lines are, and how strongly the effects apply
     /// (1, easing to 0 while a reader scrolls): (from, to, since).
@@ -388,6 +390,7 @@ impl View {
             line_blurs: Vec::new(),
             events: Vec::new(),
             stats: Stats::default(),
+            profile: Profile::default(),
             focus: Focus::default(),
             effects: (1.0, 1.0, 0.0),
             stage: false,
@@ -752,7 +755,13 @@ impl View {
     }
 
     pub fn set_profiling(&mut self, on: bool) -> bool {
+        self.profile.set(if on { self.win.performance() } else { None });
         self.gpu.set_profiling(on)
+    }
+
+    /// The frames profiled since the last call, and the GPU times of those timed.
+    pub fn take_profile(&mut self) -> (Vec<f32>, Vec<f32>) {
+        (self.profile.take(), self.gpu.take_gpu_samples())
     }
 
     pub fn gpu_ms(&self) -> Option<f64> {
@@ -1354,6 +1363,7 @@ impl View {
             self.measure_viewport();
             self.release_textures();
         }
+        self.profile.lap(profile::Phase::Prepare);
         let Some(song) = self.song.take() else { return false };
         let keep_going = self.frame_with(&song, now_ms);
         self.song = Some(song);
@@ -1540,6 +1550,7 @@ impl View {
                 (self.measured.as_ref().map(|m| m.content_height).unwrap_or(0.0) - self.canvas_size.1).max(0.0),
             )
         };
+        self.profile.lap(profile::Phase::Update);
         self.quads.clear();
         self.draws.clear();
         self.blur_jobs.clear();
@@ -1592,9 +1603,11 @@ impl View {
                 if !visible {
                     prefetched += 1;
                 }
+                self.profile.lap(profile::Phase::Paint);
                 if let Some(canvas) = self.raster.draw_line(layout, self.dpr) {
                     state.texture = self.gpu.upload_line(canvas);
                 }
+                self.profile.lap(profile::Phase::Raster);
             }
             if !visible || state.texture.is_none() {
                 continue;
@@ -1660,9 +1673,11 @@ impl View {
             rider_motion = Some((y + canvas_top - credits.top, if self.stage { stage_opacity } else { 1.0 }));
             if stage_opacity > 0.001 && y + credits.height > 0.0 && y < view_h {
                 if self.credits_texture.is_none() {
+                    self.profile.lap(profile::Phase::Paint);
                     if let Some(canvas) = self.raster.draw_line(credits, self.dpr) {
                         self.credits_texture = self.gpu.upload_line(canvas);
                     }
+                    self.profile.lap(profile::Phase::Raster);
                 }
                 let (from, to) = if self.credits_focus.0 {
                     (self.theme.credits_opacity, self.theme.credits_focused_opacity)
@@ -1682,12 +1697,15 @@ impl View {
             }
         }
 
+        self.profile.lap(profile::Phase::Paint);
         if !self.riders.is_empty() {
             let (credits_dy, opacity) = rider_motion.unwrap_or((0.0, 1.0));
             self.place_riders(credits_dy, opacity, tail_dy);
         }
+        self.profile.lap(profile::Phase::Riders);
 
         self.submit();
+        self.profile.lap(profile::Phase::Submit);
         self.stats.quads = self.quads.len();
         self.stats.resident = self.lines.iter().filter(|l| l.texture.is_some()).count();
         self.stats.texture_bytes =

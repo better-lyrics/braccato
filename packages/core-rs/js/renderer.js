@@ -508,7 +508,7 @@ export function createLyricsRenderer(rendererOptions) {
 		get syncType() {
 			return rust && attached ? rust.syncType() : "none";
 		},
-		/** The Rust renderer underneath, for `stats()` and `setProfiling()`; null before the first `setLyrics`. */
+		/** The Rust renderer underneath, for `setProfiling()`, `stats()` and `takeProfile()`; null before the first `setLyrics`. */
 		get renderer() {
 			return rust;
 		},
