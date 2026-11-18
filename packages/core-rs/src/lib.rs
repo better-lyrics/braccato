@@ -34,6 +34,8 @@ struct Shared {
     /// The window the view is in. Its animation frames, not this module's window's, are the ones to
     /// draw on: a Picture-in-Picture window keeps getting frames while the tab behind it is hidden.
     win: web_sys::Window,
+    /// `performance.now()` in that window.
+    now: dom::Now,
     view: RefCell<View>,
     frame: RefCell<Option<FrameCallback>>,
     scheduled: Cell<Option<i32>>,
@@ -95,11 +97,11 @@ impl Shared {
     fn run_frame(self: &Rc<Self>, now_ms: f64) {
         self.scheduled.set(None);
         self.view.borrow_mut().profile.begin();
-        let started = dom::now_ms(&self.win);
+        let started = self.now.ms();
         let again = self.view.borrow_mut().frame(now_ms);
         {
             let mut view = self.view.borrow_mut();
-            let spent = dom::now_ms(&self.win) - started;
+            let spent = self.now.ms() - started;
             view.stats.frames += 1;
             view.stats.cpu_ms = if view.stats.frames == 1 { spent } else { view.stats.cpu_ms * 0.95 + spent * 0.05 };
             view.stats.max_cpu_ms = view.stats.max_cpu_ms.max(spent);
@@ -187,6 +189,7 @@ impl Renderer {
         let (win, doc) = (view.win.clone(), view.doc.clone());
         let shared = Rc::new(Shared {
             win: win.clone(),
+            now: dom::Now::of(&win),
             view: RefCell::new(view),
             frame: RefCell::new(None),
             scheduled: Cell::new(None),
@@ -358,7 +361,7 @@ impl Renderer {
                 shared.request_frame();
                 return;
             }
-            let now = dom::now_ms(&shared.win);
+            let now = shared.now.ms();
             shared.view.borrow_mut().on_scroll(now);
             shared.flush_events();
             shared.request_frame();
@@ -609,7 +612,7 @@ impl Renderer {
     /// The host saw the reader scroll. Scrolls the renderer made itself are told apart and ignored.
     #[wasm_bindgen(js_name = noteScroll)]
     pub fn note_scroll(&self) {
-        let now = dom::now_ms(&self.shared.win);
+        let now = self.shared.now.ms();
         self.shared.view.borrow_mut().on_scroll(now);
         self.shared.flush_events();
         self.shared.request_frame();
@@ -625,7 +628,7 @@ impl Renderer {
     /// a host that clones the page to animate it away, where a WebGL canvas clones blank. The frame
     /// is drawn and copied in one go, while the drawing buffer still holds it.
     pub fn snapshot(&self) -> Option<HtmlCanvasElement> {
-        let now = dom::now_ms(&self.shared.win);
+        let now = self.shared.now.ms();
         self.shared.view.borrow_mut().frame(now);
         let view = self.shared.view.borrow();
         let source = &view.canvas;

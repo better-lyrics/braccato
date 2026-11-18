@@ -180,6 +180,8 @@ pub struct View {
     /// The document and window the host is in, which need not be the ones this module loaded in.
     pub doc: Document,
     pub win: Window,
+    /// `performance.now()` in that window.
+    pub now: dom::Now,
     pub canvas: HtmlCanvasElement,
     pub container: HtmlElement,
     gpu: Gpu,
@@ -310,6 +312,7 @@ impl View {
             host,
             raster: Rasterizer::new(&doc),
             doc,
+            now: dom::Now::of(&win),
             win,
             canvas,
             container,
@@ -437,7 +440,7 @@ impl View {
     /// Puts `song` on screen in place of the one there, given where each new line came from.
     fn apply_song(&mut self, song: Song, origins: &[Option<usize>], settle: bool) {
         self.settle_scrolls();
-        let now = dom::now_ms(&self.win);
+        let now = self.now.ms();
         let (Some(old_song), Some(old_dom)) = (self.song.take(), self.dom.take()) else { return };
         let scroll_top = self.scroll_top();
         let old_measured = self.measured.take();
@@ -859,7 +862,7 @@ impl View {
     /// The page is about to move under the scroll element (lines built, measured, taken away), so
     /// scrolls for a moment are its doing.
     fn settle_scrolls(&mut self) {
-        self.settling_until = dom::now_ms(&self.win) + SETTLING_SCROLL_MS;
+        self.settling_until = self.now.ms() + SETTLING_SCROLL_MS;
     }
 
     /// A scroll event: if it is not the one autoscroll just caused, nor the page settling after the
@@ -949,7 +952,7 @@ impl View {
         self.stage_motion.clear();
         self.stage_roles.clear();
         self.stage_area = None;
-        let now = dom::now_ms(&self.win);
+        let now = self.now.ms();
         self.lines = song.lines.iter().map(|_| LineState { decorated_ms: now, ..Default::default() }).collect();
         self.events.push(Event::LyricsLoaded { line_count: song.lines.len(), sync: song.sync });
         self.song = Some(song);
@@ -1128,7 +1131,7 @@ impl View {
     /// After a rebuild: scrolls by however far the line in view moved, so it holds still, and
     /// slides every other line from where it was to where it now is.
     fn settle(&mut self, prior: &Prior, measured: &Measured) {
-        let now = dom::now_ms(&self.win);
+        let now = self.now.ms();
         let following = self.user_paused_until <= now;
         let view_top = prior.scroll_top - self.host_top_in_scroll;
         let had = |i: usize| prior.layouts.get(i).and_then(Option::as_ref);

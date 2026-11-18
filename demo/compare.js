@@ -7,7 +7,7 @@
 //   theme   default | better-lyrics | sustain | karaoke
 //   t       seconds to start from (the view is paused there unless `play` is set)
 //   play    start playing, muted, from `t`
-//   mode    split | dom | rs (a hidden view is given no lyrics, so it does no work)
+//   mode    split | dom | rs (the other view is taken off the page, so it does no work)
 //   bench   turn off the page's own per-frame work (`pnpm bench` sets it)
 
 import "@braccato/core/styles/variables.css";
@@ -137,6 +137,8 @@ for (const view of [domView, rsView]) {
   });
 }
 const shownViews = { dom: [domView], rs: [rsView] }[state.mode] ?? [domView, rsView];
+// A hidden view still follows the player, frame by frame, so it leaves the page.
+for (const view of [domView, rsView]) if (!shownViews.includes(view)) view.remove();
 domView.host = { getScrollElement: () => document.getElementById("view-dom") };
 rsView.host = { getScrollElement: () => document.getElementById("view-rs") };
 

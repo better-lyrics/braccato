@@ -60,8 +60,19 @@ pub fn computed_value(element: &Element, property: &str) -> String {
 }
 
 /// `performance.now()` in `win`, which is the clock that window's animation frames are stamped in.
-pub fn now_ms(win: &Window) -> f64 {
-    win.performance().map(|p| p.now()).unwrap_or(0.0)
+/// `performance.now()` in one window. It holds on to the window's `Performance`: fetching it for
+/// every reading is a second call, and an object for the page to collect.
+#[derive(Clone)]
+pub struct Now(Option<web_sys::Performance>);
+
+impl Now {
+    pub fn of(win: &Window) -> Now {
+        Now(win.performance())
+    }
+
+    pub fn ms(&self) -> f64 {
+        self.0.as_ref().map(|p| p.now()).unwrap_or(0.0)
+    }
 }
 
 /// Reads a property off a plain JS object, for the handful of browser APIs web-sys does not wrap.

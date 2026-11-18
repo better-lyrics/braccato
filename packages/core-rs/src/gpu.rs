@@ -265,6 +265,51 @@ struct Globals {
     size: (f32, f32),
 }
 
+/// A `Float32Array` over all of wasm memory, so an upload passes an offset into it rather than
+/// making a view object, which the page would later have to collect. Made again when the memory
+/// grows, which detaches the buffer under the old one.
+#[derive(Default)]
+struct MemoryView {
+    view: Option<js_sys::Float32Array>,
+    pages: usize,
+}
+
+impl MemoryView {
+    fn get(&mut self) -> &js_sys::Float32Array {
+        let pages = memory_pages();
+        if self.view.is_none() || pages != self.pages {
+            let memory: js_sys::WebAssembly::Memory = wasm_bindgen::memory().unchecked_into();
+            self.view = Some(js_sys::Float32Array::new(&memory.buffer()));
+            self.pages = pages;
+        }
+        self.view.as_ref().unwrap()
+    }
+}
+
+/// The size of wasm memory in pages: a wasm instruction, no call out to JavaScript.
+fn memory_pages() -> usize {
+    #[cfg(target_arch = "wasm32")]
+    {
+        core::arch::wasm32::memory_size(0)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        0
+    }
+}
+
+/// Writes `data` to the start of the buffer bound to `target`, straight out of wasm memory.
+fn upload_f32(gl: &Gl, memory: &mut MemoryView, target: u32, data: &[f32]) {
+    let offset = data.as_ptr() as usize / 4;
+    gl.buffer_sub_data_with_i32_and_array_buffer_view_and_src_offset_and_length(
+        target,
+        0,
+        memory.get(),
+        offset as u32,
+        data.len() as u32,
+    );
+}
+
 /// An instance buffer with a vertex array pointing the quad attributes at it, once.
 struct InstanceStream {
     vao: WebGlVertexArrayObject,
@@ -296,6 +341,7 @@ pub struct Gpu {
     /// Whether the atlas can be half floats, so faint glows do not band.
     half_float: bool,
     max_texture_size: u32,
+    memory: MemoryView,
     timer: Option<Timer>,
 }
 
@@ -438,6 +484,7 @@ impl Gpu {
             empty,
             half_float,
             max_texture_size,
+            memory: MemoryView::default(),
             timer: None,
         })
     }
@@ -689,7 +736,7 @@ impl Gpu {
         gl.clear(Gl::COLOR_BUFFER_BIT);
         gl.use_program(Some(&self.program));
         gl.bind_vertex_array(Some(&self.jobs.vao));
-        upload_quads(gl, &mut self.jobs, quads);
+        upload_quads(gl, &mut self.memory, &mut self.jobs, quads);
         // The blur unit must not hold the texture being drawn into, though no job reads it.
         bind_units(gl, self.pages.as_ref().map(|p| &p.texture), &atlas.textures[1]);
         gl.draw_arrays_instanced(Gl::TRIANGLE_STRIP, 0, 4, quads.len() as i32);
@@ -753,13 +800,11 @@ impl Gpu {
                 region.params[1] = dir.0;
                 region.params[2] = dir.1;
             }
-            // SAFETY: BlurRegion is repr(C) and made only of f32s; the view is consumed at once.
-            unsafe {
-                let data =
-                    std::slice::from_raw_parts(regions.as_ptr() as *const f32, regions.len() * FLOATS_PER_REGION);
-                let view = js_sys::Float32Array::view(data);
-                gl.buffer_sub_data_with_i32_and_array_buffer_view(Gl::ARRAY_BUFFER, 0, &view);
-            }
+            // SAFETY: BlurRegion is repr(C) and made only of f32s.
+            let data = unsafe {
+                std::slice::from_raw_parts(regions.as_ptr() as *const f32, regions.len() * FLOATS_PER_REGION)
+            };
+            upload_f32(gl, &mut self.memory, Gl::ARRAY_BUFFER, data);
             gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&atlas.framebuffers[to]));
             gl.bind_texture(Gl::TEXTURE_2D, Some(&atlas.textures[from]));
             gl.draw_arrays_instanced(Gl::TRIANGLE_STRIP, 0, 4, regions.len() as i32);
@@ -781,7 +826,7 @@ impl Gpu {
         gl.bind_buffer_base(Gl::UNIFORM_BUFFER, quad_shader::GLOBALS_BINDING, Some(&self.canvas_globals.buffer));
         gl.use_program(Some(&self.program));
         gl.bind_vertex_array(Some(&self.canvas.vao));
-        upload_quads(gl, &mut self.canvas, quads);
+        upload_quads(gl, &mut self.memory, &mut self.canvas, quads);
         bind_units(gl, Some(&pages.texture), self.atlas.as_ref().map(|a| &a.textures[0]).unwrap_or(&self.empty));
         gl.draw_arrays_instanced(Gl::TRIANGLE_STRIP, 0, 4, quads.len() as i32);
     }
@@ -795,7 +840,7 @@ fn bind_units(gl: &Gl, pages: Option<&WebGlTexture>, blur: &WebGlTexture) {
 }
 
 /// Uploads a draw's quads into its instance buffer, which its vertex array already reads.
-fn upload_quads(gl: &Gl, stream: &mut InstanceStream, quads: &[Quad]) {
+fn upload_quads(gl: &Gl, memory: &mut MemoryView, stream: &mut InstanceStream, quads: &[Quad]) {
     // SAFETY: Quad is repr(C) and made only of f32s.
     let data: &[f32] =
         unsafe { std::slice::from_raw_parts(quads.as_ptr() as *const f32, quads.len() * FLOATS_PER_QUAD) };
@@ -804,11 +849,7 @@ fn upload_quads(gl: &Gl, stream: &mut InstanceStream, quads: &[Quad]) {
         stream.capacity = quads.len().next_power_of_two().max(256);
         gl.buffer_data_with_i32(Gl::ARRAY_BUFFER, (stream.capacity * FLOATS_PER_QUAD * 4) as i32, Gl::DYNAMIC_DRAW);
     }
-    // SAFETY: the view is consumed by buffer_sub_data before any allocation can move wasm memory.
-    unsafe {
-        let view = js_sys::Float32Array::view(data);
-        gl.buffer_sub_data_with_i32_and_array_buffer_view(Gl::ARRAY_BUFFER, 0, &view);
-    }
+    upload_f32(gl, memory, Gl::ARRAY_BUFFER, data);
 }
 
 /// Points a program's textures at their units and every stage's copy of `Globals` at its binding.
