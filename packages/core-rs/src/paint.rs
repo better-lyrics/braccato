@@ -289,38 +289,6 @@ fn letter_wave(part: &Part, index: u16, count: u16, phase: Phase, moment: Moment
     )
 }
 
-/// The average of the letters' motions: where the word as a whole has moved to.
-fn mean_motion(motions: &[Motion]) -> Motion {
-    if motions.is_empty() {
-        return Motion::IDENTITY;
-    }
-    let n = motions.len() as f32;
-    let mean = |f: fn(&Motion) -> f32| motions.iter().map(f).sum::<f32>() / n;
-    Motion {
-        tx_em: mean(|m| m.tx_em),
-        ty_em: mean(|m| m.ty_em),
-        tx_px: mean(|m| m.tx_px),
-        ty_px: mean(|m| m.ty_px),
-        sx: mean(|m| m.sx),
-        sy: mean(|m| m.sy),
-    }
-}
-
-fn lerp_rect(a: Rect, b: Rect, t: f32) -> Rect {
-    let mix = |x: f32, y: f32| x + (y - x) * t;
-    Rect { x: mix(a.x, b.x), y: mix(a.y, b.y), w: mix(a.w, b.w), h: mix(a.h, b.h) }
-}
-
-/// A ramp across texels that is `value(x)` at line x, given as `ramp[0] * u + ramp[2]`.
-fn ramp_across(slot: &Slot, dpr: f32, value: impl Fn(f32) -> f32) -> [f32; 4] {
-    let u_of = |x: f32| x * dpr - slot.placement.origin.0 + slot.placement.tex.0;
-    let (x0, x1) = (slot.rect.x, slot.rect.right().max(slot.rect.x + 1.0));
-    let (u0, u1) = (u_of(x0), u_of(x1));
-    let (v0, v1) = (value(x0), value(x1));
-    let k = (v1 - v0) / (u1 - u0);
-    [k, 0.0, v0 - k * u0, 0.0]
-}
-
 fn uv_of(slot: &Slot, rect: Rect, dpr: f32) -> [f32; 4] {
     let p = slot.placement;
     [
@@ -348,9 +316,18 @@ fn sweep_ramp(slot: &Slot, glyph: &Glyph, edge: f32, fade: f32, dpr: f32) -> [f3
     [k, 0.0, value(x0) - k * u0, 0.0]
 }
 
-/// Draws one line into `out`.
+/// Something drawn blurred: quads from the line's texture, and the blur's standard deviation in CSS
+/// pixels. The renderer blurs them on the GPU and draws the result under the line.
+pub struct Blur {
+    pub quads: Vec<Quad>,
+    pub sigma: f32,
+}
+
+/// Draws one line into `out`, and what of it glows into `blurs`.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_line(
     out: &mut Vec<Quad>,
+    blurs: &mut Vec<Blur>,
     line: &Line,
     layout: &LineLayout,
     phase: Phase,
@@ -391,26 +368,33 @@ pub fn paint_line(
                             .unwrap_or(Motion::IDENTITY)
                     })
                     .collect();
-                if slot.halo && look.glow_alpha > 0.0 && look.glow > 0.0 {
-                    let glow =
-                        Glow { look: &look, color: style.glow, word: word_affine, letters: &letters, em: style.em };
-                    push_glow(out, slot, glow, &placement, fade, theme);
-                }
                 let unlit = premultiply(style.inactive, placement.opacity);
                 let lit = premultiply(mix(style.inactive, style.active, look.lit), placement.opacity);
+                // The glow: one drop shadow of the lit part of the word, which is the word's own
+                // letters, where they are, in the glow colour behind the sweep, blurred.
+                let glowing = slot.halo && !slot.color && look.glow_alpha > 0.0 && look.glow > 0.0;
+                let mut glow = Blur { quads: Vec::new(), sigma: theme.glow_radius_px * look.glow };
+                let glow_color = premultiply(style.glow, look.glow_alpha / style.glow[3].max(1e-6) * placement.opacity);
                 for (glyph, letter) in slot.glyphs.iter().zip(&letters) {
                     let affine = word_affine.then(Affine::about(centre(&glyph.rect), *letter, style.em));
-                    out.push(Quad {
+                    let quad = Quad {
                         rect: to_canvas(affine.rect(glyph.rect), &placement),
                         uv: uv_of(slot, glyph.rect, dpr),
                         unlit,
                         lit,
                         ramp: sweep_ramp(slot, glyph, look.edge, fade, dpr),
                         wave: [0.0, 0.0, if slot.color { Quad::COLOR } else { Quad::TEXT }, 0.0],
-                    });
+                    };
+                    if glowing {
+                        glow.quads.push(Quad { unlit: [0.0; 4], lit: glow_color, ..quad });
+                    }
+                    out.push(quad);
+                }
+                if glowing {
+                    blurs.push(glow);
                 }
             }
-            Owner::Note => push_note(out, slot, layout, line, phase, moment, line_affine, &placement, theme),
+            Owner::Note => push_note(out, blurs, slot, layout, line, phase, moment, line_affine, &placement, theme),
             // Drawn by `push_note`, with the note it fills.
             Owner::NoteImage => {}
             Owner::Pill | Owner::Translation | Owner::Romanization | Owner::Credits => {
@@ -437,76 +421,12 @@ pub fn paint_line(
     }
 }
 
-/// What a word's glow needs from its word.
-struct Glow<'a> {
-    look: &'a WordLook,
-    color: Rgba,
-    /// The word's transform: line scale and wobble.
-    word: Affine,
-    /// Each glyph's letter-wave motion, in slot order.
-    letters: &'a [Motion],
-    em: f32,
-}
-
-/// The glow under a word: the blurred word, masked by the sweep's edge blurred by the same radius.
-///
-/// It is drawn as one column per letter. The columns split the word at the midpoints between
-/// letters, so every texel is drawn once, and the outer ones take in the margin. While the glow is
-/// wide they move together, with the word's average letter motion, so the halo stays whole. As it
-/// shrinks it becomes a copy of the letters that must sit exactly under each one, so each column
-/// moves over to its own letter's motion.
-fn push_glow(out: &mut Vec<Quad>, slot: &Slot, glow: Glow, placement: &Placement, fade: f32, theme: &Theme) {
-    let Glow { look, color, word, letters, em } = glow;
-    let dpr = placement.dpr;
-    let area = slot.rect.expand(slot.margin, slot.margin);
-    let ramp = if look.edge >= ALL_LIT {
-        [0.0, 0.0, 1.0, 0.0]
-    } else {
-        // The word's own sweep map, stretched over the whole slot.
-        let first = slot.glyphs.iter().min_by(|a, b| a.rect.x.total_cmp(&b.rect.x)).unwrap();
-        let last = slot.glyphs.iter().max_by(|a, b| a.rect.right().total_cmp(&b.rect.right())).unwrap();
-        let (left, right) = (first.sweep.at(slot.rect.x), last.sweep.at(slot.rect.right()));
-        let width_px = slot.rect.w.max(1.0);
-        let per_px = (right - left).abs() / width_px;
-        let sigma_px = theme.glow_radius_px * look.glow;
-        let soft = fade + 2.5 * sigma_px * per_px;
-        let middle = look.edge + fade / 2.0;
-        ramp_across(slot, dpr, |x| {
-            let along = left + (right - left) * (x - slot.rect.x) / width_px;
-            (middle - along) / soft + 0.5
-        })
-    };
-    let strength = premultiply(color, look.glow_alpha / color[3].max(1e-6) * placement.opacity);
-
-    let whole = Affine::about(centre(&slot.rect), mean_motion(letters), em);
-    let follow = (1.0 - look.glow / crate::gpu::TIGHT_HALO_FRACTION).clamp(0.0, 1.0);
-    let mut order: Vec<usize> = (0..slot.glyphs.len()).collect();
-    order.sort_by(|&a, &b| slot.glyphs[a].rect.x.total_cmp(&slot.glyphs[b].rect.x));
-    for (position, &index) in order.iter().enumerate() {
-        let glyph = &slot.glyphs[index];
-        let boundary = |a: usize, b: usize| (slot.glyphs[a].rect.right() + slot.glyphs[b].rect.x) / 2.0;
-        let x0 = if position == 0 { area.x } else { boundary(order[position - 1], index) };
-        let x1 = if position + 1 == order.len() { area.right() } else { boundary(index, order[position + 1]) };
-        let column = Rect { x: x0, y: area.y, w: (x1 - x0).max(0.0), h: area.h };
-        let letter = letters.get(index).copied().unwrap_or(Motion::IDENTITY);
-        let together = word.then(whole).rect(column);
-        let alone = word.then(Affine::about(centre(&glyph.rect), letter, em)).rect(column);
-        out.push(Quad {
-            rect: to_canvas(lerp_rect(together, alone, follow), placement),
-            uv: uv_of(slot, column, dpr),
-            unlit: [0.0; 4],
-            lit: strength,
-            ramp,
-            wave: [0.0, 0.0, look.glow, 0.0],
-        });
-    }
-}
-
 /// The instrumental note: the inactive note, and over it the note filling up from the bottom behind
 /// a rippling surface that flattens as it rises.
 #[allow(clippy::too_many_arguments)]
 fn push_note(
     out: &mut Vec<Quad>,
+    blurs: &mut Vec<Blur>,
     slot: &Slot,
     layout: &LineLayout,
     line: &Line,
@@ -594,16 +514,18 @@ fn push_note(
         return;
     }
     let lit = premultiply(layout.active, opacity * placement.opacity);
-    // Its glow is the clipped fill blurred by 5 units, so its surface is as soft: a ramp two
-    // standard deviations wide, centred on the surface.
-    let (glow_ramp, glow_wave) = surface_ramp(slot, 1.0 / (2.0 * 5.0), 0.5);
-    out.push(Quad {
-        rect: to_canvas(affine.rect(slot.rect.expand(slot.margin, slot.margin)), placement),
-        uv: uv_of(slot, slot.rect.expand(slot.margin, slot.margin), dpr),
-        unlit: [0.0; 4],
-        lit: premultiply(layout.active, 0.6 * opacity * placement.opacity),
-        ramp: glow_ramp,
-        wave: [glow_wave[0], glow_wave[1], 1.0, 0.0],
-    });
-    out.push(Quad { rect: canvas_rect, uv, unlit: [0.0; 4], lit, ramp, wave: [wave[0], wave[1], Quad::TEXT, 0.0] });
+    let fill = Quad { rect: canvas_rect, uv, unlit: [0.0; 4], lit, ramp, wave: [wave[0], wave[1], Quad::TEXT, 0.0] };
+    // Its glow is the filled part blurred by 5 units, as the DOM renderer's SVG blur was. Until the
+    // surface has reached the note there is nothing filled, and nothing glows.
+    let lowest_surface = level - amplitude.abs();
+    if lowest_surface < NOTE_BOTTOM_UNITS {
+        let glow = premultiply(layout.active, 0.6 * opacity * placement.opacity);
+        blurs.push(Blur { quads: vec![Quad { lit: glow, ..fill }], sigma: NOTE_GLOW_UNITS * unit });
+    }
+    out.push(fill);
 }
+
+/// The note's lowest point in its 24-unit view box, which the fill rises from.
+const NOTE_BOTTOM_UNITS: f32 = 21.0;
+/// The fill's glow in the DOM renderer was an SVG blur with a standard deviation of 5 view-box units.
+const NOTE_GLOW_UNITS: f32 = 5.0;

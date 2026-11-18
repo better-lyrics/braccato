@@ -1,34 +1,17 @@
 //! Draws a line's slots into a 2D canvas once, for upload as the line's texture.
 //!
 //! The browser's own text engine does the drawing, so shaping, fallback fonts and hinting match the
-//! page. The three colour channels hold three images of the same text, added together with the
-//! `lighter` composite so they do not disturb each other:
-//!
-//! - red: the text itself,
-//! - green: the text blurred to the glow's full radius,
-//! - blue: the text blurred to `TIGHT_HALO_FRACTION` of it.
-//!
-//! The shader blends between them to draw a glow of any radius in between, which is how the glow
-//! shrinks from its full size to nothing without redrawing anything.
+//! page. Text is drawn as coverage in the red channel, which the shader tints; glyphs with colours of
+//! their own (emoji) are drawn as they are. Nothing is blurred here: glows and blurred lines are
+//! blurred on the GPU from the same texture (see `gpu.rs`), at whatever radius they have that frame.
 
 use crate::dom;
-use crate::gpu::TIGHT_HALO_FRACTION;
 use crate::layout::{Ink, LineLayout, Placement, Rect, TextRun};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 
 /// The note's outline in its 24-unit view box (Material Symbols "music_note").
 const NOTE_PATH: &str = "M10 21q-1.65 0-2.825-1.175T6 17t1.175-2.825T10 13q.575 0 1.063.138t.937.412V4q0-.425.288-.712T13 3h4q.425 0 .713.288T18 4v2q0 .425-.288.713T17 7h-3v10q0 1.65-1.175 2.825T10 21";
-
-/// The fill's glow in the DOM renderer was an SVG blur with a standard deviation of 5 view-box units.
-const NOTE_GLOW_UNITS: f32 = 5.0;
-
-/// Where a canvas has no `filter`, the shadow blur that comes closest to a Gaussian of a given
-/// standard deviation, as measured against Chrome's `drop-shadow()`.
-const SHADOW_BLUR_PER_SIGMA: f64 = 1.75;
-
-/// Shadows are drawn from a copy of the shape this far off-canvas, so only the blur lands.
-const SHADOW_THROW: f64 = 20000.0;
 
 const MAX_TEXTURE_WIDTH: f32 = 4096.0;
 const GAP: f32 = 2.0;
@@ -60,7 +43,7 @@ impl Rasterizer {
 
     /// Packs and draws every slot of `layout`, recording where each landed. Returns the canvas to
     /// upload, or `None` when the line has nothing to draw.
-    pub fn draw_line(&mut self, layout: &mut LineLayout, dpr: f32, glow_radius_px: f32) -> Option<&HtmlCanvasElement> {
+    pub fn draw_line(&mut self, layout: &mut LineLayout, dpr: f32) -> Option<&HtmlCanvasElement> {
         if layout.slots.is_empty() {
             return None;
         }
@@ -91,19 +74,11 @@ impl Rasterizer {
                 Ink::Text(runs) if slot.color => {
                     // Emoji keep their colours: drawn plainly, white where the font leaves it to us.
                     ctx.set_global_composite_operation("source-over").ok();
-                    self.text_layer(runs, "#ffffff", None);
+                    self.text_layer(runs, "#ffffff");
                     ctx.set_global_composite_operation("lighter").ok();
                 }
-                Ink::Text(runs) => {
-                    self.text_layer(runs, "#ff0000", None);
-                    if slot.halo {
-                        // The glow was a CSS `drop-shadow()`, whose length is the blur's standard
-                        // deviation.
-                        self.text_layer(runs, "#00ff00", Some(glow_radius_px * dpr));
-                        self.text_layer(runs, "#0000ff", Some(glow_radius_px * TIGHT_HALO_FRACTION * dpr));
-                    }
-                }
-                Ink::Note => self.note(slot.rect, dpr),
+                Ink::Text(runs) => self.text_layer(runs, "#ff0000"),
+                Ink::Note => self.note(slot.rect),
                 Ink::NoteImage(url) => {
                     ctx.set_global_composite_operation("source-over").ok();
                     self.note_image(slot.rect, dpr, url);
@@ -116,71 +91,29 @@ impl Rasterizer {
         Some(&self.canvas)
     }
 
-    /// From here on, draw only a blur of each shape, in `channel`, with standard deviation `sigma`
-    /// texture pixels. Returns how far left, in drawing units, shapes must be drawn.
-    ///
-    /// Where the canvas has `filter`, the shape is drawn in place through `blur()`, which is the same
-    /// Gaussian as the `drop-shadow()` the glow was in CSS. Otherwise the shape is drawn off the
-    /// canvas and only its shadow lands, thrown back by the shadow offset.
-    fn start_blur(&self, channel: &str, sigma: f32) -> f64 {
+    /// Draws `runs` as coverage in `channel`.
+    fn text_layer(&self, runs: &[TextRun], channel: &str) {
         let ctx = &self.context;
-        if self.has_filter {
-            // Filter lengths ignore the transform, so this is in texture pixels.
-            ctx.set_filter(&format!("blur({sigma}px)"));
-            ctx.set_fill_style_str(channel);
-            return 0.0;
-        }
-        // Shadow offsets ignore the transform too.
-        let scale = ctx.get_transform().map(|m| m.a()).unwrap_or(1.0);
-        ctx.set_shadow_color(channel);
-        ctx.set_shadow_blur(sigma as f64 * SHADOW_BLUR_PER_SIGMA);
-        ctx.set_shadow_offset_x(SHADOW_THROW * scale);
-        ctx.set_fill_style_str("#000000");
-        SHADOW_THROW
-    }
-
-    fn end_blur(&self) {
-        let ctx = &self.context;
-        ctx.set_filter("none");
-        ctx.set_shadow_color("transparent");
-        ctx.set_shadow_blur(0.0);
-        ctx.set_shadow_offset_x(0.0);
-    }
-
-    /// Draws `runs` into one channel: as solid text, or as only its blur with standard deviation
-    /// `blur` texture pixels.
-    fn text_layer(&self, runs: &[TextRun], channel: &str, blur: Option<f32>) {
-        let ctx = &self.context;
-        let throw = match blur {
-            Some(sigma) => self.start_blur(channel, sigma),
-            None => {
-                ctx.set_fill_style_str(channel);
-                0.0
-            }
-        };
+        ctx.set_fill_style_str(channel);
         for run in runs {
             ctx.set_font(&run.font);
             set_optional(ctx, "direction", if run.rtl { "rtl" } else { "ltr" });
             set_optional(ctx, "letterSpacing", &run.letter_spacing);
             set_optional(ctx, "lang", if run.lang.is_empty() { "inherit" } else { &run.lang });
-            let clipped = run.clip.is_some() && blur.is_none();
-            if let (Some(clip), true) = (run.clip, clipped) {
+            if let Some(clip) = run.clip {
                 ctx.save();
                 ctx.begin_path();
                 ctx.rect(clip.x as f64, clip.y as f64 - clip.h as f64, clip.w as f64, clip.h as f64 * 3.0);
                 ctx.clip();
             }
-            let _ = ctx.fill_text(&run.text, run.x as f64 - throw, run.baseline as f64);
-            if clipped {
+            let _ = ctx.fill_text(&run.text, run.x as f64, run.baseline as f64);
+            if run.clip.is_some() {
                 ctx.restore();
             }
         }
-        if blur.is_some() {
-            self.end_blur();
-        }
     }
 
-    fn note(&self, square: Rect, dpr: f32) {
+    fn note(&self, square: Rect) {
         let Some(path) = &self.note else { return };
         let ctx = &self.context;
         let unit = square.h / 24.0;
@@ -189,10 +122,6 @@ impl Rasterizer {
         ctx.scale(unit as f64, unit as f64).ok();
         ctx.set_fill_style_str("#ff0000");
         ctx.fill_with_path_2d(path);
-        let throw = self.start_blur("#00ff00", NOTE_GLOW_UNITS * unit * dpr);
-        ctx.translate(-throw, 0.0).ok();
-        ctx.fill_with_path_2d(path);
-        self.end_blur();
         ctx.restore();
     }
 

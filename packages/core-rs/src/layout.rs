@@ -185,6 +185,10 @@ pub struct LineLayout {
     pub static_em: f32,
 }
 
+/// The clear space around a slot that is drawn blurred (a glow, the note's fill), in CSS pixels: the
+/// coarsest mip level the blur reads is 8 texels, at most 8 CSS pixels at a pixel ratio of 1.
+const HALO_MARGIN: f32 = 8.0;
+
 /// Handles on the elements a line is measured from.
 pub struct LineDom {
     pub element: HtmlElement,
@@ -798,7 +802,7 @@ fn measure_line(
             ink: Ink::Note,
             owner: Owner::Note,
             rect: square,
-            margin: side * 0.6,
+            margin: HALO_MARGIN,
             halo: true,
             glyphs: vec![Glyph { rect: square, letter: None, sweep: SweepMap::default() }],
             placement: Placement::default(),
@@ -809,7 +813,7 @@ fn measure_line(
                 ink: Ink::NoteImage(Rc::from(url.as_str())),
                 owner: Owner::NoteImage,
                 rect: square,
-                margin: side * 0.6,
+                margin: HALO_MARGIN,
                 halo: false,
                 glyphs: vec![Glyph { rect: square, letter: None, sweep: SweepMap::default() }],
                 placement: Placement::default(),
@@ -820,9 +824,9 @@ fn measure_line(
     }
 
     let glows = theme.animate_glow && song.sync != crate::model::SyncType::None;
-    // Two standard deviations of the widest glow (its full radius). A blurred edge is down to about
-    // 2% there, which at the glow's strength is below one level of 8-bit colour.
-    let halo_margin = (theme.glow_radius_px * 2.0).ceil() + 2.0;
+    // Glows are blurred on the GPU from a mip level up to 8 texels coarse (see `gpu.rs`), so a halo
+    // slot keeps that much clear around it, and no neighbour's ink averages into its edge.
+    let halo_margin = HALO_MARGIN;
     let group_rects: Vec<Rect> = dom_.groups.iter().map(|g| content_rect(g, origin)).collect();
 
     for (index, part) in line.parts.iter().enumerate() {

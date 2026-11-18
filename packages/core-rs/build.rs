@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-const SHADERS: &[&str] = &["quad"];
+const SHADERS: &[&str] = &["quad", "blur"];
 const ENTRY_POINTS: &[(ShaderStage, &str, &str)] =
     &[(ShaderStage::Vertex, "vs_main", "vert"), (ShaderStage::Fragment, "fs_main", "frag")];
 

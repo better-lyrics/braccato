@@ -27,7 +27,7 @@ features = [
   "CanvasRenderingContext2d", "TextMetrics", "WebGl2RenderingContext", "WebGlProgram",
   "WebGlShader", "WebGlBuffer", "WebGlTexture", "WebGlUniformLocation",
   "WebGlVertexArrayObject", "Node", "Text", "Range", "DomRect", "DomRectList",
-  "CssStyleDeclaration", "Performance", "MediaQueryList", "Path2d", "DomTokenList", "TreeWalker", "DomMatrix", "HtmlMediaElement", "Event", "EventTarget", "CustomEvent", "CustomEventInit", "MouseEvent", "ResizeObserver", "ResizeObserverEntry", "FontFaceSet", "HtmlStyleElement", "HtmlHeadElement", "AddEventListenerOptions", "ImageData", "HtmlCollection", "WebGlQuery", "HtmlImageElement", "IntersectionObserver",
+  "CssStyleDeclaration", "Performance", "MediaQueryList", "Path2d", "DomTokenList", "TreeWalker", "DomMatrix", "HtmlMediaElement", "Event", "EventTarget", "CustomEvent", "CustomEventInit", "MouseEvent", "ResizeObserver", "ResizeObserverEntry", "FontFaceSet", "HtmlStyleElement", "HtmlHeadElement", "AddEventListenerOptions", "ImageData", "HtmlCollection", "WebGlQuery", "HtmlImageElement", "IntersectionObserver", "WebGlFramebuffer",
 ]
 
 [profile.release]

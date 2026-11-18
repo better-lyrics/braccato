@@ -1,19 +1,18 @@
-// The one shader the renderer draws with: an instanced quad cut out of a line texture.
+// The shader the renderer draws with: an instanced quad cut out of a texture.
 //
-// The texture's red channel holds the text, green the text blurred to the glow's full radius, blue
-// blurred to `globals.tight` of it (see raster.rs). What a quad shows is decided per fragment from
+// The texture is a line texture, whose red channel holds the text's coverage (see raster.rs) and
+// whose colour glyphs (emoji) are drawn in their own colours, or the blur atlas, which holds glows
+// and blurred lines already in colour (see gpu.rs). What a quad shows is decided per fragment from
 // four numbers: the colour where it is unlit, the colour where it is lit, a ramp across the texture
-// that says how lit each texel is, and for glow quads how far the blur has shrunk.
+// that says how lit each texel is, and which of those two kinds of texel it reads.
 //
 // build.rs checks this file and translates it to GLSL ES 3.00 for WebGL2. The instance layout must
 // match `Quad` in gpu.rs, attribute for attribute.
 
 struct Globals {
-    // The canvas size in CSS pixels, which quad rectangles are given in.
+    // The size of what is drawn into, in the units quad rectangles are given in: the canvas in CSS
+    // pixels, or the blur atlas in texels.
     viewport: vec2<f32>,
-    // Where the halo blend switches from text-to-tight to tight-to-wide, as a fraction of the full
-    // glow radius. Written once, from `TIGHT_HALO_FRACTION`.
-    tight: f32,
 }
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -23,28 +22,28 @@ struct Globals {
 struct Instance {
     // The quad's corner, 0 or 1 on each axis, from the shared corner buffer.
     @location(0) corner: vec2<f32>,
-    // x, y, width, height in canvas CSS pixels.
+    // x, y, width, height, in the units of `globals.viewport`.
     @location(1) rect: vec4<f32>,
-    // u0, v0, u1, v1 in texels of the line texture.
+    // u0, v0, u1, v1 in texels of the texture.
     @location(2) uv: vec4<f32>,
     // Premultiplied colours where the ramp is 0 and where it is 1.
     @location(3) unlit: vec4<f32>,
     @location(4) lit: vec4<f32>,
     // lit = clamp(u * ramp.x + v * ramp.y + ramp.z + ramp.w * sin(u * wave.x + wave.y), 0, 1)
     @location(5) ramp: vec4<f32>,
-    // wave.z: -1 for text, -2 for a glyph in its own colours, otherwise the glow radius as a
-    // fraction of the full radius.
+    // wave.z: -1 for coverage to tint, -2 for texels in their own colours. wave.w: the mip level to
+    // read, 0 on the canvas, coarser when drawn into the blur atlas at a fraction of the size.
     @location(6) wave: vec4<f32>,
 }
 
 struct Varyings {
     @builtin(position) position: vec4<f32>,
-    // The fragment's position in texels of the line texture.
+    // The fragment's position in texels of the texture.
     @location(0) texel: vec2<f32>,
     @location(1) unlit: vec4<f32>,
     @location(2) lit: vec4<f32>,
     @location(3) ramp: vec4<f32>,
-    @location(4) wave: vec3<f32>,
+    @location(4) wave: vec4<f32>,
 }
 
 @vertex
@@ -55,8 +54,8 @@ fn vs_main(instance: Instance) -> Varyings {
     out.unlit = instance.unlit;
     out.lit = instance.lit;
     out.ramp = instance.ramp;
-    out.wave = instance.wave.xyz;
-    // CSS pixels, y down, to clip space, y up.
+    out.wave = instance.wave;
+    // y down to clip space, y up.
     let clip = pos / globals.viewport * 2.0 - 1.0;
     out.position = vec4<f32>(clip.x, -clip.y, 0.0, 1.0);
     return out;
@@ -65,32 +64,17 @@ fn vs_main(instance: Instance) -> Varyings {
 @fragment
 fn fs_main(in: Varyings) -> @location(0) vec4<f32> {
     let size = vec2<f32>(textureDimensions(line_texture));
-    let texel = textureSample(line_texture, line_sampler, in.texel / size);
-    let s = texel.rgb;
+    let texel = textureSampleLevel(line_texture, line_sampler, in.texel / size, in.wave.w);
 
     var ramp = dot(in.texel, in.ramp.xy) + in.ramp.z;
     if in.ramp.w != 0.0 {
         ramp += in.ramp.w * sin(in.texel.x * in.wave.x + in.wave.y);
     }
     let lit = clamp(ramp, 0.0, 1.0);
-    let halo = in.wave.z;
 
-    // An emoji: its own colours, faded with the line.
-    if halo < -1.5 {
+    // Its own colours (an emoji, the blur atlas), faded with the line.
+    if in.wave.z < -1.5 {
         return texel * mix(in.unlit.a, in.lit.a, lit);
     }
-
-    var coverage: f32;
-    if halo < 0.0 {
-        coverage = s.r;
-    } else if halo < globals.tight {
-        // Below the tight blur the glow is between the text itself and that blur. Mixed in
-        // linearly, the blur's wide tails would still show on a glow that has almost shrunk away,
-        // so it comes in a little later than that.
-        let t = halo / globals.tight;
-        coverage = mix(s.r, s.b, pow(t, 1.5));
-    } else {
-        coverage = mix(s.b, s.g, (halo - globals.tight) / (1.0 - globals.tight));
-    }
-    return mix(in.unlit, in.lit, lit) * coverage;
+    return mix(in.unlit, in.lit, lit) * texel.r;
 }
