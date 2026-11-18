@@ -304,6 +304,12 @@ pub const CSS: &str = r#"
   font-size: var(--blyrics-credits-font-size, max(0.4em, 12px));
 }
 
+/* The stage takes no clicks, as in core: its lines sit unseen at the top while the canvas shows
+   the sung one at the bottom, so a click would land on whichever line is under it. */
+.brs-layout[data-layout="stage"] :is(.blyrics--word, .blyrics--translated, .blyrics--romanized) {
+  pointer-events: none !important;
+}
+
 .brs-layout[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits) {
   position: absolute !important;
   top: 0;

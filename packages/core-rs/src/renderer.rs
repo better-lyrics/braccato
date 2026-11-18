@@ -407,7 +407,7 @@ impl View {
         }
         self.started = false;
         self.clock.reset();
-        self.build();
+        self.build(false);
     }
 
     /// Lyrics for the song already on screen: lines the two share keep their elements, state and
@@ -940,7 +940,9 @@ impl View {
 
     // -- Building and layout --------------------------------------------
 
-    fn build(&mut self) {
+    /// Builds the lines from scratch. `keep_host` keeps what the host added to the container and to
+    /// the credits; new lyrics clear it, as the DOM renderer does.
+    fn build(&mut self, keep_host: bool) {
         self.scroll_changed();
         self.needs_build = false;
         self.settle_scrolls();
@@ -953,7 +955,23 @@ impl View {
         let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
         self.apply_time_overrides(&mut song);
         self.release_textures();
-        let dom_ = layout::build_dom(&self.doc, &self.container, &song, &self.theme);
+        let old_dom = self.dom.take().filter(|_| keep_host);
+        let mut host_in_credits = Vec::new();
+        if let Some(old) = &old_dom {
+            for line in &old.lines {
+                line.element.remove();
+            }
+            if let Some(credits) = &old.credits {
+                host_in_credits = layout::host_children(credits);
+                credits.remove();
+            }
+        }
+        let dom_ = layout::build_dom(&self.doc, &self.container, &song, &self.theme, old_dom.is_some());
+        if let Some(credits) = &dom_.credits {
+            for node in host_in_credits {
+                let _ = credits.append_child(&node);
+            }
+        }
         self.mark_stage(&song, &dom_);
         self.stage_motion.clear();
         self.stage_roles.clear();
@@ -1359,7 +1377,9 @@ impl View {
             return false;
         }
         if self.needs_build {
-            self.build();
+            // The same lyrics again (a theme, a decoration setting): what the host put in the
+            // container stays, as it does in the DOM renderer, which rebuilds nothing for a theme.
+            self.build(true);
         }
         if let Some(settle) = self.pending_refresh.take() {
             self.refresh(settle);
@@ -1757,10 +1777,9 @@ impl View {
         let mut job_quads: Vec<Quad> = Vec::new();
         let mut regions: Vec<BlurRegion> = Vec::new();
         let mut placed: Vec<(usize, [f32; 4], f32, Rect)> = Vec::new(); // job, atlas rect, scale, region
+        let mut unplaced: Vec<usize> = Vec::new();
         for (job_index, job) in self.blur_jobs.iter().enumerate() {
             let sigma_px = job.sigma * dpr;
-            let ds = coarseness(sigma_px);
-            let scale = dpr / ds;
             // What the job covers, and three sigma around it where the blur still shows.
             let mut region = job
                 .quads
@@ -1769,11 +1788,20 @@ impl View {
                 .reduce(|a, b| a.union(&b))
                 .unwrap_or_default();
             region = region.expand(3.0 * job.sigma, 3.0 * job.sigma);
-            let (w, h) = ((region.w * scale).ceil() + 2.0, (region.h * scale).ceil() + 2.0);
+            // A job wider than a row (a long line blurred at a high pixel ratio) is drawn coarser
+            // until it fits; its blur hides the difference.
+            let mut ds = coarseness(sigma_px);
+            let size = |ds: f32| ((region.w * dpr / ds).ceil() + 2.0, (region.h * dpr / ds).ceil() + 2.0);
+            while (size(ds).0 > ROW_WIDTH || size(ds).1 > crate::gpu::MAX_ATLAS as f32) && ds < 256.0 {
+                ds *= 2.0;
+            }
+            let scale = dpr / ds;
+            let (w, h) = size(ds);
             if x + w > ROW_WIDTH {
                 (x, y, row_h) = (0.0, y + row_h, 0.0);
             }
             if w > ROW_WIDTH || y + h > crate::gpu::MAX_ATLAS as f32 {
+                unplaced.push(job_index);
                 continue;
             }
             for quad in &job.quads {
@@ -1811,6 +1839,22 @@ impl View {
         }
         for region in &mut regions {
             region.rect[1] = atlas_h - (region.rect[1] + region.rect[3]);
+        }
+        // With the atlas full, what is left is drawn sharp, in place of its composite, rather than
+        // not at all.
+        if !unplaced.is_empty() {
+            let mut quads = Vec::with_capacity(self.quads.len());
+            let mut next = unplaced.iter().map(|&i| &self.blur_jobs[i]).peekable();
+            for (index, quad) in self.quads.iter().enumerate() {
+                match next.peek() {
+                    Some(job) if job.composite == index => {
+                        quads.extend_from_slice(&job.quads);
+                        next.next();
+                    }
+                    _ => quads.push(*quad),
+                }
+            }
+            self.quads = quads;
         }
 
         self.gpu.begin();

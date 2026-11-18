@@ -1,7 +1,7 @@
 //! Everything a theme can change, read once per theme from the page's CSS.
 //!
-//! A theme is two things, as it was for the DOM renderer: `/* blyrics-key = value; */` settings in
-//! the comments of a stylesheet, and `--blyrics-*` custom properties the stylesheet sets. The custom
+//! A theme is two things, as it was for the DOM renderer: `blyrics-key = value;` settings in the
+//! comments of a stylesheet, and `--blyrics-*` custom properties the stylesheet sets. The custom
 //! properties are read from the computed style of the layout container, so they cascade the usual
 //! way. Colours are not read here: they are resolved per element during layout (see `layout.rs`), so
 //! a selector that colours one word differently still works.
@@ -145,7 +145,7 @@ pub fn parse_seconds(text: &str) -> Option<f32> {
     None
 }
 
-/// The `/* blyrics-key = value; */` settings in a theme's comments.
+/// The `blyrics-key = value;` settings in a theme's comments.
 #[derive(Clone, Debug)]
 pub struct CommentSettings {
     pub target_scroll_ratio: f32,

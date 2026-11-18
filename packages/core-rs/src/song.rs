@@ -37,6 +37,7 @@ pub struct Part {
     /// Split into letters for the letter wave.
     pub lettered: bool,
     pub rtl: bool,
+    pub explicit: bool,
 }
 
 impl Part {
@@ -339,6 +340,7 @@ struct Token<'a> {
     start_ms: f64,
     duration_ms: f64,
     background: bool,
+    explicit: bool,
     background_group: u32,
     zero_duration: bool,
 }
@@ -367,6 +369,7 @@ fn tokens_of(part: &LyricPart) -> Vec<Token<'_>> {
                 start_ms,
                 duration_ms,
                 background: part.is_background,
+                explicit: part.explicit,
                 background_group: part.background_group.unwrap_or(0),
                 zero_duration: part.duration_ms == 0.0,
             }
@@ -496,6 +499,7 @@ impl<'s> RowBuilder<'s> {
                     line_synced: token.zero_duration,
                     long_word: token.duration_ms > self.settings.long_word_threshold_ms as f64,
                     lettered: false,
+                    explicit: token.explicit,
                     rtl: text::first_strong_direction(token.text) == Some(text::Direction::Rtl)
                         || token.text.chars().any(|c| text::char_direction(c) == Some(text::Direction::Rtl)),
                 });

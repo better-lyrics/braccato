@@ -22,6 +22,10 @@ pub struct LyricPart {
     pub is_background: bool,
     #[serde(default)]
     pub background_group: Option<u32>,
+    /// Marked explicit by the source. The word gets core's `blyrics-explicit` class, which themes
+    /// can style.
+    #[serde(default, deserialize_with = "lenient")]
+    pub explicit: bool,
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]

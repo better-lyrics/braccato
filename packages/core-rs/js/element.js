@@ -95,14 +95,18 @@ export class BraccatoLyricsElement extends HTMLElement {
 	}
 
 	#bindSource() {
+		// The element's own document and window: in an iframe or a Picture-in-Picture window, a
+		// selector names that document's player, and its media elements are that window's class.
+		const view = this.ownerDocument.defaultView;
+		const isMedia = (node) => view !== null && node instanceof view.HTMLMediaElement;
 		let media = null;
 		if (typeof this.#source === "string") {
-			media = this.isConnected ? document.querySelector(this.#source) : null;
+			media = this.isConnected ? this.ownerDocument.querySelector(this.#source) : null;
 			if (this.#source && !media) this.#emitError("source", new Error(`No element matches ${this.#source}`));
-		} else if (this.#source instanceof HTMLMediaElement) {
+		} else if (isMedia(this.#source)) {
 			media = this.#source;
 		}
-		this.#media = media instanceof HTMLMediaElement ? media : null;
+		this.#media = isMedia(media) ? media : null;
 		this.#renderer?.setMedia(this.#media);
 	}
 

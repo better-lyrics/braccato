@@ -209,11 +209,20 @@ pub struct LayoutDom {
 
 // -- Building --------------------------------------------
 
-pub fn build_dom(doc: &Document, container: &HtmlElement, song: &Song, theme: &Theme) -> LayoutDom {
-    // Not `innerHTML`: a page that enforces Trusted Types refuses a plain string there.
-    while let Some(child) = container.first_child() {
-        let _ = container.remove_child(&child);
+/// Builds the lines and credits into `container`. Everything already in it goes, unless
+/// `keep_host`: then what is left (the host's, once the caller took its own lines out) stays after
+/// the new lines.
+pub fn build_dom(doc: &Document, container: &HtmlElement, song: &Song, theme: &Theme, keep_host: bool) -> LayoutDom {
+    if !keep_host {
+        // Not `innerHTML`: a page that enforces Trusted Types refuses a plain string there.
+        while let Some(child) = container.first_child() {
+            let _ = container.remove_child(&child);
+        }
     }
+    let first_host = container.first_child();
+    let place = |node: &HtmlElement| {
+        let _ = container.insert_before(node, first_host.as_ref());
+    };
     mark_container(container, song);
     let lines = song
         .lines
@@ -221,15 +230,24 @@ pub fn build_dom(doc: &Document, container: &HtmlElement, song: &Song, theme: &T
         .enumerate()
         .map(|(index, line)| {
             let dom = fill_line(doc, element(doc, "div", ""), line, index, theme);
-            append(container, &dom.element);
+            place(&dom.element);
             dom
         })
         .collect();
     let credits = build_credits(doc, container, song);
     if let Some(credits) = &credits {
-        append(container, credits);
+        place(credits);
     }
     LayoutDom { container: container.clone(), lines, credits }
+}
+
+/// What the host put in the credits, besides the renderer's own text.
+pub fn host_children(credits: &HtmlElement) -> Vec<Element> {
+    let children = credits.children();
+    (0..children.length())
+        .filter_map(|i| children.item(i))
+        .filter(|el| !el.class_list().contains("blyrics-credits__text"))
+        .collect()
 }
 
 /// The song-wide attributes on the container.
@@ -320,6 +338,9 @@ pub fn fill_line(doc: &Document, el: HtmlElement, line: &Line, index: usize, the
         }
         if part.long_word {
             set_attr(&word, "data-long-word", "true");
+        }
+        if part.explicit {
+            word.class_list().add_1("blyrics-explicit").ok();
         }
         let mut letters = Vec::new();
         if part.lettered {

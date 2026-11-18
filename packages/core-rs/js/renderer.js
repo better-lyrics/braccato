@@ -379,13 +379,31 @@ export function createLyricsRenderer(rendererOptions) {
 	};
 	live.add(view);
 
+	/** The snapshot last handed to Rust. */
+	let sent = null;
+
 	function tick(currentTimeS, options) {
 		if (destroyed) return "lyrics-missing";
 		const resolved = resolveTickOptions(options ?? {});
 		snapshot.timeS = currentTimeS;
 		snapshot.isPlaying = resolved.isPlaying;
 		snapshot.eventCreationTime = resolved.eventCreationTime;
-		if (currentTimeS === 0 && !resolved.isPlaying) return "ok";
+		if (currentTimeS === 0 && !resolved.isPlaying) {
+			// As in core, a stop at zero (a player loading, or between songs) moves nothing. Core
+			// simply skips the tick; this renderer runs its own clock from the last snapshot, so it is
+			// told to hold where that clock had got to.
+			if (sent?.isPlaying) {
+				const now = Date.now();
+				const elapsedS = sent.eventCreationTime > 0 ? Math.max(0, now - sent.eventCreationTime) / 1000 : 0;
+				sent = {
+					timeS: sent.timeS + elapsedS * (resolved.playbackRate ?? 1),
+					isPlaying: false,
+					eventCreationTime: now,
+				};
+				rust?.setSnapshot(sent.timeS, false, now);
+			}
+			return "ok";
+		}
 		if (!host.isViewVisible() || host.syncAdState()) {
 			rust?.setHidden(true);
 			return "ok";
@@ -410,6 +428,7 @@ export function createLyricsRenderer(rendererOptions) {
 			rust.setTickOptions(resolved);
 		}
 		rust.setSnapshot(currentTimeS, resolved.isPlaying, resolved.eventCreationTime);
+		sent = { timeS: currentTimeS, isPlaying: resolved.isPlaying, eventCreationTime: resolved.eventCreationTime };
 		return "ok";
 	}
 
