@@ -5,6 +5,13 @@
 //! renderer's, so a page's `--blyrics-*` variables reach them through the same selectors; the
 //! structural rules are scoped and `!important` so no theme can move the text away from where the
 //! canvas draws it.
+//!
+//! Only the renderer's own elements are hidden and pinned: the lines, and the credits' text. A host
+//! may put its own things in the container (a footer, buttons) or inside the credits (a source
+//! card), and those stay ordinary visible DOM; the renderer moves the ones inside the credits along
+//! with them (see `View::place_riders`). The lines' text is made transparent rather than the whole
+//! container invisible, which also leaves it selectable: a selection's highlight shows over the
+//! canvas, and copying takes the real text.
 
 pub const STYLE_ID: &str = "braccato-rs-style";
 
@@ -27,8 +34,13 @@ pub const CSS: &str = r#"
   z-index: 1;
 }
 
+/* The DOM renderer's stylesheet's default, for a page without it: the room above the first line
+   is the page's to give, through --blyrics-padding-top (see View::layout). */
+:where(.brs-layout.blyrics-container) {
+  padding-top: 2rem;
+}
+
 .brs-layout.blyrics-container {
-  opacity: 0 !important;
   filter: none !important;
   transform: none !important;
   font-family: var(--blyrics-font-family, var(--blyrics-default-font-family));
@@ -42,16 +54,52 @@ pub const CSS: &str = r#"
   caret-color: var(--blyrics-glow-color, var(--blyrics-highlight-color, rgb(255 255 255 / 0.5)));
 }
 
-/* Measured with getBoundingClientRect, which sees transforms: nothing in here may move. */
-.brs-layout *,
-.brs-layout *::before,
-.brs-layout *::after {
+/* Measured with getBoundingClientRect, which sees transforms: nothing the renderer measures may move. */
+.brs-layout > :is(.blyrics--line, .blyrics-credits),
+.brs-layout > .blyrics--line *,
+.brs-layout > .blyrics-credits > .blyrics-credits__text,
+.brs-layout > .blyrics-credits > .blyrics-credits__text *,
+.brs-layout > :is(.blyrics--line, .blyrics-credits)::before,
+.brs-layout > :is(.blyrics--line, .blyrics-credits)::after,
+.brs-layout > .blyrics--line *::before,
+.brs-layout > .blyrics--line *::after,
+.brs-layout > .blyrics-credits > .blyrics-credits__text::after {
   transform: none !important;
   translate: none !important;
   scale: none !important;
   animation: none !important;
   transition: none !important;
   filter: none !important;
+}
+
+/* The canvas draws all of this; the DOM keeps the boxes and the text, but paints none of it. */
+.brs-layout > .blyrics--line,
+.brs-layout > .blyrics--line *,
+.brs-layout > .blyrics-credits > .blyrics-credits__text,
+.brs-layout > .blyrics-credits > .blyrics-credits__text * {
+  -webkit-text-fill-color: transparent !important;
+  -webkit-text-stroke-color: transparent !important;
+  text-shadow: none !important;
+  text-decoration-line: none !important;
+  background: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline-color: transparent !important;
+}
+
+.brs-layout > .blyrics--line :is(img, svg, video, canvas),
+.brs-layout > :is(.blyrics--line, .blyrics-credits)::before,
+.brs-layout > :is(.blyrics--line, .blyrics-credits)::after,
+.brs-layout > .blyrics--line *::before,
+.brs-layout > .blyrics--line *::after,
+.brs-layout > .blyrics-credits > .blyrics-credits__text::after {
+  opacity: 0 !important;
+}
+
+.brs-layout > .blyrics--line *::selection,
+.brs-layout > .blyrics-credits > .blyrics-credits__text *::selection {
+  -webkit-text-fill-color: transparent;
+  background-color: rgb(255 255 255 / 0.25);
 }
 
 .brs-layout > .blyrics--line {
@@ -240,6 +288,11 @@ pub const CSS: &str = r#"
   color: var(--blyrics-ui-text-color, var(--blyrics-text-color, rgb(255 255 255)));
   opacity: 1 !important;
   text-align: left;
+}
+
+/* On the stage the credits fade with the stage (see place_riders), for what a host put in them. */
+.brs-layout[data-layout="stage"] > .blyrics-credits {
+  opacity: var(--blyrics-stage-opacity, 0) !important;
 }
 
 .brs-layout .blyrics-credits__text::before {

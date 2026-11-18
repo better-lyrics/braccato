@@ -91,6 +91,17 @@ impl AutoScroll {
         *self = AutoScroll { force: true, ..AutoScroll::default() };
     }
 
+    /// The first line the last scroll followed.
+    pub fn followed(&self) -> Option<usize> {
+        self.committed.first().copied()
+    }
+
+    /// Carries the lines being followed over a swap, given where each old line went.
+    pub fn remap(&mut self, new_index: impl Fn(usize) -> Option<usize>) {
+        self.committed = self.committed.iter().filter_map(|&i| new_index(i)).collect();
+        self.pinned = self.pinned.and_then(&new_index);
+    }
+
     /// Lines in focus at scroll time `s`: from `early` before their start until the next line
     /// starts or they end, whichever is later.
     pub fn focused(lines: &[ScrollLine], s: f32, early: f32) -> Vec<usize> {

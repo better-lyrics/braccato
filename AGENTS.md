@@ -83,11 +83,12 @@ straight into the extension, so check them against it, not only against the demo
 
 ## `@braccato/core-rs` is the Rust + WebGL2 rewrite
 
-`packages/core-rs` renders the same lyrics as core from one canvas (see its README). It is private and
-not published, so it needs no changeset, and `build:packages` (the release build) leaves it out.
-Building it needs Rust with the `wasm32-unknown-unknown` target and `wasm-pack`. `scripts/run.mjs`
-skips its build and test with a notice when those are missing, so the gate above still runs without
-Rust; with Rust installed, check that the notice did not appear.
+`packages/core-rs` renders the same lyrics as core from one canvas, behind core's `createLyricsRenderer`
+interface (see its README). It is published, so changes to it need a changeset like core's. Building
+it needs Rust with the `wasm32-unknown-unknown` target and `wasm-pack`. `scripts/run.mjs` skips its
+build and test with a notice when those are missing, so the gate above still runs without Rust; with
+Rust installed, check that the notice did not appear. The release workflow installs the toolchain and
+sets `BRACCATO_REQUIRE_RUST`, which turns the skip into a failure.
 
 - `cargo test --lib` in the package covers the pure logic (song building, scroll, stage, clock).
   `cargo clippy --target wasm32-unknown-unknown` is expected to be clean.
@@ -102,7 +103,11 @@ Rust; with Rust installed, check that the notice did not appear.
   two panes rather than eyeballing them; `window.compareRects()` gives the crop rectangles.
 - The hidden layout DOM shares core's class names so a page's `--blyrics-*` variables reach it, which
   also means core's stylesheets do. `style.rs` therefore pins every transform, animation and
-  `::before` in that DOM: anything that moves it skews the measurement.
+  `::before` in the renderer's own elements: anything that moves them skews the measurement. Their
+  text is transparent, not hidden, and what a host adds to the container stays visible, so pin and
+  hide by the renderer's own classes, never `.brs-layout *`.
+- `js/renderer.js` is the core-compatible adapter. Better Lyrics consumes it, so keep its behaviour
+  in step with core's renderer interface (`packages/core/src/types.ts`).
 
 ## Tests
 

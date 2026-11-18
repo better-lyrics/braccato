@@ -112,8 +112,8 @@ impl Gpu {
             .get_context_with_context_options("webgl2", &options)
             .map_err(|_| "webgl2 context failed".to_string())?
             .ok_or("webgl2 is not available")?
-            .dyn_into()
-            .map_err(|_| "not a webgl2 context")?;
+            // Not `dyn_into`: a canvas in another window hands back that realm's context.
+            .unchecked_into();
 
         let program = link(&gl, quad_shader::VERTEX, quad_shader::FRAGMENT)?;
         gl.use_program(Some(&program));

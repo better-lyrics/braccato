@@ -23,12 +23,15 @@ use renderer::{TickOptions, View};
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use wasm_bindgen::prelude::*;
-use web_sys::{Element, HtmlElement, HtmlMediaElement};
+use web_sys::{Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement};
 
 type FrameCallback = Closure<dyn FnMut(f64)>;
 type ResizeWatch = (web_sys::ResizeObserver, Closure<dyn FnMut()>);
 
 struct Shared {
+    /// The window the view is in. Its animation frames, not this module's window's, are the ones to
+    /// draw on: a Picture-in-Picture window keeps getting frames while the tab behind it is hidden.
+    win: web_sys::Window,
     view: RefCell<View>,
     frame: RefCell<Option<FrameCallback>>,
     scheduled: Cell<Option<i32>>,
@@ -80,7 +83,7 @@ impl Shared {
         }
         let frame = self.frame.borrow();
         if let Some(closure) = frame.as_ref() {
-            if let Ok(id) = dom::window().request_animation_frame(closure.as_ref().unchecked_ref()) {
+            if let Ok(id) = self.win.request_animation_frame(closure.as_ref().unchecked_ref()) {
                 self.scheduled.set(Some(id));
             }
         }
@@ -88,11 +91,11 @@ impl Shared {
 
     fn run_frame(self: &Rc<Self>, now_ms: f64) {
         self.scheduled.set(None);
-        let started = dom::now_ms();
+        let started = dom::now_ms(&self.win);
         let again = self.view.borrow_mut().frame(now_ms);
         {
             let mut view = self.view.borrow_mut();
-            let spent = dom::now_ms() - started;
+            let spent = dom::now_ms(&self.win) - started;
             view.stats.frames += 1;
             view.stats.cpu_ms = if view.stats.frames == 1 { spent } else { view.stats.cpu_ms * 0.95 + spent * 0.05 };
             view.stats.max_cpu_ms = view.stats.max_cpu_ms.max(spent);
@@ -100,10 +103,36 @@ impl Shared {
         if self.view.borrow_mut().take_built() {
             self.observe_layout();
         }
+        let wanted = self.view.borrow_mut().take_wanted_image();
+        if let Some(url) = wanted {
+            self.load_image(url);
+        }
         self.flush_events();
         if again {
             self.request_frame();
         }
+    }
+
+    /// Loads an image-highlight image, CORS-enabled so the texture it is drawn into stays readable.
+    /// A failed load leaves the note in its colours.
+    fn load_image(self: &Rc<Self>, url: String) {
+        let doc = self.view.borrow().doc.clone();
+        let Ok(image) = doc.create_element("img") else { return };
+        let image: web_sys::HtmlImageElement = image.unchecked_into();
+        image.set_cross_origin(Some("anonymous"));
+        image.set_src(&url);
+        let weak = Rc::downgrade(self);
+        let loaded = image.clone();
+        let done = Closure::once(move |_: JsValue| {
+            if let Some(shared) = weak.upgrade() {
+                shared.view.borrow_mut().image_loaded(url, loaded);
+                shared.request_frame();
+            }
+        });
+        let failed = Closure::once(|_: JsValue| {});
+        let _ = image.decode().then2(&done, &failed);
+        done.forget();
+        failed.forget();
     }
 
     fn observe_layout(&self) {
@@ -150,7 +179,9 @@ impl Renderer {
     #[wasm_bindgen(constructor)]
     pub fn new(host: HtmlElement) -> Result<Renderer, JsValue> {
         let view = View::new(host.clone()).map_err(|e| JsValue::from_str(&e))?;
+        let (win, doc) = (view.win.clone(), view.doc.clone());
         let shared = Rc::new(Shared {
+            win: win.clone(),
             view: RefCell::new(view),
             frame: RefCell::new(None),
             scheduled: Cell::new(None),
@@ -167,8 +198,12 @@ impl Renderer {
 
         let container: web_sys::EventTarget = shared.view.borrow().container.clone().into();
         let mut listeners = vec![listen(&shared, &container, "click", false, |shared, event| {
-            let Some(mouse) = event.dyn_ref::<web_sys::MouseEvent>() else { return };
-            let Some(target) = event.target().and_then(|t| t.dyn_into::<Element>().ok()) else { return };
+            // Unchecked casts: the event may come from another window's realm.
+            let mouse: &web_sys::MouseEvent = event.unchecked_ref();
+            let Some(target) = event.target().map(|t| t.unchecked_into::<Element>()) else { return };
+            if !js_sys::Reflect::has(&target, &"closest".into()).unwrap_or(false) {
+                return;
+            }
             let seeked = shared.view.borrow_mut().on_click(
                 &target,
                 mouse.alt_key(),
@@ -179,13 +214,21 @@ impl Renderer {
                 shared.request_frame();
             }
         })];
-        if let Ok(fonts) = dom::document().fonts().dyn_into::<web_sys::EventTarget>() {
-            listeners.push(listen(&shared, &fonts, "loadingdone", true, |shared, _| {
-                shared.view.borrow_mut().invalidate_layout();
-                shared.request_frame();
-            }));
+        let fonts: web_sys::EventTarget = doc.fonts().unchecked_into();
+        listeners.push(listen(&shared, &fonts, "loadingdone", true, |shared, _| {
+            shared.view.borrow_mut().invalidate_layout();
+            shared.request_frame();
+        }));
+        // The theme's image-highlight image can depend on these, as the DOM renderer's did.
+        for query in ["(dynamic-range: high)", "(forced-colors: active)"] {
+            if let Ok(Some(list)) = win.match_media(query) {
+                listeners.push(listen(&shared, &list.unchecked_into(), "change", true, |shared, _| {
+                    shared.view.borrow_mut().invalidate_layout();
+                    shared.request_frame();
+                }));
+            }
         }
-        listeners.push(listen(&shared, &dom::window().into(), "resize", true, |shared, _| {
+        listeners.push(listen(&shared, &win.clone().into(), "resize", true, |shared, _| {
             shared.view.borrow_mut().invalidate_layout();
             shared.request_frame();
         }));
@@ -208,7 +251,7 @@ impl Renderer {
         // Fonts that finish loading before the first frame change nothing, but the ones still
         // loading would leave the first layout measured in fallback faces.
         let weak = Rc::downgrade(&renderer.shared);
-        let ready = dom::document().fonts().ready();
+        let ready = doc.fonts().ready();
         if let Ok(ready) = ready {
             let then = Closure::once(move |_: JsValue| {
                 if let Some(shared) = weak.upgrade() {
@@ -236,7 +279,7 @@ impl Renderer {
             serde_wasm_bindgen::from_value(options)?
         };
         self.shared.view.borrow_mut().set_lyrics(lyrics, options);
-        self.shared.request_frame();
+        self.observe_after_change();
         Ok(())
     }
 
@@ -284,10 +327,11 @@ impl Renderer {
         let scroller = element.or_else(|| nearest_scroller(&host));
         let target: web_sys::EventTarget = match &scroller {
             Some(el) => el.clone().into(),
-            None => dom::window().into(),
+            None => self.shared.win.clone().into(),
         };
         let listener = listen(&self.shared, &target, "scroll", true, |shared, _| {
-            shared.view.borrow_mut().on_scroll(dom::now_ms());
+            let now = dom::now_ms(&shared.win);
+            shared.view.borrow_mut().on_scroll(now);
             shared.flush_events();
             shared.request_frame();
         });
@@ -316,6 +360,8 @@ impl Renderer {
         self.shared.view.borrow_mut().tick_options = TickOptions {
             lyric_offset_s: number("lyricOffset", 0.0),
             global_offset_s: number("globalLyricOffset", 0.0),
+            richsync_trim_s: number("richsyncOffsetTrim", 0.0),
+            line_trim_s: number("lineOffsetTrim", 0.0),
             rate: number("playbackRate", 1.0),
             smooth_scroll: smooth,
             passive_scroll: passive,
@@ -375,15 +421,189 @@ impl Renderer {
         out.into()
     }
 
-    pub fn relayout(&self) {
-        self.shared.view.borrow_mut().invalidate_layout();
+    /// Measures the lines again on the next frame. With `settle`, lines the new measurement moves
+    /// slide there, and the line in view holds still.
+    pub fn relayout(&self, settle: Option<bool>) {
+        self.shared.view.borrow_mut().relayout(settle.unwrap_or(false));
+        self.shared.request_frame();
+    }
+
+    // -- For the `createLyricsRenderer` adapter in js/renderer.js --------------------------------
+
+    /// A player snapshot: the time it showed, whether it was playing, and when it was read, as
+    /// `Date.now()` (negative when it was not read off a player).
+    #[wasm_bindgen(js_name = setSnapshot)]
+    pub fn set_snapshot(&self, seconds: f64, playing: bool, event_ms: f64) {
+        self.shared.view.borrow_mut().set_snapshot(seconds, playing, event_ms);
+        self.shared.request_frame();
+    }
+
+    #[wasm_bindgen(js_name = resetClock)]
+    pub fn reset_clock(&self) {
+        self.shared.view.borrow_mut().reset_clock();
+    }
+
+    /// Whether the host has the view off the screen. A hidden view draws nothing until shown.
+    #[wasm_bindgen(js_name = setHidden)]
+    pub fn set_hidden(&self, hidden: bool) {
+        let was = std::mem::replace(&mut self.shared.view.borrow_mut().hidden, hidden);
+        if was && !hidden {
+            self.shared.request_frame();
+        }
+    }
+
+    /// Moves the view into another element of the same document.
+    #[wasm_bindgen(js_name = setHost)]
+    pub fn set_host(&self, host: HtmlElement) {
+        self.shared.view.borrow_mut().set_host(host);
+        self.observe_after_change();
+    }
+
+    /// Hangs a translation on line `index`, or takes it off with `null`. Returns whether the line
+    /// had one before.
+    #[wasm_bindgen(js_name = hangTranslation)]
+    pub fn hang_translation(&self, index: usize, text: Option<String>, language: Option<String>) -> bool {
+        let value = text.map(|t| (t, language.unwrap_or_default()));
+        let had = self.shared.view.borrow_mut().hang_translation(index, value);
+        self.shared.request_frame();
+        had
+    }
+
+    /// Hangs a romanization on line `index`, swept by `timed` (a `LyricPart[]`) if given, or takes
+    /// it off with `null`. Returns whether the line had one before.
+    #[wasm_bindgen(js_name = hangRomanization)]
+    pub fn hang_romanization(&self, index: usize, text: Option<String>, timed: JsValue) -> Result<bool, JsValue> {
+        let timed: Option<Vec<model::LyricPart>> =
+            if timed.is_null() || timed.is_undefined() { None } else { Some(serde_wasm_bindgen::from_value(timed)?) };
+        let value = text.map(|t| (t, timed));
+        let had = self.shared.view.borrow_mut().hang_romanization(index, value);
+        self.shared.request_frame();
+        Ok(had)
+    }
+
+    #[wasm_bindgen(js_name = setLanguage)]
+    pub fn set_language(&self, language: Option<String>) {
+        self.shared.view.borrow_mut().set_language(language.filter(|l| !l.is_empty()));
+        self.shared.request_frame();
+    }
+
+    /// Moves line `index`'s start, or with `part` one of its parts', to `start` seconds.
+    #[wasm_bindgen(js_name = setStart)]
+    pub fn set_start(&self, index: usize, part: Option<usize>, start: f32) {
+        self.shared.view.borrow_mut().set_start(index, part, start);
+        self.shared.request_frame();
+    }
+
+    /// `[start, duration]` in seconds of line `index`, or with `part` one of its parts.
+    pub fn timing(&self, index: usize, part: Option<usize>) -> Option<Vec<f32>> {
+        self.shared.view.borrow().timing(index, part).map(|(start, duration)| vec![start, duration])
+    }
+
+    /// `[{ element, parts: HTMLElement[] }]`, one per line, in order.
+    #[wasm_bindgen(js_name = lineElements)]
+    pub fn line_elements(&self) -> js_sys::Array {
+        let out = js_sys::Array::new();
+        for (element, parts) in self.shared.view.borrow().line_elements() {
+            let record = js_sys::Object::new();
+            dom::set(&record, "element", &element);
+            let list = js_sys::Array::new();
+            for part in parts {
+                list.push(&part);
+            }
+            dom::set(&record, "parts", &list);
+            out.push(&record);
+        }
+        out
+    }
+
+    /// The index of the line `element` is, or -1.
+    #[wasm_bindgen(js_name = lineIndex)]
+    pub fn line_index(&self, element: &Element) -> i32 {
+        self.shared.view.borrow().line_index(element).map(|i| i as i32).unwrap_or(-1)
+    }
+
+    /// Changes whenever the line elements do.
+    #[wasm_bindgen(getter)]
+    pub fn generation(&self) -> u32 {
+        self.shared.view.borrow().generation
+    }
+
+    /// `"richsync"`, `"synced"` or `"none"`, and `"none"` with no song.
+    #[wasm_bindgen(js_name = syncType)]
+    pub fn sync_type(&self) -> String {
+        self.shared.view.borrow().sync_type().map(|s| s.as_str()).unwrap_or("none").to_string()
+    }
+
+    #[wasm_bindgen(js_name = hasSong)]
+    pub fn has_song(&self) -> bool {
+        self.shared.view.borrow().has_song()
+    }
+
+    /// The container the lines are built in, which the host may add its own things to.
+    #[wasm_bindgen(getter)]
+    pub fn container(&self) -> HtmlElement {
+        self.shared.view.borrow().container.clone()
+    }
+
+    /// Takes the lines off the screen and keeps the container. Returns whether there were any.
+    #[wasm_bindgen(js_name = clearOnScreen)]
+    pub fn clear_on_screen(&self) -> bool {
+        self.shared.view.borrow_mut().clear_on_screen()
+    }
+
+    /// Drops the song and takes the container out of the page; `setLyrics` puts both back.
+    pub fn clear(&self) {
+        self.shared.view.borrow_mut().clear();
+    }
+
+    /// The host saw the reader scroll. Scrolls the renderer made itself are told apart and ignored.
+    #[wasm_bindgen(js_name = noteScroll)]
+    pub fn note_scroll(&self) {
+        let now = dom::now_ms(&self.shared.win);
+        self.shared.view.borrow_mut().on_scroll(now);
+        self.shared.flush_events();
+        self.shared.request_frame();
+    }
+
+    /// The canvas the view draws on.
+    #[wasm_bindgen(getter)]
+    pub fn canvas(&self) -> HtmlCanvasElement {
+        self.shared.view.borrow().canvas.clone()
+    }
+
+    /// A copy of what the view shows now, on a 2D canvas the same size, styled like the view's: for
+    /// a host that clones the page to animate it away, where a WebGL canvas clones blank. The frame
+    /// is drawn and copied in one go, while the drawing buffer still holds it.
+    pub fn snapshot(&self) -> Option<HtmlCanvasElement> {
+        let now = dom::now_ms(&self.shared.win);
+        self.shared.view.borrow_mut().frame(now);
+        let view = self.shared.view.borrow();
+        let source = &view.canvas;
+        let copy: HtmlCanvasElement = view.doc.create_element("canvas").ok()?.unchecked_into();
+        copy.set_width(source.width());
+        copy.set_height(source.height());
+        let _ = copy.set_attribute("style", &source.get_attribute("style").unwrap_or_default());
+        copy.set_class_name(&source.class_name());
+        let context: web_sys::CanvasRenderingContext2d = copy.get_context("2d").ok()??.unchecked_into();
+        context.draw_image_with_html_canvas_element(source, 0.0, 0.0).ok()?;
+        Some(copy)
+    }
+
+    /// Sends any events waiting on the next frame now.
+    #[wasm_bindgen(js_name = flushEvents)]
+    pub fn flush_events(&self) {
+        self.shared.flush_events();
+    }
+
+    fn observe_after_change(&self) {
+        self.shared.observe_layout();
         self.shared.request_frame();
     }
 
     /// Detaches everything. The renderer is unusable afterwards.
     pub fn destroy(&self) {
         if let Some(id) = self.shared.scheduled.take() {
-            let _ = dom::window().cancel_animation_frame(id);
+            let _ = self.shared.win.cancel_animation_frame(id);
         }
         self.shared.listeners.borrow_mut().clear();
         self.shared.media_listeners.borrow_mut().clear();

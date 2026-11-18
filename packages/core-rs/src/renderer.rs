@@ -7,18 +7,20 @@
 use crate::clock::Clock;
 use crate::dom::{self, element, set_style};
 use crate::gpu::{Gpu, LineTexture, Quad};
-use crate::layout::{self, LayoutDom, LineLayout, Measured, Owner};
-use crate::model::{Lyric, LyricsOptions, SyncType};
+use crate::layout::{self, LayoutDom, LineDom, LineLayout, Measured, Owner};
+use crate::model::{Lyric, LyricPart, LyricsOptions, SyncType};
 use crate::paint::{self, Moment, Phase, Placement};
 use crate::raster::Rasterizer;
 use crate::scroll::{self, AutoScroll, Curve, ScrollLine, ScrollParams, Viewport};
-use crate::song::{self, Decorations, Song};
+use crate::song::{self, Decorations, Hung, Song};
 use crate::stage::{self, Role};
 use crate::style;
 use crate::theme::{CommentSettings, Theme};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement};
+use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement, Window};
 
+/// How often the element's place in the scroll element is read again (see `frame_with`).
+const HOST_RECHECK_MS: f64 = 250.0;
 /// A user scroll stops autoscroll for this long, synced and unsynced.
 const USER_SCROLL_PAUSE_MS: f64 = 25_000.0;
 const USER_SCROLL_PAUSE_UNSYNCED_MS: f64 = 5_000.0;
@@ -30,6 +32,8 @@ const EVICT_VIEWPORTS: f32 = 3.0;
 /// At most this many lines are rasterized ahead of need in one frame.
 const PREFETCH_PER_FRAME: usize = 2;
 const DECORATION_ENTRY_MS: f64 = 350.0;
+/// How long lines take to slide to where a swap or a new decoration moved them.
+const SETTLE_MS: f64 = 350.0;
 
 /// What a line carries from frame to frame.
 #[derive(Default)]
@@ -38,6 +42,29 @@ struct LineState {
     /// Scroll glides still running on the line, added together.
     curves: Vec<Curve>,
     texture: Option<LineTexture>,
+    /// When the line's translation or romanization appeared, which their entry runs from.
+    decorated_ms: f64,
+}
+
+/// What the lines looked like before a rebuild, so the measurement after it can keep the textures
+/// of lines that did not change and slide the ones that moved.
+struct Prior {
+    /// The layout each line had, by its new index; `None` for a line that is new.
+    layouts: Vec<Option<LineLayout>>,
+    credits: Option<LineLayout>,
+    /// The scroll position the layouts were seen at.
+    scroll_top: f32,
+    /// Whether lines that moved slide to their new places, holding the one being followed still.
+    settle: bool,
+}
+
+/// A start time a host wrote onto a built line or part (`LineData.time`), which outlives a rebuild
+/// of the same lyrics.
+#[derive(Clone, Copy, Debug)]
+struct TimeOverride {
+    line: usize,
+    part: Option<usize>,
+    start_s: f32,
 }
 
 /// Offsets and options a host passes with the clock.
@@ -45,6 +72,9 @@ struct LineState {
 pub struct TickOptions {
     pub lyric_offset_s: f64,
     pub global_offset_s: f64,
+    /// Subtracted for richsync and for line-synced lyrics respectively, on top of the two above.
+    pub richsync_trim_s: f64,
+    pub line_trim_s: f64,
     pub rate: f64,
     pub smooth_scroll: bool,
     /// Unsynced lyrics drift down the page while the song plays.
@@ -70,14 +100,22 @@ pub enum Event {
 
 pub struct View {
     pub host: HtmlElement,
-    canvas: HtmlCanvasElement,
+    /// The document and window the host is in, which need not be the ones this module loaded in.
+    pub doc: Document,
+    pub win: Window,
+    pub canvas: HtmlCanvasElement,
     pub container: HtmlElement,
     gpu: Gpu,
     raster: Rasterizer,
 
     lyrics: Vec<Lyric>,
+    /// Decorations hung on each line by the host, by line.
+    hung: Vec<Hung>,
+    time_overrides: Vec<TimeOverride>,
     options: LyricsOptions,
     settings: CommentSettings,
+    /// The last stylesheet `set_theme` was given.
+    theme_css: Option<String>,
     pub decorations: Decorations,
     theme: Theme,
 
@@ -89,13 +127,28 @@ pub struct View {
     credits_focus: (bool, f64),
     /// Scroll glides running on the credits, which move with the lines.
     credits_curves: Vec<Curve>,
-    built_ms: f64,
+    /// The host elements the renderer moves with the credits, and where it last put them.
+    riders: Vec<(HtmlElement, (f32, f32))>,
+    prior: Option<Prior>,
+    /// Image-highlight addresses already asked for, loaded or not.
+    images_asked: std::collections::HashSet<String>,
+    /// A rebuild of the lyrics on hand queued for the next frame, and whether it slides what moved.
+    pending_refresh: Option<bool>,
+    /// Bumped whenever the line elements change, so a host holding them knows to read them again.
+    pub generation: u32,
+    /// The roles the stage last marked on its elements.
+    stage_roles: Vec<Role>,
 
     clock: Clock,
     pub media: Option<HtmlMediaElement>,
     manual_time: f64,
     manual_playing: bool,
+    /// When `manual_time` was read off the player, as `Date.now()`; negative when it was not.
+    /// While playing, the time is carried forward from then.
+    manual_event_ms: f64,
     pub tick_options: TickOptions,
+    /// The host says nothing of the view is on the screen (another tab, an ad), so no frames.
+    pub hidden: bool,
     started: bool,
     last_lyric: f32,
 
@@ -103,6 +156,8 @@ pub struct View {
     autoscroll: AutoScroll,
     user_paused_until: f64,
     host_top_in_scroll: f32,
+    /// When `host_top_in_scroll` was last read.
+    host_checked_ms: f64,
     viewport: Viewport,
     canvas_size: (f32, f32),
     bleed_left: f32,
@@ -140,7 +195,8 @@ pub struct Stats {
 
 impl View {
     pub fn new(host: HtmlElement) -> Result<View, String> {
-        let doc = dom::document();
+        let doc = dom::doc_of(&host);
+        let win = dom::win_of(&host);
         install_stylesheet(&doc);
         host.class_list().add_1("brs-host").ok();
         let canvas: HtmlCanvasElement = element(&doc, "canvas", "brs-canvas").unchecked_into();
@@ -151,16 +207,21 @@ impl View {
         host.append_child(&container).map_err(|_| "append container")?;
         let gpu = Gpu::new(&canvas)?;
         let settings = CommentSettings::default();
-        let theme = Theme::read(&container, settings.clone(), root_font_px());
+        let theme = Theme::read(&container, settings.clone(), root_font_px(&doc));
         Ok(View {
             host,
+            raster: Rasterizer::new(&doc),
+            doc,
+            win,
             canvas,
             container,
             gpu,
-            raster: Rasterizer::new(),
             lyrics: Vec::new(),
+            hung: Vec::new(),
+            time_overrides: Vec::new(),
             options: LyricsOptions::default(),
             settings,
+            theme_css: None,
             decorations: Decorations { translations: true, romanizations: true },
             theme,
             song: None,
@@ -170,18 +231,26 @@ impl View {
             credits_texture: None,
             credits_focus: (false, 0.0),
             credits_curves: Vec::new(),
-            built_ms: 0.0,
+            riders: Vec::new(),
+            prior: None,
+            images_asked: Default::default(),
+            pending_refresh: None,
+            generation: 0,
+            stage_roles: Vec::new(),
             clock: Clock::default(),
             media: None,
             manual_time: 0.0,
             manual_playing: false,
+            manual_event_ms: -1.0,
             tick_options: TickOptions { rate: 1.0, smooth_scroll: true, ..Default::default() },
+            hidden: false,
             started: false,
             last_lyric: 0.0,
             scroller: None,
             autoscroll: AutoScroll::default(),
             user_paused_until: 0.0,
             host_top_in_scroll: 0.0,
+            host_checked_ms: 0.0,
             viewport: Viewport::default(),
             canvas_size: (0.0, 0.0),
             bleed_left: 0.0,
@@ -202,17 +271,325 @@ impl View {
 
     // -- Inputs --------------------------------------------
 
+    /// A new song, built at once so its elements exist when this returns. Lyrics given with the
+    /// `song_key` of the song on screen are swapped into it instead (see `swap`).
     pub fn set_lyrics(&mut self, lyrics: Vec<Lyric>, options: LyricsOptions) {
+        let same_song = options.song_key.is_some() && options.song_key == self.options.song_key;
+        if same_song && self.song.is_some() && !options.no_lyrics && !self.options.no_lyrics {
+            self.swap(lyrics, options);
+            return;
+        }
+        self.hung = vec![Hung::default(); lyrics.len()];
+        self.time_overrides.clear();
         self.lyrics = lyrics;
         self.options = options;
-        self.needs_build = true;
         self.autoscroll.reset();
-        self.user_paused_until = 0.0;
+        if self.user_paused_until > 0.0 {
+            self.user_paused_until = 0.0;
+            self.container.class_list().remove_1("blyrics-user-scrolling").ok();
+            self.events.push(Event::ScrollState { user_scrolling: false });
+        }
         self.started = false;
+        self.clock.reset();
+        self.build();
+    }
+
+    /// Lyrics for the song already on screen: lines the two share keep their elements, state and
+    /// textures; a changed line is rebuilt in its old element and takes over its state; the line
+    /// being followed, or the one a reader scrolled to, holds still while the rest slide to where
+    /// they now are. A reader who scrolled away stays scrolled away.
+    fn swap(&mut self, lyrics: Vec<Lyric>, options: LyricsOptions) {
+        // Matched as given, without what the host hung on them: a translation is not part of what
+        // makes two lines the same line.
+        let bare = |lyrics: &[Lyric], options: &LyricsOptions| {
+            song::build_song(lyrics, &[], options, &self.settings, self.decorations).lines
+        };
+        let origins = song::match_lines(&bare(&self.lyrics, &self.options), &bare(&lyrics, &options));
+        // What was hung on a line goes with it.
+        self.hung = origins.iter().map(|o| o.and_then(|o| self.hung.get(o).cloned()).unwrap_or_default()).collect();
+        self.time_overrides.clear();
+        self.lyrics = lyrics;
+        self.options = options;
+        let song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        self.apply_song(song, &origins, true);
+        self.layout();
+    }
+
+    /// Rebuilds the song on hand (after a host hung a decoration, changed the language or a line's
+    /// time) and refills only the lines that came out different.
+    fn refresh(&mut self, settle: bool) {
+        if self.song.is_none() {
+            return;
+        }
+        let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        self.apply_time_overrides(&mut song);
+        let origins: Vec<Option<usize>> = (0..song.lines.len()).map(Some).collect();
+        self.apply_song(song, &origins, settle);
+    }
+
+    /// Puts `song` on screen in place of the one there, given where each new line came from.
+    fn apply_song(&mut self, song: Song, origins: &[Option<usize>], settle: bool) {
+        let now = dom::now_ms(&self.win);
+        let (Some(old_song), Some(old_dom)) = (self.song.take(), self.dom.take()) else { return };
+        let scroll_top = self.scroll_top();
+        let old_measured = self.measured.take();
+        let mut old_states: Vec<Option<LineState>> = std::mem::take(&mut self.lines).into_iter().map(Some).collect();
+        let mut old_lines: Vec<Option<LineDom>> = old_dom.lines.into_iter().map(Some).collect();
+        for line in old_lines.iter().flatten() {
+            line.element.remove();
+        }
+        let container = old_dom.container;
+        let first_foreign = {
+            let mut node = container.first_child();
+            while let Some(n) = &node {
+                if old_dom.credits.as_ref().is_some_and(|c| c.is_same_node(Some(n))) {
+                    node = n.next_sibling();
+                } else {
+                    break;
+                }
+            }
+            node
+        };
+
+        let mut lines = Vec::with_capacity(song.lines.len());
+        let mut states = Vec::with_capacity(song.lines.len());
+        let mut prior = Vec::with_capacity(song.lines.len());
+        for (index, (line, origin)) in song.lines.iter().zip(origins).enumerate() {
+            let old = origin.and_then(|o| Some((o, old_lines.get_mut(o)?.take()?, old_states.get_mut(o)?.take()?)));
+            let (line_dom, state, layout) = match old {
+                Some((o, line_dom, mut state)) => {
+                    let before = &old_song.lines[o];
+                    let line_dom = if before == line {
+                        line_dom
+                    } else {
+                        let decorated = |l: &song::Line| (l.translation.clone(), l.romanization.clone(), l.rows.len());
+                        if decorated(before) != decorated(line) {
+                            state.decorated_ms = now;
+                        }
+                        layout::fill_line(&self.doc, line_dom.element, line, index, &self.theme)
+                    };
+                    dom::set_attr(&line_dom.element, "data-line-number", &index.to_string());
+                    (line_dom, state, old_measured.as_ref().and_then(|m| m.lines.get(o).cloned()))
+                }
+                None => {
+                    let fresh = layout::fill_line(&self.doc, element(&self.doc, "div", ""), line, index, &self.theme);
+                    (fresh, LineState { decorated_ms: now, ..Default::default() }, None)
+                }
+            };
+            let _ = container.insert_before(&line_dom.element, first_foreign.as_ref());
+            lines.push(line_dom);
+            states.push(state);
+            prior.push(layout);
+        }
+        for state in old_states.into_iter().flatten() {
+            if let Some(texture) = state.texture {
+                self.gpu.release(texture);
+            }
+        }
+
+        let same_credits = old_song.credits == song.credits;
+        let credits = if same_credits {
+            old_dom.credits
+        } else {
+            if let Some(old) = &old_dom.credits {
+                old.remove();
+            }
+            if let Some(texture) = self.credits_texture.take() {
+                self.gpu.release(texture);
+            }
+            layout::build_credits(&self.doc, &container, &song)
+        };
+        if let Some(credits) = &credits {
+            let _ = container.insert_before(credits, first_foreign.as_ref());
+        }
+
+        self.autoscroll.remap(|old| origins.iter().position(|o| *o == Some(old)));
+        if !self.stage_motion.is_empty() {
+            let mut motions: Vec<stage::Motion> = origins
+                .iter()
+                .map(|o| {
+                    o.and_then(|o| self.stage_motion.get(o).copied()).unwrap_or(stage::Motion::at_rest(0.0, false))
+                })
+                .collect();
+            if let Some(credits_motion) = self.stage_motion.last().copied().filter(|_| song.credits.is_some()) {
+                motions.push(credits_motion);
+            }
+            self.stage_motion = motions;
+            self.stage_roles.clear();
+        }
+        layout::mark_container(&container, &song);
+        let dom_ = LayoutDom { container, lines, credits };
+        self.mark_stage(&song, &dom_);
+        self.prior = Some(Prior {
+            layouts: prior,
+            credits: old_measured.and_then(|m| m.credits).filter(|_| same_credits),
+            scroll_top,
+            settle,
+        });
+        self.lines = states;
+        self.song = Some(song);
+        self.dom = Some(dom_);
+        self.generation = self.generation.wrapping_add(1);
+        self.needs_layout = true;
+        self.just_built = true;
+    }
+
+    fn apply_time_overrides(&self, song: &mut Song) {
+        for o in &self.time_overrides {
+            let Some(line) = song.lines.get_mut(o.line) else { continue };
+            match o.part {
+                None => line.start_s = o.start_s,
+                Some(part) => {
+                    if let Some(part) = line.parts.get_mut(part) {
+                        part.start_s = o.start_s;
+                    }
+                }
+            }
+        }
+    }
+
+    // -- What a host can do to the song on screen --------------------------------------------
+
+    /// Hangs a translation on line `index`, or takes it off with `None`. Applied on the next frame,
+    /// with every other decoration hung before it, sliding the lines it moves.
+    pub fn hang_translation(&mut self, index: usize, translation: Option<(String, String)>) -> bool {
+        let Some(hung) = self.hung.get_mut(index) else { return false };
+        let had = hung.translation.is_some();
+        if hung.translation != translation {
+            hung.translation = translation;
+            self.pending_refresh = Some(true);
+        }
+        had
+    }
+
+    /// Hangs a romanization on line `index`, timed if `parts` is given, or takes it off with `None`.
+    pub fn hang_romanization(&mut self, index: usize, romanization: Option<(String, Option<Vec<LyricPart>>)>) -> bool {
+        let Some(hung) = self.hung.get_mut(index) else { return false };
+        let had = hung.romanization.is_some();
+        if hung.romanization != romanization {
+            hung.romanization = romanization;
+            self.pending_refresh = Some(true);
+        }
+        had
+    }
+
+    /// A late-detected language for the lyrics, which only changes the lines it applies to.
+    pub fn set_language(&mut self, language: Option<String>) {
+        if self.options.language != language {
+            self.options.language = language;
+            self.pending_refresh = Some(self.pending_refresh.unwrap_or(false));
+        }
+    }
+
+    /// Moves line `index`'s start, or with `part` one of its parts', in seconds.
+    pub fn set_start(&mut self, index: usize, part: Option<usize>, start_s: f32) {
+        let Some(line) = self.song.as_mut().and_then(|s| s.lines.get_mut(index)) else { return };
+        match part {
+            None => line.start_s = start_s,
+            Some(p) => match line.parts.get_mut(p) {
+                Some(part) => part.start_s = start_s,
+                None => return,
+            },
+        }
+        self.time_overrides.retain(|o| (o.line, o.part) != (index, part));
+        self.time_overrides.push(TimeOverride { line: index, part, start_s });
+    }
+
+    /// Line `index`'s start and duration, or with `part` one of its parts', in seconds.
+    pub fn timing(&self, index: usize, part: Option<usize>) -> Option<(f32, f32)> {
+        let line = self.song.as_ref()?.lines.get(index)?;
+        match part {
+            None => Some((line.start_s, line.duration_s)),
+            Some(p) => line.parts.get(p).map(|p| (p.start_s, p.duration_s)),
+        }
+    }
+
+    /// The element of every line, and of every part in it.
+    pub fn line_elements(&self) -> Vec<(HtmlElement, Vec<HtmlElement>)> {
+        self.dom
+            .as_ref()
+            .map(|d| d.lines.iter().map(|l| (l.element.clone(), l.words.clone())).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn line_index(&self, element: &Element) -> Option<usize> {
+        self.dom.as_ref()?.lines.iter().position(|l| l.element.is_same_node(Some(element)))
+    }
+
+    pub fn has_song(&self) -> bool {
+        self.song.is_some()
+    }
+
+    pub fn sync_type(&self) -> Option<SyncType> {
+        self.song.as_ref().map(|s| s.sync)
+    }
+
+    /// Takes the lines off the screen, keeping the container and what the host put in it. Answers
+    /// whether there were any.
+    pub fn clear_on_screen(&mut self) -> bool {
+        let had = self.dom.as_ref().is_some_and(|d| !d.lines.is_empty() || d.credits.is_some());
+        if let Some(dom_) = self.dom.take() {
+            for line in &dom_.lines {
+                line.element.remove();
+            }
+            if let Some(credits) = &dom_.credits {
+                credits.remove();
+            }
+        }
+        self.drop_song();
+        had
+    }
+
+    /// Drops the song and the container, which `set_lyrics` builds again.
+    pub fn clear(&mut self) {
+        self.dom = None;
+        self.drop_song();
+        while let Some(child) = self.container.first_child() {
+            let _ = self.container.remove_child(&child);
+        }
+        self.container.remove();
+    }
+
+    fn drop_song(&mut self) {
+        self.release_textures();
+        self.song = None;
+        self.measured = None;
+        self.prior = None;
+        self.lines.clear();
+        self.lyrics.clear();
+        self.hung.clear();
+        self.time_overrides.clear();
+        self.riders.clear();
+        self.stage_motion.clear();
+        self.stage_roles.clear();
+        self.options.song_key = None;
+        self.generation = self.generation.wrapping_add(1);
+        self.gpu.begin(&[]);
+        self.gpu.end();
+    }
+
+    /// Moves the view into `host`: the canvas and the container go with it.
+    pub fn set_host(&mut self, host: HtmlElement) {
+        if !self.host.is_same_node(Some(&host)) {
+            self.host.class_list().remove_1("brs-host").ok();
+            host.class_list().add_1("brs-host").ok();
+            self.host = host;
+        }
+        if !self.host.is_same_node(self.canvas.parent_node().as_ref()) {
+            let _ = self.host.append_child(&self.canvas);
+        }
+        if !self.host.is_same_node(self.container.parent_node().as_ref()) {
+            let _ = self.host.append_child(&self.container);
+        }
+        self.needs_layout = true;
     }
 
     pub fn set_theme(&mut self, css: &str) {
-        let doc = dom::document();
+        if self.theme_css.as_deref() == Some(css) {
+            return;
+        }
+        self.theme_css = Some(css.to_string());
+        let doc = self.doc.clone();
         let style_el = doc.get_element_by_id("blyrics-custom-style").unwrap_or_else(|| {
             let el = element(&doc, "style", "");
             el.set_id("blyrics-custom-style");
@@ -229,6 +606,19 @@ impl View {
     pub fn set_time(&mut self, seconds: f64, playing: bool) {
         self.manual_time = seconds;
         self.manual_playing = playing;
+        self.manual_event_ms = -1.0;
+    }
+
+    /// A player snapshot: the time it showed, whether it was playing, and when it was read, as
+    /// `Date.now()`, so frames between snapshots carry it forward.
+    pub fn set_snapshot(&mut self, seconds: f64, playing: bool, event_ms: f64) {
+        self.manual_time = seconds;
+        self.manual_playing = playing;
+        self.manual_event_ms = event_ms;
+    }
+
+    pub fn reset_clock(&mut self) {
+        self.clock.reset();
     }
 
     pub fn set_profiling(&mut self, on: bool) -> bool {
@@ -240,6 +630,45 @@ impl View {
     }
 
     pub fn invalidate_layout(&mut self) {
+        self.needs_layout = true;
+    }
+
+    fn read_theme(&mut self) {
+        self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px(&self.doc));
+        if let Some(url) = &self.theme.highlight_image {
+            self.theme.highlight_image_ready = self.raster.images.contains_key(url);
+        }
+    }
+
+    /// An image the theme wants that has not been loaded or asked for yet; asking marks it asked.
+    pub fn take_wanted_image(&mut self) -> Option<String> {
+        let url = self.theme.highlight_image.clone()?;
+        if self.raster.images.contains_key(&url) || !self.images_asked.insert(url.clone()) {
+            return None;
+        }
+        Some(url)
+    }
+
+    /// An image finished loading: lines are measured and drawn again with it.
+    pub fn image_loaded(&mut self, url: String, image: web_sys::HtmlImageElement) {
+        self.raster.images.insert(url, image);
+        self.needs_layout = true;
+    }
+
+    /// Measures again on the next frame, and with `settle` slides the lines that moved from where
+    /// they are now, holding the one in view still: for after something the host put in the
+    /// container changed size.
+    pub fn relayout(&mut self, settle: bool) {
+        if settle && self.prior.is_none() {
+            if let Some(measured) = &self.measured {
+                self.prior = Some(Prior {
+                    layouts: measured.lines.iter().cloned().map(Some).collect(),
+                    credits: measured.credits.clone(),
+                    scroll_top: self.scroll_top(),
+                    settle: true,
+                });
+            }
+        }
         self.needs_layout = true;
     }
 
@@ -274,14 +703,14 @@ impl View {
     fn scroll_top(&self) -> f32 {
         match &self.scroller {
             Some(el) => el.scroll_top() as f32,
-            None => dom::window().scroll_y().unwrap_or(0.0) as f32,
+            None => self.win.scroll_y().unwrap_or(0.0) as f32,
         }
     }
 
     fn write_scroll_top(&mut self, value: f32) {
         match &self.scroller {
             Some(el) => el.set_scroll_top(value.round() as i32),
-            None => dom::window().scroll_to_with_x_and_y(dom::window().scroll_x().unwrap_or(0.0), value.round() as f64),
+            None => self.win.scroll_to_with_x_and_y(self.win.scroll_x().unwrap_or(0.0), value.round() as f64),
         }
         self.autoscroll.last_written = Some(self.scroll_top());
     }
@@ -343,30 +772,45 @@ impl View {
     }
 
     fn lyric_shift(&self, sync: SyncType) -> f64 {
-        let base =
-            if sync == SyncType::Richsync { self.theme.richsync_offset_s } else { self.theme.line_offset_s } as f64;
-        base - self.tick_options.global_offset_s - self.tick_options.lyric_offset_s
+        let o = &self.tick_options;
+        let base = if sync == SyncType::Richsync {
+            self.theme.richsync_offset_s as f64 - o.richsync_trim_s
+        } else {
+            self.theme.line_offset_s as f64 - o.line_trim_s
+        };
+        base - o.global_offset_s - o.lyric_offset_s
     }
 
     // -- Building and layout --------------------------------------------
 
     fn build(&mut self) {
         self.needs_build = false;
-        self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px());
-        let song = song::build_song(&self.lyrics, &self.options, &self.settings, self.decorations);
+        self.pending_refresh = None;
+        if !self.host.is_same_node(self.container.parent_node().as_ref()) {
+            let _ = self.host.append_child(&self.container);
+        }
+        self.read_theme();
+        self.hung.resize(self.lyrics.len(), Hung::default());
+        let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        self.apply_time_overrides(&mut song);
         self.release_textures();
-        let dom_ = layout::build_dom(&dom::document(), &self.container, &song, &self.theme);
+        let dom_ = layout::build_dom(&self.doc, &self.container, &song, &self.theme);
         self.mark_stage(&song, &dom_);
         self.stage_motion.clear();
+        self.stage_roles.clear();
         self.stage_area = None;
-        self.lines = song.lines.iter().map(|_| LineState::default()).collect();
+        let now = dom::now_ms(&self.win);
+        self.lines = song.lines.iter().map(|_| LineState { decorated_ms: now, ..Default::default() }).collect();
         self.events.push(Event::LyricsLoaded { line_count: song.lines.len(), sync: song.sync });
         self.song = Some(song);
         self.dom = Some(dom_);
-        self.built_ms = dom::now_ms();
+        self.measured = None;
+        self.prior = None;
+        self.riders.clear();
         self.credits_focus = (false, 0.0);
         self.needs_layout = true;
         self.just_built = true;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Stage attributes: the layout on the container, and in a duet which side each singer takes.
@@ -418,33 +862,72 @@ impl View {
         if self.song.is_none() || self.dom.is_none() {
             return;
         }
-        self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px());
+        // Lines the page is not rendering measure as nothing at the origin, which every scroll
+        // target would then be read off. The measurement waits until they are on the screen.
+        if self.container.get_client_rects().length() == 0 {
+            self.needs_layout = true;
+            return;
+        }
+        let prior = self.prior.take().unwrap_or_else(|| Prior {
+            layouts: self.measured.take().map(|m| m.lines.into_iter().map(Some).collect()).unwrap_or_default(),
+            credits: None,
+            scroll_top: self.scroll_top(),
+            settle: false,
+        });
+        self.read_theme();
         self.measure_viewport();
         let (Some(song), Some(dom_)) = (&self.song, &self.dom) else { return };
-        let mut measured = layout::measure(dom_, song, &self.theme, root_font_px());
+        let mut measured = layout::measure(dom_, song, &self.theme, root_font_px(&self.doc));
 
-        // Room above the first line and below the last so both can reach the target position.
-        let (top, bottom) = if self.stage || song.no_lyrics || measured.lines.is_empty() {
-            (0.0, 0.0)
-        } else {
-            let vh = self.viewport.height;
-            let ratio = self.theme.target_scroll_ratio;
-            let first_h = measured.lines[0].height;
-            let top = (vh * ratio - first_h / 2.0).max(0.0);
-            let last = measured.credits.as_ref().filter(|c| c.height > 0.0).or(measured.lines.last()).unwrap();
-            let old_top = dom::px(&dom::computed_value(&self.container, "padding-top"));
-            let old_bottom = dom::px(&dom::computed_value(&self.container, "padding-bottom"));
-            let content = measured.content_height - old_bottom - old_top + top;
-            let last_centre = last.top - old_top + top + last.height / 2.0;
-            let below = vh * (1.0 - ratio);
-            let bottom =
-                (last_centre + below - content).max(vh - content).max(below - last.height / 2.0).max(0.0).ceil();
-            (top, bottom)
-        };
-        let old_top = dom::px(&dom::computed_value(&self.container, "padding-top"));
-        set_style(&self.container, "padding-top", &format!("{top}px"));
-        set_style(&self.container, "padding-bottom", &format!("{bottom}px"));
-        let shift = top - old_top;
+        // Room above the first line and below the last so both can reach the target position, handed
+        // over as the DOM renderer did: the top only as `--blyrics-padding-top` on the root, for the
+        // page's CSS to use or not (core's stylesheet keeps a fixed 2rem, so the first lines start
+        // above the target; Better Lyrics uses the variable in fullscreen), and the bottom as
+        // `--blyrics-padding-bottom` and inline, where no theme can take it away.
+        let padding = |name: &str| dom::px(&dom::computed_value(&self.container, name));
+        let old_top = padding("padding-top");
+        let _ = self.container.style().remove_property("padding-top");
+        if !self.stage {
+            let root = self.doc.document_element().map(|r| r.unchecked_into::<HtmlElement>());
+            let publish = |name: &str, value: f32| {
+                if let Some(root) = &root {
+                    set_style(root, name, &format!("{value}px"));
+                }
+            };
+            let (top, bottom) = if song.no_lyrics || measured.lines.is_empty() {
+                (0.0, 0.0)
+            } else {
+                let vh = self.viewport.height;
+                let ratio = self.theme.target_scroll_ratio;
+                let top = (vh * ratio - measured.lines[0].height / 2.0).max(0.0);
+                publish("--blyrics-padding-top", top);
+                // The bottom is sized against whatever top the CSS made of that.
+                let actual_top = padding("padding-top");
+                let last = measured.credits.as_ref().filter(|c| c.height > 0.0).or(measured.lines.last()).unwrap();
+                let old_bottom = padding("padding-bottom");
+                let content = measured.content_height - old_bottom - old_top + actual_top;
+                let last_centre = last.top - old_top + actual_top + last.height / 2.0;
+                let below = vh * (1.0 - ratio);
+                // A host's footer after the lyrics (`.blyrics-footer`) counts toward the room below.
+                let footer = self
+                    .container
+                    .query_selector(":scope > .blyrics-footer")
+                    .ok()
+                    .flatten()
+                    .map(|f| f.get_bounding_client_rect().height() as f32)
+                    .unwrap_or(0.0);
+                let bottom = (last_centre + below - content)
+                    .max(vh - content)
+                    .max(below - (footer + last.height / 2.0))
+                    .max(0.0)
+                    .ceil();
+                (top, bottom)
+            };
+            publish("--blyrics-padding-top", top);
+            publish("--blyrics-padding-bottom", bottom);
+            set_style(&self.container, "padding-bottom", &format!("{bottom}px"));
+        }
+        let shift = padding("padding-top") - old_top;
         for line in measured.lines.iter_mut().chain(measured.credits.iter_mut()) {
             line.top += shift;
         }
@@ -459,15 +942,121 @@ impl View {
                 };
             }
         }
-        self.measured = Some(measured);
         self.measure_viewport();
-        self.release_textures();
+
+        // A line that draws the same keeps its texture; one that changed is drawn again.
+        for (index, layout) in measured.lines.iter_mut().enumerate() {
+            match prior.layouts.get(index).and_then(Option::as_ref) {
+                Some(old) if layout.same_ink(old) && self.lines[index].texture.is_some() => {
+                    layout.adopt_placements(old)
+                }
+                _ => {
+                    if let Some(texture) = self.lines[index].texture.take() {
+                        self.gpu.release(texture);
+                    }
+                }
+            }
+        }
+        match (measured.credits.as_mut(), prior.credits.as_ref()) {
+            (Some(layout), Some(old)) if layout.same_ink(old) && self.credits_texture.is_some() => {
+                layout.adopt_placements(old)
+            }
+            _ => {
+                if let Some(texture) = self.credits_texture.take() {
+                    self.gpu.release(texture);
+                }
+            }
+        }
+        if prior.settle && !self.stage {
+            self.settle(&prior, &measured);
+        }
+        self.riders = self.find_riders();
+        self.measured = Some(measured);
         self.autoscroll.force = true;
+    }
+
+    /// After a rebuild: scrolls by however far the line in view moved, so it holds still, and
+    /// slides every other line from where it was to where it now is.
+    fn settle(&mut self, prior: &Prior, measured: &Measured) {
+        let now = dom::now_ms(&self.win);
+        let following = self.user_paused_until <= now;
+        let view_top = prior.scroll_top - self.host_top_in_scroll;
+        let had = |i: usize| prior.layouts.get(i).and_then(Option::as_ref);
+        let anchor = self
+            .autoscroll
+            .followed()
+            .filter(|&i| following && had(i).is_some())
+            .or_else(|| (0..measured.lines.len()).find(|&i| had(i).is_some_and(|l| l.top + l.height > view_top)));
+        if let Some(anchor) = anchor {
+            let moved = measured.lines[anchor].top - had(anchor).map(|l| l.top).unwrap_or(0.0);
+            if moved.abs() >= 0.5 {
+                self.write_scroll_top(prior.scroll_top + moved);
+            }
+        }
+        if self.theme.reduced_motion || !self.theme.animate_decoration_entry {
+            return;
+        }
+        let scroll_top = self.scroll_top();
+        let slide = |old_top: f32, new_top: f32| -> Option<Curve> {
+            let from = (old_top - prior.scroll_top) - (new_top - scroll_top);
+            (from.abs() >= 0.5).then_some(Curve {
+                from,
+                start_ms: now,
+                duration_ms: SETTLE_MS,
+                easing: DECORATION_EASE,
+            })
+        };
+        for (index, layout) in measured.lines.iter().enumerate() {
+            if let Some(curve) = had(index).and_then(|old| slide(old.top, layout.top)) {
+                self.lines[index].curves.push(curve);
+            }
+        }
+        if let (Some(new), Some(old)) = (&measured.credits, &prior.credits) {
+            if let Some(curve) = slide(old.top, new.top) {
+                self.credits_curves.push(curve);
+            }
+        }
+    }
+
+    /// What the host put inside the credits (a source card): the renderer draws the credits
+    /// itself, so it moves these with them.
+    fn find_riders(&self) -> Vec<(HtmlElement, (f32, f32))> {
+        let Some(credits) = self.dom.as_ref().and_then(|d| d.credits.as_ref()) else { return Vec::new() };
+        let children = credits.children();
+        (0..children.length())
+            .filter_map(|i| children.item(i))
+            .filter(|child| !child.class_list().contains("blyrics-credits__text"))
+            .map(|child| (child.unchecked_into::<HtmlElement>(), (f32::NAN, f32::NAN)))
+            .collect()
+    }
+
+    /// Moves the riders by `dy` from where the page laid them out, at `opacity`.
+    fn place_riders(&mut self, dy: f32, opacity: f32) {
+        let mut changed = false;
+        for (rider, last) in &mut self.riders {
+            if (last.0 - dy).abs() < 0.25 && (last.1 - opacity).abs() < 0.002 {
+                continue;
+            }
+            *last = (dy, opacity);
+            changed = true;
+            set_style(rider, "translate", &format!("0 {dy:.2}px"));
+        }
+        // The opacity goes on the credits, as the DOM renderer's stage set it: its stylesheet hides
+        // whatever the stage has not made visible, riders and all.
+        let Some(credits) = self.dom.as_ref().and_then(|d| d.credits.as_ref()) else { return };
+        if changed {
+            set_style(credits, "--blyrics-stage-opacity", &format!("{opacity:.3}"));
+            if opacity > 0.001 {
+                dom::set_attr(credits, "data-stage-visible", "");
+            } else {
+                let _ = credits.remove_attribute("data-stage-visible");
+            }
+        }
     }
 
     /// Where the view is: the scroll element's size and the canvas that covers it.
     fn measure_viewport(&mut self) {
-        let window = dom::window();
+        let window = self.win.clone();
         let host_rect = self.host.get_bounding_client_rect();
         let (view_height, view_top, view_left, view_right, scroll_top) = match &self.scroller {
             Some(el) => {
@@ -492,7 +1081,8 @@ impl View {
             inset_bottom,
             max_scroll: match &self.scroller {
                 Some(el) => (el.scroll_height() - el.client_height()) as f32,
-                None => dom::document()
+                None => self
+                    .doc
                     .document_element()
                     .map(|d| (d.scroll_height() as f32 - view_height).max(0.0))
                     .unwrap_or(0.0),
@@ -520,9 +1110,13 @@ impl View {
         for property in ["position", "top", "left", "margin"] {
             let _ = self.canvas.style().remove_property(property);
         }
-        self.bleed_left = (host_rect.left() as f32 - view_left).max(0.0);
-        let bleed_right = (view_right - host_rect.right() as f32).max(0.0);
-        let width = host_rect.width() as f32 + self.bleed_left + bleed_right;
+        // The canvas sits in the host's content box, so it bleeds out from that, not the border box.
+        let inset = |name: &str| dom::px(&dom::computed_value(&self.host, name));
+        let content_left = host_rect.left() as f32 + self.host.client_left() as f32 + inset("padding-left");
+        let content_width = (self.host.client_width() as f32 - inset("padding-left") - inset("padding-right")).max(0.0);
+        self.bleed_left = (content_left - view_left).max(0.0);
+        let bleed_right = (view_right - content_left - content_width).max(0.0);
+        let width = content_width + self.bleed_left + bleed_right;
         let height = view_height.min(content.max(1.0));
         self.canvas_size = (width, height);
         set_style(&self.canvas, "width", &format!("{width}px"));
@@ -531,6 +1125,18 @@ impl View {
         set_style(&self.canvas, "margin-bottom", &format!("{}px", -height));
         self.dpr = window.device_pixel_ratio() as f32;
         self.gpu.resize(&self.canvas, width, height, self.dpr);
+    }
+
+    /// Where the element's top is in the scroll element's content.
+    fn host_top_now(&self) -> f32 {
+        let host = self.host.get_bounding_client_rect().top() as f32;
+        match &self.scroller {
+            Some(el) => {
+                let rect = el.get_bounding_client_rect();
+                host - (rect.top() as f32 + el.client_top() as f32) + el.scroll_top() as f32
+            }
+            None => host + self.win.scroll_y().unwrap_or(0.0) as f32,
+        }
     }
 
     fn scroll_insets(&self, view_height: f32) -> (f32, f32) {
@@ -555,13 +1161,19 @@ impl View {
 
     /// Draws the frame at `now_ms`. Returns whether another frame is wanted.
     pub fn frame(&mut self, now_ms: f64) -> bool {
+        if self.hidden {
+            return false;
+        }
         if self.needs_build {
             self.build();
+        }
+        if let Some(settle) = self.pending_refresh.take() {
+            self.refresh(settle);
         }
         if self.needs_layout {
             self.layout();
         }
-        if (dom::window().device_pixel_ratio() as f32 - self.dpr).abs() > 1e-3 {
+        if (self.win.device_pixel_ratio() as f32 - self.dpr).abs() > 1e-3 {
             self.measure_viewport();
             self.release_textures();
         }
@@ -575,7 +1187,15 @@ impl View {
         // The clock.
         let (reported, playing, rate) = match &self.media {
             Some(media) => (media.current_time(), !media.paused() && !media.ended(), media.playback_rate()),
-            None => (self.manual_time, self.manual_playing, self.tick_options.rate),
+            None => {
+                let rate = self.tick_options.rate;
+                let carried = if self.manual_playing && self.manual_event_ms >= 0.0 {
+                    ((js_sys::Date::now() - self.manual_event_ms) / 1000.0).max(0.0) * rate.max(0.0)
+                } else {
+                    0.0
+                };
+                (self.manual_time + carried, self.manual_playing, rate)
+            }
         };
         let reading = self.clock.sample(reported, playing, rate, now_ms);
         if playing || reported != 0.0 {
@@ -619,6 +1239,18 @@ impl View {
                 let _ = self.container.set_attribute("data-credits-focused", "true");
             } else {
                 let _ = self.container.remove_attribute("data-credits-focused");
+            }
+        }
+
+        // Something above the element in the scroller can appear or go (a loader, the page's own
+        // panel content) and move it without resizing it, which no observer reports, so where it
+        // sits is read again a few times a second.
+        if !self.stage && now_ms - self.host_checked_ms >= HOST_RECHECK_MS {
+            self.host_checked_ms = now_ms;
+            let top = self.host_top_now();
+            if (top - self.host_top_in_scroll).abs() >= 0.5 {
+                self.host_top_in_scroll = top;
+                self.autoscroll.force = true;
             }
         }
 
@@ -750,7 +1382,7 @@ impl View {
             if !visible || state.texture.is_none() {
                 continue;
             }
-            let entry = decoration_entry(self.built_ms, now_ms, &self.theme);
+            let entry = decoration_entry(state.decorated_ms, now_ms, &self.theme);
             if entry < 1.0 && (line.translation.is_some() || line.romanization.is_some() || line.rows.len() > 1) {
                 moving = true;
             }
@@ -761,6 +1393,7 @@ impl View {
         }
 
         // Credits.
+        let mut rider_motion = None;
         if let Some(credits) = measured.credits.as_mut() {
             let credits_index = song.lines.len();
             let (y, stage_opacity) = match self.stage_motion.get(credits_index) {
@@ -771,6 +1404,7 @@ impl View {
             if !self.credits_curves.is_empty() {
                 moving = true;
             }
+            rider_motion = Some((y + canvas_top - credits.top, if self.stage { stage_opacity } else { 1.0 }));
             if stage_opacity > 0.001 && y + credits.height > 0.0 && y < view_h {
                 if self.credits_texture.is_none() {
                     if let Some(canvas) = self.raster.draw_line(credits, self.dpr, 0.0) {
@@ -793,6 +1427,10 @@ impl View {
                 paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
                 self.draws.push((usize::MAX, first, self.quads.len() - first));
             }
+        }
+
+        if let Some((dy, opacity)) = rider_motion {
+            self.place_riders(dy, opacity);
         }
 
         self.gpu.begin(&self.quads);
@@ -880,6 +1518,24 @@ impl View {
         }
         // Unsynced lyrics have nothing to follow, so the stage stays empty.
         let roles = if animating { stage::roles(&items, lyric) } else { vec![Role::Queued; items.len()] };
+        if roles != self.stage_roles {
+            // As the DOM renderer marked them, for a host that styles or sizes around the sung line.
+            if let Some(dom_) = &self.dom {
+                let elements = dom_.lines.iter().map(|l| &l.element).chain(dom_.credits.iter());
+                for (i, element) in elements.enumerate() {
+                    if self.stage_roles.get(i) != roles.get(i) {
+                        let name = match roles.get(i) {
+                            Some(Role::Current) => "current",
+                            Some(Role::Previous) => "previous",
+                            Some(Role::Gone) => "gone",
+                            _ => "queued",
+                        };
+                        dom::set_attr(element, "data-stage-role", name);
+                    }
+                }
+            }
+            self.stage_roles = roles.clone();
+        }
         let gap = stage::GAP_EM * measured.lines.first().map(|l| l.font_px).unwrap_or(16.0);
         let last_y: Vec<f32> = self.stage_motion.iter().map(|m| m.to_y).collect();
         let rests = stage::targets(&roles, &heights, self.canvas_size.1, gap, &last_y);
@@ -927,11 +1583,11 @@ impl View {
 
 const DECORATION_EASE: crate::easing::Easing = crate::easing::Easing::Bezier(0.25, 1.0, 0.5, 1.0);
 
-fn decoration_entry(built_ms: f64, now_ms: f64, theme: &Theme) -> f32 {
+fn decoration_entry(decorated_ms: f64, now_ms: f64, theme: &Theme) -> f32 {
     if !theme.animate_decoration_entry {
         return 1.0;
     }
-    (((now_ms - built_ms) / DECORATION_ENTRY_MS) as f32).clamp(0.0, 1.0)
+    (((now_ms - decorated_ms) / DECORATION_ENTRY_MS) as f32).clamp(0.0, 1.0)
 }
 
 /// Credits: static text at the resting line scale.
@@ -968,9 +1624,8 @@ fn distance(rect: layout::Rect, x: f32, y: f32) -> f32 {
     ((cx - x).powi(2) + (cy - y).powi(2)).sqrt()
 }
 
-fn root_font_px() -> f32 {
-    dom::document()
-        .document_element()
+fn root_font_px(doc: &Document) -> f32 {
+    doc.document_element()
         .map(|root| dom::px(&dom::computed_value(&root, "font-size")))
         .filter(|v| *v > 0.0)
         .unwrap_or(16.0)

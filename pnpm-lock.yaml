@@ -55,7 +55,11 @@ importers:
         specifier: workspace:^
         version: link:../types
 
-  packages/core-rs: {}
+  packages/core-rs:
+    dependencies:
+      '@braccato/types':
+        specifier: workspace:^
+        version: link:../types
 
   packages/highlight:
     dependencies:

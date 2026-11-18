@@ -2,15 +2,10 @@
 // renderer, which owns the DOM, the canvas and the clock. Properties written before the element
 // connects (or before the wasm has loaded) are kept and applied once the renderer exists.
 
-import init, { Renderer } from "../pkg/braccato_core_rs.js";
+import { Renderer } from "../pkg/braccato_core_rs.js";
+import { load } from "./renderer.js";
 
-let ready = null;
-
-/** Loads the wasm once per page. Resolves when renderers can be created. */
-export function load(wasmUrl) {
-	ready ??= init(wasmUrl === undefined ? undefined : { module_or_path: wasmUrl });
-	return ready;
-}
+export { load };
 
 const OBSERVED = ["source", "theme", "current-time", "playing", "layout"];
 

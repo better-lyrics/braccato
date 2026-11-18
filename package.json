@@ -5,7 +5,7 @@
 	"scripts": {
 		"dev": "turbo dev",
 		"build": "turbo build",
-		"build:packages": "turbo build --filter='./packages/*' --filter='!@braccato/core-rs'",
+		"build:packages": "turbo build --filter='./packages/*'",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "turbo typecheck",

@@ -57,7 +57,7 @@ impl Rect {
 
 /// One `fillText`: a string drawn with its left edge at `x` and its baseline at `baseline`, in line
 /// coordinates. A run cut out of a longer word that must stay shaped together carries a clip.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextRun {
     pub text: String,
     pub font: Rc<str>,
@@ -69,11 +69,13 @@ pub struct TextRun {
     pub clip: Option<Rect>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Ink {
     Text(Vec<TextRun>),
     /// The instrumental note, drawn from its SVG path.
     Note,
+    /// The note filled with an image (image highlights), in the image's own colours.
+    NoteImage(Rc<str>),
     /// The romanization's rounded background.
     Pill {
         radius: f32,
@@ -89,6 +91,8 @@ pub enum Owner {
     Pill,
     Credits,
     Note,
+    /// The note's image fill, drawn with the note.
+    NoteImage,
 }
 
 /// How the sweep crosses a quad: the quad's left and right edges (line coordinates) map onto `a`
@@ -202,35 +206,73 @@ pub struct LayoutDom {
 // -- Building --------------------------------------------
 
 pub fn build_dom(doc: &Document, container: &HtmlElement, song: &Song, theme: &Theme) -> LayoutDom {
-    container.set_inner_html("");
+    // Not `innerHTML`: a page that enforces Trusted Types refuses a plain string there.
+    while let Some(child) = container.first_child() {
+        let _ = container.remove_child(&child);
+    }
+    mark_container(container, song);
+    let lines = song
+        .lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| {
+            let dom = fill_line(doc, element(doc, "div", ""), line, index, theme);
+            append(container, &dom.element);
+            dom
+        })
+        .collect();
+    let credits = build_credits(doc, container, song);
+    if let Some(credits) = &credits {
+        append(container, credits);
+    }
+    LayoutDom { container: container.clone(), lines, credits }
+}
+
+/// The song-wide attributes on the container.
+pub fn mark_container(container: &HtmlElement, song: &Song) {
     set_attr(container, "data-sync", song.sync.as_str());
     if song.no_lyrics {
         set_attr(container, "data-no-lyrics", "true");
     } else {
         let _ = container.remove_attribute("data-no-lyrics");
     }
-    let lines =
-        song.lines.iter().enumerate().map(|(index, line)| build_line(doc, container, line, index, theme)).collect();
-    let credits = song.credits.as_ref().map(|names| {
+}
+
+/// The "Written by" paragraph after the last line, not yet placed in the container.
+pub fn build_credits(doc: &Document, container: &HtmlElement, song: &Song) -> Option<HtmlElement> {
+    song.credits.as_ref().map(|names| {
         let p = element(doc, "p", "blyrics-credits");
         let span = element(doc, "span", "blyrics-credits__text");
         let label = dom::computed_value(container, "--blyrics-credits-label");
         let label = label.trim().trim_matches('"').trim_matches('\'');
         let label = if label.is_empty() { "Written by" } else { label };
-        text_node(doc, &span, &format!("{label} "));
+        let label_span = element(doc, "span", "brs-plain");
+        text_node(doc, &label_span, &format!("{label} "));
+        append(&span, &label_span);
         let names_span = element(doc, "span", "blyrics-credits__names");
         set_attr(&names_span, "dir", "auto");
         text_node(doc, &names_span, names);
         append(&span, &names_span);
         append(&p, &span);
-        append(container, &p);
         p
-    });
-    LayoutDom { container: container.clone(), lines, credits }
+    })
 }
 
-fn build_line(doc: &Document, container: &HtmlElement, line: &Line, index: usize, theme: &Theme) -> LineDom {
-    let el = element(doc, "div", "blyrics--line");
+/// The attributes `fill_line` sets, which it takes off again before filling a line anew.
+const LINE_ATTRIBUTES: &[&str] =
+    &["dir", "data-line-number", "lang", "data-agent", "data-direction", "data-instrumental", "data-blank"];
+
+/// Builds `line` into `el`, an element of its own or one a previous build of the line left, which
+/// is emptied first: a line rebuilt in place stays the same element, so a host holding it keeps
+/// a line that is still on the screen. The caller places it in the container.
+pub fn fill_line(doc: &Document, el: HtmlElement, line: &Line, index: usize, theme: &Theme) -> LineDom {
+    while let Some(child) = el.first_child() {
+        let _ = el.remove_child(&child);
+    }
+    for name in LINE_ATTRIBUTES {
+        let _ = el.remove_attribute(name);
+    }
+    el.set_class_name("blyrics--line");
     set_attr(&el, "dir", "auto");
     set_attr(&el, "data-line-number", &index.to_string());
     if !line.lang.is_empty() {
@@ -259,7 +301,6 @@ fn build_line(doc: &Document, container: &HtmlElement, line: &Line, index: usize
         let note = element(doc, "span", "brs-note");
         append(&el, &note);
         dom.note = Some(note);
-        append(container, &el);
         return dom;
     }
     if line.blank {
@@ -385,11 +426,13 @@ fn build_line(doc: &Document, container: &HtmlElement, line: &Line, index: usize
         if !lang.is_empty() {
             set_attr(&div, "lang", lang);
         }
-        text_node(doc, &div, text);
+        // In a span of its own: an inline box to read the baseline off (see `baselines`).
+        let span = element(doc, "span", "brs-plain");
+        text_node(doc, &span, text);
+        append(&div, &span);
         append(&el, &div);
         dom.translation = Some(div);
     }
-    append(container, &el);
     dom
 }
 
@@ -411,53 +454,139 @@ fn fill_with_breaks(doc: &Document, word: &HtmlElement, text: &str, every: usize
 
 // -- Measuring --------------------------------------------
 
-/// Font metrics and colour parsing need a 2D context; one is kept for the life of the page.
+/// Font metrics and colour parsing need a 2D context. One is kept per document, because a canvas
+/// resolves fonts against the document that created it, and a view in another window (Picture in
+/// Picture) has its own.
 struct Metrics {
+    document: Document,
     context: CanvasRenderingContext2d,
-    ascents: HashMap<Rc<str>, f32>,
+    extents: HashMap<Rc<str>, (f32, f32)>,
     colors: HashMap<String, Rgba>,
     fonts: HashMap<String, Rc<str>>,
 }
 
 thread_local! {
-    static METRICS: RefCell<Option<Metrics>> = const { RefCell::new(None) };
+    static METRICS: RefCell<Vec<Metrics>> = const { RefCell::new(Vec::new()) };
 }
 
-fn with_metrics<R>(f: impl FnOnce(&mut Metrics) -> R) -> R {
+fn with_metrics<R>(doc: &Document, f: impl FnOnce(&mut Metrics) -> R) -> R {
     METRICS.with(|cell| {
-        let mut slot = cell.borrow_mut();
-        let metrics = slot.get_or_insert_with(|| {
-            let canvas: HtmlCanvasElement = dom::document().create_element("canvas").unwrap().unchecked_into();
+        let mut all = cell.borrow_mut();
+        // A closed window's document has no view any more, and nothing will measure in it again.
+        all.retain(|m| m.document.default_view().is_some());
+        let index = match all.iter().position(|m| &m.document == doc) {
+            Some(index) => index,
+            None => {
+                all.push(Metrics::new(doc));
+                all.len() - 1
+            }
+        };
+        f(&mut all[index])
+    })
+}
+
+impl Metrics {
+    fn new(doc: &Document) -> Metrics {
+        {
+            let canvas: HtmlCanvasElement = doc.create_element("canvas").unwrap().unchecked_into();
             canvas.set_width(1);
             canvas.set_height(1);
             let options = js_sys::Object::new();
             dom::set(&options, "willReadFrequently", &true.into());
             let context: CanvasRenderingContext2d =
                 canvas.get_context_with_context_options("2d", &options).unwrap().unwrap().unchecked_into();
-            Metrics { context, ascents: HashMap::new(), colors: HashMap::new(), fonts: HashMap::new() }
-        });
-        f(metrics)
+            Metrics {
+                document: doc.clone(),
+                context,
+                extents: HashMap::new(),
+                colors: HashMap::new(),
+                fonts: HashMap::new(),
+            }
+        }
+    }
+}
+
+/// The primary font's ascent and descent.
+fn extent(doc: &Document, font: &Rc<str>) -> (f32, f32) {
+    with_metrics(doc, |m| {
+        if let Some(&e) = m.extents.get(font) {
+            return e;
+        }
+        m.context.set_font(font);
+        let metrics = m.context.measure_text("Hg").unwrap();
+        let e = (metrics.font_bounding_box_ascent() as f32, metrics.font_bounding_box_descent() as f32);
+        m.extents.insert(font.clone(), e);
+        e
     })
 }
 
 /// The distance from the top of a text box to its baseline, which is the primary font's ascent.
-fn ascent(font: &Rc<str>) -> f32 {
-    with_metrics(|m| {
-        if let Some(&a) = m.ascents.get(font) {
-            return a;
+fn ascent(doc: &Document, font: &Rc<str>) -> f32 {
+    extent(doc, font).0
+}
+
+/// The baselines of `el`'s lines and of the inline elements in it, as (top, bottom, baseline), read
+/// off boxes that both engines size by the element's own font: an inline element's fragments, and
+/// an inline block's lines, a line-height each.
+///
+/// A text box is not one of those. Chrome sizes it by the element's font too, so its top plus that
+/// font's ascent is the baseline; Firefox sizes a run that fell back to another font by that font,
+/// which puts the same sum somewhere else. `baseline_for` uses these only to catch that.
+fn baselines(el: &Element, origin: (f32, f32)) -> Vec<(f32, f32, f32)> {
+    let mut out = Vec::new();
+    let inner = el.get_elements_by_tag_name("*");
+    let elements = std::iter::once(el.clone()).chain((0..inner.length()).filter_map(|i| inner.item(i)));
+    for element in elements {
+        let style = dom::computed(&element);
+        let display = style.get_property_value("display").unwrap_or_default();
+        let inline_block = display == "inline-block";
+        if display != "inline" && !inline_block {
+            continue;
         }
-        m.context.set_font(font);
-        let metrics = m.context.measure_text("Hg").unwrap();
-        let a = metrics.font_bounding_box_ascent() as f32;
-        m.ascents.insert(font.clone(), a);
-        a
-    })
+        let font = element_style(&element).font;
+        let (a, d) = extent(&dom::doc_of(&element), &font);
+        if inline_block {
+            let rect = Rect::relative(&element.get_bounding_client_rect(), origin);
+            let line_height = match style.get_property_value("line-height").unwrap_or_default().as_str() {
+                "normal" => a + d,
+                value => dom::px(value),
+            };
+            if line_height <= 0.0 {
+                continue;
+            }
+            let lines = (rect.h / line_height).round().max(1.0) as usize;
+            for k in 0..lines {
+                let top = rect.y + k as f32 * line_height;
+                out.push((top, top + line_height, top + (line_height - a - d) / 2.0 + a));
+            }
+        } else {
+            let list = element.get_client_rects();
+            for rect in (0..list.length()).filter_map(|i| list.get(i)).map(|r| Rect::relative(&r, origin)) {
+                out.push((rect.y, rect.bottom(), rect.y + (rect.h - a - d) / 2.0 + a));
+            }
+        }
+    }
+    out
+}
+
+/// The baseline of text in `rect`: its top plus the font's ascent, unless the line it sits on puts
+/// the baseline elsewhere (see `baselines`).
+fn baseline_for(rect: &Rect, ascent: f32, lines: &[(f32, f32, f32)]) -> f32 {
+    let estimate = rect.y + ascent;
+    let centre = rect.y + rect.h / 2.0;
+    lines
+        .iter()
+        .rev()
+        .find(|(top, bottom, _)| centre >= *top && centre <= *bottom)
+        .map(|(_, _, baseline)| *baseline)
+        .filter(|baseline| (baseline - estimate).abs() > 1.5)
+        .unwrap_or(estimate)
 }
 
 /// Any CSS colour as straight sRGB. The browser parses it, whatever syntax it is in (`oklch()`,
 /// `color(display-p3 ...)`, `color-mix()`), by painting one pixel with it and reading it back.
-pub fn parse_color(css: &str) -> Rgba {
-    with_metrics(|m| {
+pub fn parse_color(doc: &Document, css: &str) -> Rgba {
+    with_metrics(doc, |m| {
         if let Some(c) = m.colors.get(css) {
             return *c;
         }
@@ -480,6 +609,7 @@ pub fn parse_color(css: &str) -> Rgba {
 }
 
 struct ElementStyle {
+    doc: Document,
     font: Rc<str>,
     letter_spacing: Rc<str>,
     font_px: f32,
@@ -494,26 +624,28 @@ fn element_style(el: &Element) -> ElementStyle {
     let get = |name: &str| style.get_property_value(name).unwrap_or_default();
     let font_size = get("font-size");
     let key = format!("{} {} {} {}", get("font-style"), get("font-weight"), font_size, get("font-family"));
-    let font = with_metrics(|m| m.fonts.entry(key.clone()).or_insert_with(|| Rc::from(key.as_str())).clone());
+    let doc = dom::doc_of(el);
+    let font = with_metrics(&doc, |m| m.fonts.entry(key.clone()).or_insert_with(|| Rc::from(key.as_str())).clone());
     let spacing = get("letter-spacing");
     let letter_spacing: Rc<str> = Rc::from(if spacing == "normal" { "0px" } else { spacing.as_str() });
     ElementStyle {
         font,
         letter_spacing,
         font_px: dom::px(&font_size),
-        color: parse_color(&get("color")),
-        active: parse_color(&get("text-decoration-color")),
-        glow: parse_color(&get("caret-color")),
+        color: parse_color(&doc, &get("color")),
+        active: parse_color(&doc, &get("text-decoration-color")),
+        glow: parse_color(&doc, &get("caret-color")),
         rtl: get("direction") == "rtl",
+        doc,
     }
 }
 
-fn range() -> Range {
-    dom::document().create_range().expect("range")
+fn range(node: &Node) -> Range {
+    dom::doc_of(node).create_range().expect("range")
 }
 
 fn content_rects(node: &Node, origin: (f32, f32)) -> Vec<Rect> {
-    let r = range();
+    let r = range(node);
     let _ = r.select_node_contents(node);
     let Some(list) = r.get_client_rects() else { return Vec::new() };
     (0..list.length())
@@ -524,7 +656,7 @@ fn content_rects(node: &Node, origin: (f32, f32)) -> Vec<Rect> {
 }
 
 fn content_rect(node: &Node, origin: (f32, f32)) -> Rect {
-    let r = range();
+    let r = range(node);
     let _ = r.select_node_contents(node);
     Rect::relative(&r.get_bounding_client_rect(), origin)
 }
@@ -538,11 +670,11 @@ fn text_pieces(el: &Element, origin: (f32, f32)) -> Vec<(Rect, String)> {
         return rects.into_iter().map(|rect| (rect, full.clone())).collect();
     }
     let mut graphemes: Vec<(Rect, String)> = Vec::new();
-    let walker = dom::document().create_tree_walker_with_what_to_show(el, 4).expect("walker");
+    let walker = dom::doc_of(el).create_tree_walker_with_what_to_show(el, 4).expect("walker");
     while let Ok(Some(node)) = walker.next_node() {
         let text = node.text_content().unwrap_or_default();
         for (start, end) in text::grapheme_ranges(&text) {
-            let r = range();
+            let r = range(&node);
             let _ = r.set_start(&node, text::utf16_offset(&text, start));
             let _ = r.set_end(&node, text::utf16_offset(&text, end));
             let rect = Rect::relative(&r.get_bounding_client_rect(), origin);
@@ -566,6 +698,35 @@ fn text_pieces(el: &Element, origin: (f32, f32)) -> Vec<(Rect, String)> {
     }
     pieces.retain(|(rect, text)| rect.w > 0.01 && !text.trim().is_empty());
     pieces
+}
+
+impl Slot {
+    /// Whether the two would draw the same pixels into a line texture, wherever it was packed.
+    fn same_ink(&self, other: &Slot) -> bool {
+        self.ink == other.ink
+            && self.owner == other.owner
+            && self.rect == other.rect
+            && self.margin == other.margin
+            && self.halo == other.halo
+            && self.color == other.color
+    }
+}
+
+impl LineLayout {
+    /// Whether a texture drawn for `other` is a texture of this line too, so a re-measure that
+    /// moved a line but did not change it keeps the texture rather than drawing it again.
+    pub fn same_ink(&self, other: &LineLayout) -> bool {
+        self.pill_color == other.pill_color
+            && self.slots.len() == other.slots.len()
+            && self.slots.iter().zip(&other.slots).all(|(a, b)| a.same_ink(b))
+    }
+
+    /// Takes over where `other`'s slots were packed in its texture, which `same_ink` said is this one's.
+    pub fn adopt_placements(&mut self, other: &LineLayout) {
+        for (slot, old) in self.slots.iter_mut().zip(&other.slots) {
+            slot.placement = old.placement;
+        }
+    }
 }
 
 pub struct Measured {
@@ -643,6 +804,18 @@ fn measure_line(
             placement: Placement::default(),
             color: false,
         });
+        if let (Some(url), true) = (&theme.highlight_image, theme.highlight_image_ready) {
+            layout.slots.push(Slot {
+                ink: Ink::NoteImage(Rc::from(url.as_str())),
+                owner: Owner::NoteImage,
+                rect: square,
+                margin: side * 0.6,
+                halo: false,
+                glyphs: vec![Glyph { rect: square, letter: None, sweep: SweepMap::default() }],
+                placement: Placement::default(),
+                color: true,
+            });
+        }
         return layout;
     }
 
@@ -717,7 +890,8 @@ fn measure_line(
         let joined = text::has_joining_script(&part.text) && group.parts.len() > 1;
         let group_rect = group_rects[part.group];
         let group_text: String = group.parts.iter().map(|&p| line.parts[p].text.as_str()).collect();
-        let base_ascent = ascent(&style.font);
+        let base_ascent = ascent(&style.doc, &style.font);
+        let lines = baselines(word, origin);
         let run_for = |rect: &Rect, text: &str| -> TextRun {
             let one_row = (group_rect.h - rect.h).abs() < rect.h * 0.5;
             if joined && one_row {
@@ -728,7 +902,7 @@ fn measure_line(
                     lang: Rc::from(line.lang.as_str()),
                     rtl: style.rtl || part.rtl,
                     x: group_rect.x,
-                    baseline: rect.y + base_ascent,
+                    baseline: baseline_for(rect, base_ascent, &lines),
                     clip: Some(*rect),
                 }
             } else {
@@ -739,7 +913,7 @@ fn measure_line(
                     lang: Rc::from(line.lang.as_str()),
                     rtl: style.rtl || part.rtl,
                     x: rect.x,
-                    baseline: rect.y + base_ascent,
+                    baseline: baseline_for(rect, base_ascent, &lines),
                     clip: None,
                 }
             }
@@ -806,7 +980,7 @@ fn measure_line(
 
     if let Some(pill) = &dom_.romanization {
         let rect = Rect::relative(&pill.get_bounding_client_rect(), origin);
-        layout.pill_color = parse_color("rgb(255 255 255 / 0.145)");
+        layout.pill_color = parse_color(&dom::doc_of(pill), "rgb(255 255 255 / 0.145)");
         layout.slots.push(Slot {
             ink: Ink::Pill { radius: dom::px(&dom::computed_value(pill, "border-top-left-radius")) },
             owner: Owner::Pill,
@@ -832,7 +1006,8 @@ fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32
     let style = element_style(el);
     layout.static_color = style.color;
     layout.static_em = style.font_px;
-    let base_ascent = ascent(&style.font);
+    let base_ascent = ascent(&style.doc, &style.font);
+    let lines = baselines(el, origin);
     let overhang = style.font_px * 0.3;
     for (rect, text) in text_pieces(el, origin) {
         let run = TextRun {
@@ -844,7 +1019,7 @@ fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32
             ),
             rtl: style.rtl,
             x: rect.x,
-            baseline: rect.y + base_ascent,
+            baseline: baseline_for(&rect, base_ascent, &lines),
             clip: None,
         };
         let glyph_rect = rect.expand(overhang * 0.5, overhang);

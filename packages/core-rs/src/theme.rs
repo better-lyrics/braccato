@@ -121,6 +121,19 @@ fn length(text: &str) -> (f32, f32) {
 }
 
 /// Seconds from a CSS time ("0.166s", "750ms").
+/// The address in a single CSS `url()`, as the DOM renderer accepted it: not gradients or lists.
+pub fn css_url(value: &str) -> Option<String> {
+    let inner =
+        value.trim().strip_prefix("url(").or_else(|| value.trim().strip_prefix("URL("))?.strip_suffix(')')?.trim();
+    let unquoted = match inner.as_bytes().first() {
+        Some(b'"') => inner.strip_prefix('"')?.strip_suffix('"')?,
+        Some(b'\'') => inner.strip_prefix('\'')?.strip_suffix('\'')?,
+        _ if inner.contains(|c: char| c.is_whitespace() || "'\"()".contains(c)) => return None,
+        _ => inner,
+    };
+    (!unquoted.is_empty()).then(|| unquoted.to_string())
+}
+
 pub fn parse_seconds(text: &str) -> Option<f32> {
     let text = text.trim();
     if let Some(ms) = text.strip_suffix("ms") {
@@ -144,6 +157,8 @@ pub struct CommentSettings {
     pub disable_richsync: bool,
     pub line_synced_delay_ms: f32,
     pub hide_credits: bool,
+    /// The instrumental note fills with the theme's `--blyrics-highlight-image`.
+    pub image_highlights: bool,
     pub swipe_lead_ratio: f32,
     pub swipe_duration_ratio: f32,
     pub passive_scroll_enabled: bool,
@@ -165,6 +180,7 @@ impl Default for CommentSettings {
             disable_richsync: false,
             line_synced_delay_ms: 50.0,
             hide_credits: false,
+            image_highlights: false,
             swipe_lead_ratio: 0.1,
             swipe_duration_ratio: 1.6,
             passive_scroll_enabled: true,
@@ -205,6 +221,7 @@ impl CommentSettings {
             "blyrics-disable-richsync" => self.disable_richsync = flag,
             "blyrics-line-synced-animation-delay" => self.line_synced_delay_ms = float(50.0),
             "blyrics-hide-credits" => self.hide_credits = flag,
+            "blyrics-image-highlights" => self.image_highlights = flag,
             "blyrics-swipe-lead-ratio" => self.swipe_lead_ratio = float(0.1),
             "blyrics-swipe-duration-ratio" => self.swipe_duration_ratio = float(1.6),
             "blyrics-passive-scroll-enabled" => self.passive_scroll_enabled = flag,
@@ -220,6 +237,10 @@ impl CommentSettings {
 /// The animation knobs, read from custom properties on the layout container.
 #[derive(Clone, Debug)]
 pub struct Theme {
+    /// The image the instrumental note fills with, when the theme has image highlights on and the
+    /// page is not in forced colours, and whether it has loaded (set by the view, which loads it).
+    pub highlight_image: Option<String>,
+    pub highlight_image_ready: bool,
     pub settings: CommentSettings,
     /// Per-view override of the target scroll ratio.
     pub target_scroll_ratio: f32,
@@ -327,7 +348,7 @@ impl Theme {
             value.parse().unwrap_or(fallback)
         };
 
-        let reduced_motion = dom::window()
+        let reduced_motion = dom::win_of(container)
             .match_media("(prefers-reduced-motion: reduce)")
             .ok()
             .flatten()
@@ -338,7 +359,17 @@ impl Theme {
         let glow_to = raw("--blyrics-highlight-glow-radius-to");
         let glow_rests_invisible = glow_to.is_empty() || length_px("--blyrics-highlight-glow-radius-to", 0.0) == 0.0;
 
+        let forced_colors = dom::win_of(container)
+            .match_media("(forced-colors: active)")
+            .ok()
+            .flatten()
+            .is_some_and(|query| query.matches());
+        let highlight_image =
+            if settings.image_highlights && !forced_colors { css_url(&raw("--blyrics-highlight-image")) } else { None };
+
         Theme {
+            highlight_image,
+            highlight_image_ready: false,
             target_scroll_ratio: target_override.map(|v| v.clamp(0.0, 1.0)).unwrap_or(settings.target_scroll_ratio),
             animate_line_scale: flag("--blyrics-animate-line-scale"),
             animate_wobble: flag("--blyrics-animate-word-wobble"),

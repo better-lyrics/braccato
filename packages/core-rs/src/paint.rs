@@ -411,6 +411,8 @@ pub fn paint_line(
                 }
             }
             Owner::Note => push_note(out, slot, layout, line, phase, moment, line_affine, &placement, theme),
+            // Drawn by `push_note`, with the note it fills.
+            Owner::NoteImage => {}
             Owner::Pill | Owner::Translation | Owner::Romanization | Owner::Credits => {
                 let color = match slot.owner {
                     Owner::Pill => layout.pill_color,
@@ -560,24 +562,39 @@ fn push_note(
     // The surface: y = 4 + (wave(x) - 4) * flat + rise, with wave(x) = 3 - a * sin(pi (x + 4) / 8.5).
     let unit = rect.h / 24.0;
     let texels_per_unit = unit * dpr;
-    let p = slot.placement;
-    // View-box x and y of texel (u, v).
-    let ux0 = (-p.tex.0 + p.origin.0) / texels_per_unit - rect.x / unit;
-    let vy0 = (-p.tex.1 + p.origin.1) / texels_per_unit - rect.y / unit;
     let level = 4.0 - flat + rise;
     let amplitude = 0.5 * (1.0 - 2.0 * toward_low) * flat;
     let freq = std::f32::consts::PI / (8.5 * texels_per_unit);
-    let phase_shift = std::f32::consts::PI * (ux0 + 4.0) / 8.5;
-    // How lit a texel is: `slope` per view-box unit below the surface, plus `bias`.
-    let surface_ramp = |slope: f32, bias: f32| -> ([f32; 4], [f32; 4]) {
+    // How lit a texel of `slot` is: `slope` per view-box unit below the surface, plus `bias`.
+    let surface_ramp = |slot: &Slot, slope: f32, bias: f32| -> ([f32; 4], [f32; 4]) {
+        let p = slot.placement;
+        // View-box x and y of texel (u, v).
+        let ux0 = (-p.tex.0 + p.origin.0) / texels_per_unit - rect.x / unit;
+        let vy0 = (-p.tex.1 + p.origin.1) / texels_per_unit - rect.y / unit;
+        let phase_shift = std::f32::consts::PI * (ux0 + 4.0) / 8.5;
         ([0.0, slope / texels_per_unit, slope * (vy0 - level) + bias, slope * amplitude], [freq, phase_shift, 0.0, 0.0])
     };
     // The fill's surface is antialiased over one device pixel.
-    let (ramp, wave) = surface_ramp(texels_per_unit, 0.0);
+    let (ramp, wave) = surface_ramp(slot, texels_per_unit, 0.0);
+
+    // With image highlights the fill is the image, glow and all, in its own colours.
+    if let Some(image) = layout.slots.iter().find(|s| s.owner == Owner::NoteImage) {
+        let (ramp, wave) = surface_ramp(image, texels_per_unit, 0.0);
+        let outer = image.rect.expand(image.margin, image.margin);
+        out.push(Quad {
+            rect: to_canvas(affine.rect(outer), placement),
+            uv: uv_of(image, outer, dpr),
+            unlit: [0.0; 4],
+            lit: [0.0, 0.0, 0.0, opacity * placement.opacity],
+            ramp,
+            wave: [wave[0], wave[1], Quad::COLOR, 0.0],
+        });
+        return;
+    }
     let lit = premultiply(layout.active, opacity * placement.opacity);
     // Its glow is the clipped fill blurred by 5 units, so its surface is as soft: a ramp two
     // standard deviations wide, centred on the surface.
-    let (glow_ramp, glow_wave) = surface_ramp(1.0 / (2.0 * 5.0), 0.5);
+    let (glow_ramp, glow_wave) = surface_ramp(slot, 1.0 / (2.0 * 5.0), 0.5);
     out.push(Quad {
         rect: to_canvas(affine.rect(slot.rect.expand(slot.margin, slot.margin)), placement),
         uv: uv_of(slot, slot.rect.expand(slot.margin, slot.margin), dpr),

@@ -3,12 +3,25 @@
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlElement, Window};
 
-pub fn window() -> Window {
+// A view can live in another window than the one this module loaded in (Document
+// Picture-in-Picture, an iframe), so nothing below reaches for the global window: each helper works
+// in the window of the node it is given. That window is also another JavaScript realm, so DOM
+// objects from it are cast with `unchecked_into`, never `dyn_into`, whose `instanceof` check would
+// fail against this realm's constructors.
+
+/// The window this module was loaded in, for when a node has none.
+fn global_window() -> Window {
     web_sys::window().expect("no window")
 }
 
-pub fn document() -> Document {
-    window().document().expect("no document")
+/// The document a node belongs to.
+pub fn doc_of(node: &web_sys::Node) -> Document {
+    node.owner_document().unwrap_or_else(|| global_window().document().expect("no document"))
+}
+
+/// The window a node's document is shown in.
+pub fn win_of(node: &web_sys::Node) -> Window {
+    doc_of(node).default_view().unwrap_or_else(global_window)
 }
 
 /// Creates `<tag class="...">`.
@@ -39,15 +52,16 @@ pub fn append(parent: &Element, child: &Element) {
 }
 
 pub fn computed(element: &Element) -> web_sys::CssStyleDeclaration {
-    window().get_computed_style(element).ok().flatten().expect("computed style")
+    win_of(element).get_computed_style(element).ok().flatten().expect("computed style")
 }
 
 pub fn computed_value(element: &Element, property: &str) -> String {
     computed(element).get_property_value(property).unwrap_or_default().trim().to_string()
 }
 
-pub fn now_ms() -> f64 {
-    window().performance().map(|p| p.now()).unwrap_or(0.0)
+/// `performance.now()` in `win`, which is the clock that window's animation frames are stamped in.
+pub fn now_ms(win: &Window) -> f64 {
+    win.performance().map(|p| p.now()).unwrap_or(0.0)
 }
 
 /// Reads a property off a plain JS object, for the handful of browser APIs web-sys does not wrap.

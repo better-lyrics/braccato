@@ -86,6 +86,10 @@ pub struct LyricsOptions {
     pub language: Option<String>,
     #[serde(default)]
     pub songwriters: Option<Vec<String>>,
+    /// Which song these lyrics are for. Lyrics with the key of the song on screen are swapped into
+    /// it rather than built anew.
+    #[serde(default)]
+    pub song_key: Option<String>,
 }
 
 /// Picks the sync type the way the DOM renderer did: richsync when any sung line has a part with a

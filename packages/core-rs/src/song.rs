@@ -22,7 +22,7 @@ pub enum RowKind {
 }
 
 /// A timed word: one whitespace-free piece of a provider part.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Part {
     pub text: String,
     pub start_s: f32,
@@ -45,7 +45,7 @@ impl Part {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Group {
     pub row: usize,
     pub kind: RowKind,
@@ -58,7 +58,7 @@ pub struct Group {
     pub spaced: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Row {
     pub kind: RowKind,
     /// Groups in order, each preceded by a space when `spaced` says so.
@@ -70,7 +70,7 @@ pub struct Row {
     pub bidi_sensitive: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Line {
     pub start_s: f32,
     pub duration_s: f32,
@@ -114,25 +114,40 @@ pub struct Song {
     pub no_lyrics: bool,
 }
 
-/// What decorations the view shows, decided by the host.
+/// What decorations the view shows from the lyrics' own fields, decided by the host.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Decorations {
     pub translations: bool,
     pub romanizations: bool,
 }
 
+/// Decorations a host hung on one line after the lyrics were given (`injectTranslation`,
+/// `injectRomanization`). They are shown whatever `Decorations` says, take the place of the line's
+/// own, and belong to the line: a swap that keeps the line, or rebuilds it in place, keeps them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Hung {
+    /// Text and language.
+    pub translation: Option<(String, String)>,
+    /// Text, and the timed parts that sweep it, if it has any.
+    pub romanization: Option<(String, Option<Vec<LyricPart>>)>,
+}
+
 pub fn build_song(
     lyrics: &[Lyric],
+    hung: &[Hung],
     options: &LyricsOptions,
     settings: &CommentSettings,
     decorations: Decorations,
 ) -> Song {
     let sync = crate::model::detect_sync_type(lyrics, settings.disable_richsync);
     let langs = resolve_languages(lyrics, options.language.as_deref());
+    let none = Hung::default();
     let mut lines: Vec<Line> = lyrics
         .iter()
         .enumerate()
-        .map(|(index, lyric)| build_line(lyric, &langs[index], sync, settings, decorations))
+        .map(|(index, lyric)| {
+            build_line(lyric, hung.get(index).unwrap_or(&none), &langs[index], sync, settings, decorations)
+        })
         .collect();
     inherit_instrumental_neighbours(lyrics, &mut lines);
     let credits = options
@@ -151,7 +166,14 @@ fn join_names(names: &[String]) -> String {
     }
 }
 
-fn build_line(lyric: &Lyric, lang: &str, sync: SyncType, settings: &CommentSettings, decorations: Decorations) -> Line {
+fn build_line(
+    lyric: &Lyric,
+    hung: &Hung,
+    lang: &str,
+    sync: SyncType,
+    settings: &CommentSettings,
+    decorations: Decorations,
+) -> Line {
     let mut line = Line {
         start_s: (lyric.start_time_ms / 1000.0) as f32,
         duration_s: (lyric.duration_ms / 1000.0) as f32,
@@ -178,24 +200,79 @@ fn build_line(lyric: &Lyric, lang: &str, sync: SyncType, settings: &CommentSetti
     let builder = RowBuilder::new(settings);
     builder.add_parts(&mut line, &parts, true);
 
-    if decorations.romanizations {
-        let timed = lyric.timed_romanization.as_ref().filter(|p| !p.is_empty() && sync == SyncType::Richsync);
-        if let Some(parts) = timed {
-            builder.add_romanization(&mut line, parts);
-        } else if let Some(roman) = lyric.romanization.as_ref().filter(|r| !same_text(r, &lyric.words)) {
-            line.romanization = Some(roman.clone());
+    let (romanization, timed_romanization) = match &hung.romanization {
+        Some((text, timed)) => (Some(text), timed.as_ref()),
+        None if decorations.romanizations => (lyric.romanization.as_ref(), lyric.timed_romanization.as_ref()),
+        None => (None, None),
+    };
+    let timed = timed_romanization.filter(|p| !p.is_empty() && sync == SyncType::Richsync);
+    if let Some(parts) = timed {
+        builder.add_romanization(&mut line, parts);
+    } else if let Some(roman) = romanization.filter(|r| !r.trim().is_empty() && !same_text(r, &lyric.words)) {
+        line.romanization = Some(roman.clone());
+    }
+    let translation = match &hung.translation {
+        Some(hung) => Some(hung.clone()),
+        None if decorations.translations => {
+            lyric.translation.as_ref().map(|t| (t.text.clone(), t.lang.clone())).or_else(|| {
+                lyric
+                    .translations
+                    .as_ref()
+                    .and_then(|map| map.iter().next().map(|(lang, text)| (text.clone(), lang.clone())))
+            })
+        }
+        None => None,
+    };
+    line.translation = translation.filter(|(text, _)| !text.trim().is_empty() && !same_text(text, &lyric.words));
+    line
+}
+
+/// Where each line of a new song came from in the one it replaces: the old line's index, or `None`
+/// for a line with no counterpart.
+///
+/// Lines equal in both, in the same order, are found first (a longest common subsequence); between
+/// two of those, the lines that changed are paired off in order, so a line edited in place keeps
+/// its place, and only what is left over is new or gone. This is the DOM renderer's swap: lines the
+/// two share stay as they were, and a rebuilt line takes over the one it replaces.
+pub fn match_lines<T: PartialEq>(old: &[T], new: &[T]) -> Vec<Option<usize>> {
+    let (n, m) = (old.len(), new.len());
+    // common[i][j]: the longest common subsequence of old[i..] and new[j..].
+    let mut common = vec![vec![0u32; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            common[i][j] =
+                if old[i] == new[j] { common[i + 1][j + 1] + 1 } else { common[i + 1][j].max(common[i][j + 1]) };
         }
     }
-    if decorations.translations {
-        let translation = lyric.translation.as_ref().map(|t| (t.text.clone(), t.lang.clone())).or_else(|| {
-            lyric
-                .translations
-                .as_ref()
-                .and_then(|map| map.iter().next().map(|(lang, text)| (text.clone(), lang.clone())))
-        });
-        line.translation = translation.filter(|(text, _)| !same_text(text, &lyric.words));
+    let mut origins = vec![None; m];
+    let (mut i, mut j) = (0, 0);
+    // Unmatched runs since the last shared line, paired off when the next one is reached.
+    let (mut old_run, mut new_run): (Vec<usize>, Vec<usize>) = (Vec::new(), Vec::new());
+    let pair = |old_run: &mut Vec<usize>, new_run: &mut Vec<usize>, origins: &mut Vec<Option<usize>>| {
+        for (&o, &n) in old_run.iter().zip(new_run.iter()) {
+            origins[n] = Some(o);
+        }
+        old_run.clear();
+        new_run.clear();
+    };
+    while i < n && j < m {
+        if old[i] == new[j] {
+            pair(&mut old_run, &mut new_run, &mut origins);
+            origins[j] = Some(i);
+            i += 1;
+            j += 1;
+        } else if common[i + 1][j] >= common[i][j + 1] {
+            old_run.push(i);
+            i += 1;
+        } else {
+            new_run.push(j);
+            j += 1;
+        }
     }
-    line
+    old_run.extend(i..n);
+    new_run.extend(j..m);
+    pair(&mut old_run, &mut new_run, &mut origins);
+    origins
 }
 
 /// Decorations equal to the lyric (ignoring case, punctuation and edges) are not shown.
@@ -573,7 +650,8 @@ mod tests {
             part(500.0, "tle ", 300.0),
             part(800.0, "starts", 400.0),
         ])];
-        let song = build_song(&lyrics, &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
+        let song =
+            build_song(&lyrics, &[], &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
         let line = &song.lines[0];
         assert_eq!(song.sync, SyncType::Richsync);
         assert_eq!(line.parts.iter().map(|p| p.text.as_str()).collect::<Vec<_>>(), ["The", "ket", "tle", "starts"]);
@@ -587,7 +665,8 @@ mod tests {
         let mut bg = part(1000.0, "(let it land)", 900.0);
         bg.is_background = true;
         let lyrics = vec![lyric(vec![part(0.0, "land ", 500.0), bg])];
-        let song = build_song(&lyrics, &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
+        let song =
+            build_song(&lyrics, &[], &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
         let line = &song.lines[0];
         assert_eq!(line.rows.len(), 2);
         assert_eq!(line.rows[1].kind, RowKind::Background(0));
@@ -602,7 +681,8 @@ mod tests {
     fn line_synced_words_are_staggered() {
         let lyrics =
             vec![Lyric { start_time_ms: 1000.0, words: "a b  c".into(), duration_ms: 2000.0, ..Default::default() }];
-        let song = build_song(&lyrics, &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
+        let song =
+            build_song(&lyrics, &[], &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
         let starts: Vec<f32> = song.lines[0].parts.iter().map(|p| p.start_s).collect();
         assert_eq!(starts, [1.0, 1.05, 1.1]);
         assert!(song.lines[0].parts.iter().all(|p| p.line_synced));
@@ -618,11 +698,45 @@ mod tests {
     #[test]
     fn rtl_rows_are_bidi_sensitive_and_arabic_is_not_lettered() {
         let lyrics = vec![lyric(vec![part(0.0, "مرحبا ", 500.0), part(500.0, "world", 500.0)])];
-        let song = build_song(&lyrics, &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
+        let song =
+            build_song(&lyrics, &[], &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
         let line = &song.lines[0];
         assert!(line.rtl);
         assert!(line.rows[0].bidi_sensitive);
         assert!(!line.parts[0].lettered);
         assert!(line.parts[1].lettered);
+    }
+
+    #[test]
+    fn a_swap_keeps_shared_lines_and_pairs_edited_ones_in_place() {
+        // b was edited to B; x was inserted; d was dropped.
+        let old = ["a", "b", "c", "d", "e"];
+        let new = ["a", "B", "c", "x", "e"];
+        assert_eq!(match_lines(&old, &new), vec![Some(0), Some(1), Some(2), Some(3), Some(4)]);
+
+        let new = ["a", "x", "b", "c", "e"];
+        assert_eq!(match_lines(&old, &new), vec![Some(0), None, Some(1), Some(2), Some(4)]);
+
+        let new = ["c", "d", "e"];
+        assert_eq!(match_lines(&old, &new), vec![Some(2), Some(3), Some(4)]);
+
+        let new: [&str; 0] = [];
+        assert!(match_lines(&old, &new).is_empty());
+        assert_eq!(match_lines(&[] as &[&str], &["a"]), vec![None]);
+    }
+
+    #[test]
+    fn hung_decorations_show_whatever_the_fields_say() {
+        let lyrics =
+            vec![Lyric { start_time_ms: 1000.0, words: "hola".into(), duration_ms: 1000.0, ..Default::default() }];
+        let hung = vec![Hung { translation: Some(("hello".into(), "en".into())), romanization: None }];
+        let song =
+            build_song(&lyrics, &hung, &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
+        assert_eq!(song.lines[0].translation, Some(("hello".into(), "en".into())));
+        // A translation that only repeats the line is not shown.
+        let hung = vec![Hung { translation: Some(("Hola!".into(), "en".into())), romanization: None }];
+        let song =
+            build_song(&lyrics, &hung, &LyricsOptions::default(), &CommentSettings::default(), Decorations::default());
+        assert_eq!(song.lines[0].translation, None);
     }
 }

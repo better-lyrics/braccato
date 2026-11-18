@@ -1,14 +1,33 @@
 {
 	"name": "@braccato/core-rs",
 	"version": "0.0.0",
-	"private": true,
-	"description": "The braccato lyrics renderer, rewritten in Rust and drawn with WebGL2.",
+	"description": "The braccato lyrics renderer in Rust and WebGL2, with @braccato/core's renderer interface.",
 	"type": "module",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/better-lyrics/braccato.git",
+		"directory": "packages/core-rs"
+	},
+	"homepage": "https://braccato.boidu.dev",
+	"keywords": ["lyrics", "sync", "webgl", "wasm", "karaoke"],
+	"sideEffects": ["./js/element.js"],
 	"exports": {
-		"./element": "./js/element.js"
+		".": {
+			"types": "./js/renderer.d.ts",
+			"import": "./js/renderer.js"
+		},
+		"./element": "./js/element.js",
+		"./wasm": "./pkg/braccato_core_rs_bg.wasm",
+		"./package.json": "./package.json"
 	},
 	"files": ["js", "pkg/*.js", "pkg/*.wasm", "pkg/*.d.ts"],
+	"publishConfig": {
+		"access": "public"
+	},
+	"dependencies": {
+		"@braccato/types": "workspace:^"
+	},
 	"scripts": {
 		"build": "node scripts/run.mjs build",
 		"test": "node scripts/run.mjs test"

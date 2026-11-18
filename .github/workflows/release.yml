@@ -41,8 +41,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # @braccato/core-rs is built from Rust into WebAssembly.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
       - name: Build packages
         run: pnpm build:packages
+        env:
+          BRACCATO_REQUIRE_RUST: "1"
 
       - name: Set committer identity
         run: |

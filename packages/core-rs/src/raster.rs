@@ -39,14 +39,23 @@ pub struct Rasterizer {
     note: Option<Path2d>,
     /// Whether the context has `filter` (not before Safari 18).
     has_filter: bool,
+    /// Images the view has loaded, by address, for image highlights.
+    pub images: std::collections::HashMap<String, web_sys::HtmlImageElement>,
 }
 
 impl Rasterizer {
-    pub fn new() -> Rasterizer {
-        let canvas: HtmlCanvasElement = dom::document().create_element("canvas").unwrap().unchecked_into();
+    /// Draws with a canvas of `doc`, whose fonts it resolves text against.
+    pub fn new(doc: &web_sys::Document) -> Rasterizer {
+        let canvas: HtmlCanvasElement = doc.create_element("canvas").unwrap().unchecked_into();
         let context: CanvasRenderingContext2d = canvas.get_context("2d").unwrap().unwrap().unchecked_into();
         let has_filter = js_sys::Reflect::has(context.as_ref(), &JsValue::from_str("filter")).unwrap_or(false);
-        Rasterizer { canvas, context, note: Path2d::new_with_path_string(NOTE_PATH).ok(), has_filter }
+        Rasterizer {
+            canvas,
+            context,
+            note: Path2d::new_with_path_string(NOTE_PATH).ok(),
+            has_filter,
+            images: Default::default(),
+        }
     }
 
     /// Packs and draws every slot of `layout`, recording where each landed. Returns the canvas to
@@ -95,6 +104,11 @@ impl Rasterizer {
                     }
                 }
                 Ink::Note => self.note(slot.rect, dpr),
+                Ink::NoteImage(url) => {
+                    ctx.set_global_composite_operation("source-over").ok();
+                    self.note_image(slot.rect, dpr, url);
+                    ctx.set_global_composite_operation("lighter").ok();
+                }
                 Ink::Pill { radius } => self.pill(slot.rect, *radius),
             }
             ctx.restore();
@@ -182,6 +196,34 @@ impl Rasterizer {
         ctx.restore();
     }
 
+    /// The note's image fill: the image stretched over the note's 24-unit view box and cut to its
+    /// silhouette, over a one-unit blur of itself, which is the glow the DOM renderer gave it (the
+    /// image's own colours blurred, not a tint). The shader cuts both to the rising fill.
+    fn note_image(&self, square: Rect, dpr: f32, url: &str) {
+        let (Some(path), Some(image)) = (&self.note, self.images.get(url)) else { return };
+        // Cut to the silhouette on a canvas of its own first, so the blur spreads past the cut.
+        let side = (square.h * dpr).ceil().max(1.0);
+        let doc = dom::doc_of(&self.canvas);
+        let scratch: HtmlCanvasElement = doc.create_element("canvas").unwrap().unchecked_into();
+        scratch.set_width(side as u32);
+        scratch.set_height(side as u32);
+        let Some(sctx) = scratch.get_context("2d").ok().flatten() else { return };
+        let sctx: CanvasRenderingContext2d = sctx.unchecked_into();
+        sctx.scale((side / 24.0) as f64, (side / 24.0) as f64).ok();
+        sctx.clip_with_path_2d(path);
+        let _ = sctx.draw_image_with_html_image_element_and_dw_and_dh(image, 0.0, 0.0, 24.0, 24.0);
+
+        let ctx = &self.context;
+        let (x, y, w, h) = (square.x as f64, square.y as f64, square.w as f64, square.h as f64);
+        if self.has_filter {
+            // Filter lengths are in texture pixels; the glow is one view-box unit.
+            ctx.set_filter(&format!("blur({}px)", square.h / 24.0 * dpr));
+            let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(&scratch, x, y, w, h);
+            ctx.set_filter("none");
+        }
+        let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(&scratch, x, y, w, h);
+    }
+
     /// The romanization's background and border, as coverage the shader tints: the border is
     /// opaque and the fill a third of it, matching 5% and 10% white over the line.
     fn pill(&self, rect: Rect, radius: f32) {
@@ -203,12 +245,6 @@ impl Rasterizer {
         ctx.set_stroke_style_str("rgb(255 0 0 / 0.655)");
         ctx.set_line_width(1.0);
         ctx.stroke();
-    }
-}
-
-impl Default for Rasterizer {
-    fn default() -> Self {
-        Rasterizer::new()
     }
 }
 
