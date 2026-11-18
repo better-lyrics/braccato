@@ -162,15 +162,20 @@ uniform buffer is written when the canvas resizes.
 
 ## Cost
 
-Measured on an Intel Arc iGPU (Meteor Lake), Chrome, a 2092 × 1208 canvas at device pixel ratio 1.33,
-the fastest demo song playing:
+Measured with `pnpm bench` on an Intel Arc iGPU (Meteor Lake) in Chrome: a 1632 × 1000 canvas at
+device pixel ratio 1.33, 240 Hz, the song playing. Medians of three 15 s runs:
 
-- 0.13 to 0.34 ms of CPU per frame in the renderer, 1 ms at worst while new lines are rasterized.
-- 0.19 ms of GPU time per frame: about 1% of the GPU at 60 fps and 5% at 240 Hz.
-- Main thread busy 7% against 37% for `@braccato/core` over the same playback, and the compositor
-  thread 3% against 13%.
+| Demo song | Renderer CPU per frame, mean / p99 | GPU per frame |
+| --------- | ---------------------------------- | ------------- |
+| Kettle | 0.063 / 0.125 ms | 0.13 ms |
+| Kettle, Sustain theme (lines blurred by distance) | 0.075 / 0.140 ms | 0.41 ms |
+| The Steps (long glowing words) | 0.065 / 0.145 ms | 0.18 ms |
+| Kettle, stage layout | 0.049 / 0.100 ms | 0.07 ms |
 
-With six words glowing, the GPU blur adds about 0.1 to 0.18 ms.
+At 240 Hz that is about 1.5% of a core and 3 to 10% of the GPU. A line costs about 1 ms more on the
+frame it is rasterized, as it scrolls into view. In Better Lyrics on YouTube Music, the main thread
+was 7% busy against 37% for `@braccato/core` over the same playback, and the compositor thread 3%
+against 13%.
 
 ### Benchmarks and profiles
 
