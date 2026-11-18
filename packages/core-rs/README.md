@@ -200,17 +200,20 @@ every frame's phase times and `renderer.stats()` running averages.
 
 ## Build and test
 
-Needs a Rust toolchain with the `wasm32-unknown-unknown` target and `wasm-pack`. Without them both
-steps print a notice and skip, so `pnpm build` and `pnpm test` still pass for the rest of the
-workspace. The release workflow installs both and sets `BRACCATO_REQUIRE_RUST`, which makes a missing
-toolchain fail the build instead, so the package is never published without its wasm.
+Needs a Rust toolchain with the `wasm32-unknown-unknown` target, clippy and rustfmt, and `wasm-pack`.
+Without them every step prints a notice and skips, so `pnpm build`, `pnpm lint` and `pnpm test` still
+pass for the rest of the workspace. CI and the release workflow install them and set
+`BRACCATO_REQUIRE_RUST`, which makes a missing toolchain fail instead, so the package is never
+published without its wasm.
 
 The wasm is built with WebAssembly SIMD (`.cargo/config.toml`), which Chrome 91, Firefox 89 and
 Safari 16.4 run.
 
 ```bash
-pnpm -C packages/core-rs build   # wasm-pack into pkg/
-pnpm -C packages/core-rs test    # cargo test: song building, timing, scroll, stage, clock, easing
+pnpm -C packages/core-rs build             # wasm-pack into pkg/
+pnpm -C packages/core-rs build:profiling   # the same, with function names for CPU profiles
+pnpm -C packages/core-rs lint              # cargo fmt --check, clippy with warnings as errors
+pnpm -C packages/core-rs test              # cargo test: song building, timing, scroll, stage, clock, easing, line pages
 ```
 
 `demo/compare.html`, on the dev server only (`pnpm -C demo dev`), puts this renderer next to

@@ -3,11 +3,13 @@
 	"extends": ["//"],
 	"tasks": {
 		"build": {
-			"inputs": ["src/**", "build.rs", "js/**", "Cargo.toml", "Cargo.lock", "package.json", "scripts/**"],
-			"outputs": ["pkg/**"]
+			"cache": false
 		},
 		"test": {
-			"inputs": ["src/**", "build.rs", "Cargo.toml", "Cargo.lock", "scripts/**"]
+			"cache": false
+		},
+		"lint": {
+			"cache": false
 		}
 	}
 }

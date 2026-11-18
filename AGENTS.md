@@ -3,19 +3,21 @@
 Operating notes for AI agents working in this repo. They cover what the config files do not make
 obvious; read the package READMEs for the API itself.
 
-## Nothing runs the test suite on PRs
+## The gate
 
-`.github/workflows/release.yml` is the only GitHub Actions workflow, and it runs on pushes to
-`master`. The checks a PR gets (Cloudflare Pages, Socket Security, Graphite) do not lint, typecheck
-or test, so these local runs are the whole gate. Run them before calling work done:
+`.github/workflows/ci.yml` runs these on every pull request, with the Rust toolchain, and the release
+workflow runs them again before it publishes. Run them locally before calling work done:
 
 ```bash
-pnpm lint        # biome check, read-only; pnpm lint:fix writes
-pnpm typecheck
-pnpm test        # vitest: parsers, highlight, provider-blyrics, rics
+pnpm lint        # biome check (read-only; pnpm lint:fix writes), then cargo fmt --check and clippy
+pnpm typecheck   # every package, and tooling/
+pnpm test        # vitest (parsers, highlight, provider-blyrics, rics) and cargo test
 pnpm selfcheck   # core's self-checks (see below)
 pnpm build
 ```
+
+Without Rust, the core-rs steps print a notice and skip; CI sets `BRACCATO_REQUIRE_RUST` so they fail
+instead. Turbo does not cache those steps, so a skip is never replayed once Rust is installed.
 
 Run `pnpm install` in each git worktree. In a non-interactive shell use `CI=true pnpm install`: pnpm
 can stop at a hidden "reinstall from scratch?" prompt and leave packages without `node_modules`,
@@ -86,12 +88,14 @@ straight into the extension, so check them against it, not only against the demo
 `packages/core-rs` renders the same lyrics as core from one canvas, behind core's `createLyricsRenderer`
 interface (see its README). It is published, so changes to it need a changeset like core's. Building
 it needs Rust with the `wasm32-unknown-unknown` target and `wasm-pack`. `scripts/run.mjs` skips its
-build and test with a notice when those are missing, so the gate above still runs without Rust; with
-Rust installed, check that the notice did not appear. The release workflow installs the toolchain and
-sets `BRACCATO_REQUIRE_RUST`, which turns the skip into a failure.
+build, lint and test with a notice when those are missing, so the gate above still runs without Rust;
+with Rust installed, check that the notice did not appear.
 
-- `cargo test --lib` in the package covers the pure logic (song building, scroll, stage, clock).
-  `cargo clippy --target wasm32-unknown-unknown` is expected to be clean.
+- `cargo test --lib` in the package covers the pure logic (song building, scroll, stage, clock,
+  the line pages' allocator). `pnpm lint` runs `cargo fmt --check` and clippy on the wasm target
+  with warnings as errors.
+- The demo's compare page imports core-rs's `pkg/` by path, and nothing rebuilds it: run
+  `pnpm -C packages/core-rs build` (or `build:profiling`, for named CPU profiles) after a Rust edit.
 - The shader is `src/shaders/quad.wgsl`. `build.rs` validates it with naga and writes GLSL ES 3.00
   into `OUT_DIR`, together with the uniform block and sampler names naga chose; `gpu.rs` binds by
   those generated constants, so never hard-code a `_group_0_binding_*` name. naga is a

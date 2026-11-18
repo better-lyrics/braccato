@@ -1,27 +1,41 @@
 // Runs a Rust step of this package, or skips it with a notice when the toolchain is missing.
 //
 // The rest of the workspace builds with Node alone, so a contributor without Rust should still get
-// through `pnpm build` and `pnpm test`. The release sets BRACCATO_REQUIRE_RUST, which turns the
-// skip into a failure: a published package without its wasm would be broken.
+// through `pnpm build`, `pnpm lint` and `pnpm test`. CI and the release set BRACCATO_REQUIRE_RUST,
+// which turns the skip into a failure: a published package without its wasm would be broken.
 //
 //   node scripts/run.mjs build             wasm-pack into pkg/
 //   node scripts/run.mjs build:profiling   the same, keeping function names for CPU profiles
+//   node scripts/run.mjs lint              cargo fmt --check, and clippy with warnings as errors
 //   node scripts/run.mjs test              cargo test --lib
+//
+// Turbo does not cache these (see turbo.json): a run that skipped would be replayed as a success
+// once Rust is installed, and Cargo already rebuilds only what changed.
 
 import { spawnSync } from "node:child_process";
+
+const WASM_PACK = ["wasm-pack", "build", "--target", "web", "--out-dir", "pkg", "--no-pack"];
 
 const STEPS = {
 	build: {
 		needs: ["cargo", "wasm-pack"],
-		run: ["wasm-pack", ["build", "--target", "web", "--release", "--out-dir", "pkg", "--no-pack"]],
+		run: [[...WASM_PACK, "--release"]],
 	},
 	"build:profiling": {
 		needs: ["cargo", "wasm-pack"],
-		run: ["wasm-pack", ["build", "--target", "web", "--profiling", "--out-dir", "pkg", "--no-pack"]],
+		run: [[...WASM_PACK, "--profiling"]],
+	},
+	lint: {
+		needs: ["cargo", "rustfmt", "cargo-clippy"],
+		run: [
+			["cargo", "fmt", "--check"],
+			// The wasm target: the renderer's code only compiles there.
+			["cargo", "clippy", "--target", "wasm32-unknown-unknown", "--", "-D", "warnings"],
+		],
 	},
 	test: {
 		needs: ["cargo"],
-		run: ["cargo", ["test", "--lib"]],
+		run: [["cargo", "test", "--lib"]],
 	},
 };
 
@@ -42,6 +56,7 @@ if (missing.length > 0) {
 	process.exit(0);
 }
 
-const [command, args] = step.run;
-const result = spawnSync(command, args, { stdio: "inherit" });
-process.exit(result.status ?? 1);
+for (const [command, ...args] of step.run) {
+	const result = spawnSync(command, args, { stdio: "inherit" });
+	if (result.status !== 0) process.exit(result.status ?? 1);
+}

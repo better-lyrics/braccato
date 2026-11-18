@@ -38,7 +38,7 @@
 // Needs core built (`pnpm build`) and core-rs built.
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -612,6 +612,21 @@ function printTopFunctions(path: string, profile: { nodes: ProfileNode[]; sample
   show("total time (with what it calls)", total);
 }
 
+/** When core-rs's newest Rust source, shader or build setting was last changed. */
+function newestSource(): number {
+  const crate = join(ROOT, "packages/core-rs");
+  const files = ["build.rs", "Cargo.toml", "Cargo.lock", ".cargo/config.toml"].map(file => join(crate, file));
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else files.push(path);
+    }
+  };
+  walk(join(crate, "src"));
+  return Math.max(...files.filter(existsSync).map(file => statSync(file).mtimeMs));
+}
+
 function hasNames(wasm: Buffer): boolean {
   let at = 8;
   const leb = () => {
@@ -645,6 +660,9 @@ async function main() {
     throw new Error("core-rs is not built: pnpm -C packages/core-rs build (or build:profiling)");
   }
   if (!existsSync(join(ROOT, "packages/core/dist"))) throw new Error("core is not built: pnpm build");
+  if (RENDERERS.includes("rs") && newestSource() > statSync(WASM).mtimeMs) {
+    console.warn("The wasm is older than core-rs's Rust sources, so this measures old code: rebuild it first.");
+  }
   if (args.profile && RENDERERS.includes("rs") && !hasNames(readFileSync(WASM))) {
     console.warn(
       "The wasm has no function names, so Rust frames will show as wasm-function[n]. For names: pnpm -C packages/core-rs build:profiling"
