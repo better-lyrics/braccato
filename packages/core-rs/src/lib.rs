@@ -27,6 +27,7 @@ use web_sys::{Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement};
 
 type FrameCallback = Closure<dyn FnMut(f64)>;
 type ResizeWatch = (web_sys::ResizeObserver, Closure<dyn FnMut()>);
+type IntersectionWatch = (web_sys::IntersectionObserver, Closure<dyn FnMut(js_sys::Array)>);
 
 struct Shared {
     /// The window the view is in. Its animation frames, not this module's window's, are the ones to
@@ -38,6 +39,7 @@ struct Shared {
     listeners: RefCell<Vec<Listener>>,
     media_listeners: RefCell<Vec<Listener>>,
     resize: RefCell<Option<ResizeWatch>>,
+    on_page: RefCell<Option<IntersectionWatch>>,
 }
 
 /// An event listener kept alive for as long as it is attached.
@@ -188,6 +190,7 @@ impl Renderer {
             listeners: RefCell::new(Vec::new()),
             media_listeners: RefCell::new(Vec::new()),
             resize: RefCell::new(None),
+            on_page: RefCell::new(None),
         });
         let weak = Rc::downgrade(&shared);
         *shared.frame.borrow_mut() = Some(Closure::new(move |now: f64| {
@@ -244,6 +247,22 @@ impl Renderer {
         if let Ok(observer) = web_sys::ResizeObserver::new(on_resize.as_ref().unchecked_ref()) {
             observer.observe(&host);
             *shared.resize.borrow_mut() = Some((observer, on_resize));
+        }
+
+        // Whether the page shows the lines at all, reported on change rather than polled.
+        let weak = Rc::downgrade(&shared);
+        let on_page = Closure::<dyn FnMut(js_sys::Array)>::new(move |entries: js_sys::Array| {
+            let Some(shared) = weak.upgrade() else { return };
+            let Some(entry) = entries.iter().last() else { return };
+            let visible = dom::get(&entry, "isIntersecting").as_bool().unwrap_or(true);
+            shared.view.borrow_mut().set_on_page(visible);
+            if visible {
+                shared.request_frame();
+            }
+        });
+        if let Ok(observer) = web_sys::IntersectionObserver::new(on_page.as_ref().unchecked_ref()) {
+            observer.observe(&shared.view.borrow().container);
+            *shared.on_page.borrow_mut() = Some((observer, on_page));
         }
 
         let renderer = Renderer { shared };
@@ -618,6 +637,9 @@ impl Renderer {
         self.shared.listeners.borrow_mut().clear();
         self.shared.media_listeners.borrow_mut().clear();
         if let Some((observer, _)) = self.shared.resize.borrow_mut().take() {
+            observer.disconnect();
+        }
+        if let Some((observer, _)) = self.shared.on_page.borrow_mut().take() {
             observer.disconnect();
         }
         self.shared.frame.borrow_mut().take();

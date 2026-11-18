@@ -172,6 +172,9 @@ pub struct View {
     pub tick_options: TickOptions,
     /// The host says nothing of the view is on the screen (another tab, an ad), so no frames.
     pub hidden: bool,
+    /// Whether any of the lines' container is on the page: false while the page hides the panel
+    /// it is in (another tab of it showing, the player minimized), whatever the host says.
+    pub on_page: bool,
     started: bool,
     last_lyric: f32,
 
@@ -269,6 +272,7 @@ impl View {
             manual_event_ms: -1.0,
             tick_options: TickOptions { rate: 1.0, smooth_scroll: true, ..Default::default() },
             hidden: false,
+            on_page: true,
             started: false,
             last_lyric: 0.0,
             scroller: None,
@@ -660,6 +664,16 @@ impl View {
         self.needs_layout = true;
     }
 
+    /// The page showed or hid the lines' container. Shown again, the lines are measured and the
+    /// scroll set from scratch, since anything may have changed meanwhile.
+    pub fn set_on_page(&mut self, on_page: bool) {
+        if on_page && !self.on_page {
+            self.needs_layout = true;
+            self.autoscroll.force = true;
+        }
+        self.on_page = on_page;
+    }
+
     fn read_theme(&mut self) {
         self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px(&self.doc));
         if let Some(url) = &self.theme.highlight_image {
@@ -735,6 +749,9 @@ impl View {
     }
 
     fn write_scroll_top(&mut self, value: f32) {
+        if self.hidden || !self.on_page {
+            return;
+        }
         match &self.scroller {
             Some(el) => el.set_scroll_top(value.round() as i32),
             None => self.win.scroll_to_with_x_and_y(self.win.scroll_x().unwrap_or(0.0), value.round() as f64),
@@ -1222,7 +1239,9 @@ impl View {
 
     /// Draws the frame at `now_ms`. Returns whether another frame is wanted.
     pub fn frame(&mut self, now_ms: f64) -> bool {
-        if self.hidden {
+        // Off the screen nothing is drawn or measured, and above all the scroll element is not
+        // written: the page may be showing something else in it.
+        if self.hidden || !self.on_page {
             return false;
         }
         if self.needs_build {
