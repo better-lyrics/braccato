@@ -1,0 +1,5 @@
+# WebAssembly SIMD, which Chrome 91, Firefox 89 and Safari 16.4 all run, so one build serves every
+# browser. It measured no faster than without, but it costs nothing. Relaxed SIMD is left out: a
+# browser without it would refuse the whole module.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

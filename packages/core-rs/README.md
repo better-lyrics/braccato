@@ -175,6 +175,9 @@ steps print a notice and skip, so `pnpm build` and `pnpm test` still pass for th
 workspace. The release workflow installs both and sets `BRACCATO_REQUIRE_RUST`, which makes a missing
 toolchain fail the build instead, so the package is never published without its wasm.
 
+The wasm is built with WebAssembly SIMD (`.cargo/config.toml`), which Chrome 91, Firefox 89 and
+Safari 16.4 run.
+
 ```bash
 pnpm -C packages/core-rs build   # wasm-pack into pkg/
 pnpm -C packages/core-rs test    # cargo test: song building, timing, scroll, stage, clock, easing
