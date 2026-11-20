@@ -184,6 +184,12 @@
 	position: relative;
 }
 
+/* WebKit puts a clipped inline-block's baseline at its bottom edge; paint containment clips without that. */
+.blyrics-container[data-browser-engine="webkit"] .blyrics-sweep-cell {
+	contain: paint;
+	overflow: visible;
+}
+
 .blyrics-word-highlight--sweep.blyrics-rtl .blyrics-sweep-cell,
 .blyrics-sweep-window.blyrics-sweep-cell[dir="rtl"] {
 	direction: rtl;

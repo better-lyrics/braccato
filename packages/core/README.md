@@ -388,16 +388,23 @@ start until the next word begins.
 
 ### Browser engine
 
-On Firefox the container carries `data-browser-engine="gecko"`. The renderer's Gecko-only CSS keys on
-it, and a theme can do the same to target Firefox without sniffing the user agent. It is detected from
-a feature only Gecko ships, so forks of Firefox carry it too. Script reads the same answer from
-`isGecko()` in `@braccato/core/util`, which the renderer's Gecko-only script checks once on load.
+On Firefox the container carries `data-browser-engine="gecko"`, and on WebKit (Safari and the other
+WebKit browsers) it carries `data-browser-engine="webkit"`. The renderer's engine-only CSS keys on it,
+and a theme can do the same to target an engine without sniffing the user agent. Each is detected from
+a feature only that engine ships, so forks carry it too. Script reads the same answers from `isGecko()`
+and `isWebKit()` in `@braccato/core/util`; the renderer's Gecko-only script checks `isGecko()` once on
+load.
 
 ```css
 .blyrics-container[data-browser-engine="gecko"] .blyrics--line {
   /* Firefox only */
 }
 ```
+
+WebKit puts the baseline of an inline-block that clips its overflow at the box's bottom edge, where
+Blink and Gecko keep the baseline of its text. Each sweep cell clips its mask boxes, so on WebKit every
+wrapped row of lit text sat lower than the row it covers. There the cells use paint containment instead,
+which clips the same box and keeps the text's baseline.
 
 The letter wave uses both. WebRender rounds text moved by a 2D translation to whole device
 pixels, and it only redraws a cached tile once something on it has moved a quarter of a pixel, so the
@@ -519,7 +526,7 @@ Four leaves import nothing at all, so taking one does not pull the engine into y
 - `@braccato/core/constants` for the class names and element ids above
 - `@braccato/core/text` for script detection: `testRtl`, `containsNonLatin`, `detectNonLatinLanguage`
 - `@braccato/core/themeSettings` for `parseThemeConfig`
-- `@braccato/core/util` for pure helpers such as `clamp` and `toMs`, and `isGecko` for engine-specific fixes
+- `@braccato/core/util` for pure helpers such as `clamp` and `toMs`, and `isGecko` and `isWebKit` for engine-specific fixes
 
 Two notes on the element entry point. A browser extension's isolated world has no custom element
 registry, so `window.customElements` is null there and importing this file throws where it registers.
