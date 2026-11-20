@@ -45,7 +45,7 @@ import { createInstrumentalElement } from "./instrumental";
 import type { Lyric } from "./types";
 import { applyLyricLanguage, resolveLyricLanguages } from "./language";
 import { lyricBuildSettingsKey } from "./themeSettings";
-import { isGecko } from "./util";
+import { isGecko, isWebKit } from "./util";
 
 const INITIAL_SKIP_SCROLLS = 2;
 const SKIP_SCROLL_DECAY_MS = 2000;
@@ -296,6 +296,7 @@ export function setLyrics(
   const container = doc.createElement("div");
   container.className = LYRICS_CLASS;
   if (isGecko()) container.dataset.browserEngine = "gecko";
+  else if (isWebKit()) container.dataset.browserEngine = "webkit";
   mount.replaceChildren(container);
 
   const context = buildContext(engine, lyrics, options);

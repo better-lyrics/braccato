@@ -14,6 +14,11 @@ export function isGecko(): boolean {
   return typeof CSS !== "undefined" && CSS.supports("-moz-appearance", "none");
 }
 
+/** Whether the page renders with WebKit (Safari and the other WebKit browsers), detected the same way. */
+export function isWebKit(): boolean {
+  return typeof CSS !== "undefined" && CSS.supports("-webkit-nbsp-mode", "space");
+}
+
 export function roundedMs(value: number): number {
   return Math.round(value * 10) / 10;
 }
