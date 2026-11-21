@@ -1,12 +1,15 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    // The scripts run under tsx as ES modules (`import.meta`), and read the demo's plain JavaScript.
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "target": "esnext",
     "types": ["node"],
+    "allowJs": true,
+    "checkJs": false,
     "esModuleInterop": true,
     "strict": true,
     "noEmit": true
   },
-  "include": ["."]
+  "include": ["*.ts"]
 }

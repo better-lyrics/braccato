@@ -1,0 +1,57 @@
+{
+	"name": "@braccato/core",
+	"version": "1.22.0",
+	"description": "Synchronized lyrics renderer with word-by-word animations, in Rust and WebGL2",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/better-lyrics/braccato.git",
+		"directory": "packages/core-rs"
+	},
+	"homepage": "https://braccato.boidu.dev",
+	"keywords": ["lyrics", "sync", "karaoke", "ttml", "webgl", "wasm"],
+	"sideEffects": ["./js/element.js", "./dist/styles/*.css"],
+	"exports": {
+		".": {
+			"types": "./js/renderer.d.ts",
+			"import": "./js/renderer.js"
+		},
+		"./element": "./js/element.js",
+		"./wasm": "./pkg/braccato_core_rs_bg.wasm",
+		"./constants": {
+			"types": "./dist/constants.d.ts",
+			"import": "./dist/constants.js"
+		},
+		"./text": {
+			"types": "./dist/text.d.ts",
+			"import": "./dist/text.js"
+		},
+		"./themeSettings": {
+			"types": "./dist/themeSettings.d.ts",
+			"import": "./dist/themeSettings.js"
+		},
+		"./util": {
+			"types": "./dist/util.d.ts",
+			"import": "./dist/util.js"
+		},
+		"./styles/*.css": "./dist/styles/*.css",
+		"./package.json": "./package.json"
+	},
+	"files": ["js", "pkg/*.js", "pkg/*.wasm", "pkg/*.d.ts", "dist"],
+	"publishConfig": {
+		"access": "public"
+	},
+	"dependencies": {
+		"@braccato/types": "workspace:^"
+	},
+	"devDependencies": {
+		"@braccato/core-dom": "workspace:*"
+	},
+	"scripts": {
+		"build": "node scripts/shared.mjs && node scripts/run.mjs build",
+		"build:profiling": "node scripts/run.mjs build:profiling",
+		"lint": "node scripts/run.mjs lint",
+		"test": "node scripts/run.mjs test"
+	}
+}

@@ -16,10 +16,10 @@
 // is the cascade: the package's variables first because the other two read from them, and this
 // page's own sheet last because it overrides all three.
 
-import "@braccato/core/styles/variables.css";
-import "@braccato/core/styles/lyrics.css";
-import "@braccato/core/styles/instrumental.css";
-import "@braccato/core/styles/stage.css";
+import "@braccato/core-dom/styles/variables.css";
+import "@braccato/core-dom/styles/lyrics.css";
+import "@braccato/core-dom/styles/instrumental.css";
+import "@braccato/core-dom/styles/stage.css";
 import "@braccato/highlight/highlight.css";
 import "./demo.css";
 
@@ -1802,10 +1802,10 @@ function toggleBothDecorations() {
 
 async function boot() {
   const [, { CUSTOM_THEME_STYLE_ID, LINE_CLASS, LYRICS_CLASS }, themeSettings, core] = await Promise.all([
-    import("@braccato/core/element"),
-    import("@braccato/core/constants"),
-    import("@braccato/core/themeSettings"),
-    import("@braccato/core"),
+    import("@braccato/core-dom/element"),
+    import("@braccato/core-dom/constants"),
+    import("@braccato/core-dom/themeSettings"),
+    import("@braccato/core-dom"),
   ]);
   parseThemeConfig = themeSettings.parseThemeConfig;
   injectTranslation = core.injectTranslation;

@@ -4,6 +4,7 @@ demo/public/generated
 .turbo
 *.tsbuildinfo
 test-data/
+.bench/
 .env.local
 .env
 # Deployment settings are environment specific and not tracked.

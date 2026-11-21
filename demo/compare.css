@@ -1,0 +1,146 @@
+/* The demo's stage, cut down to what the lyrics sit in, so both renderers are judged against the
+   same backdrop, type and variables as the real page. */
+:root {
+  color-scheme: dark;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --panel: oklch(0.17 0.007 30);
+  --on-panel: oklch(0.97 0.003 40);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: oklch(0.14 0.006 30);
+  color: var(--on-panel);
+  font: 14px/1.4 Satoshi, system-ui, sans-serif;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+}
+
+.bar input[type="range"] {
+  flex: 1;
+}
+
+.stats {
+  font: 12px ui-monospace, monospace;
+  opacity: 0.7;
+  min-width: 18ch;
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 16px 16px;
+  min-height: 0;
+}
+
+.panes[data-mode="dom"] .stage[data-renderer="rs"],
+.panes[data-mode="rs"] .stage[data-renderer="dom"] {
+  display: none;
+}
+
+.panes[data-mode="dom"],
+.panes[data-mode="rs"] {
+  grid-template-columns: 1fr;
+}
+
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-radius: 28px;
+  background:
+    radial-gradient(90% 70% at 12% 108%, oklch(0.6 0.17 32 / 0.34), transparent 70%),
+    radial-gradient(70% 60% at 100% -10%, oklch(0.7 0.12 65 / 0.14), transparent 70%),
+    var(--panel);
+  overflow: hidden;
+  isolation: isolate;
+
+  --blyrics-font-family: "Satoshi", ui-sans-serif, sans-serif;
+  --blyrics-font-size: clamp(1.75rem, 3.4vw, 3.5rem);
+  --blyrics-translated-font-size: calc(var(--blyrics-font-size) * 0.48);
+  --blyrics-font-weight: 700;
+  --blyrics-line-height: 1.14;
+  --blyrics-padding: 0.72rem;
+  --blyrics-blur-amount: 0px;
+  --blyrics-lyric-active-color: oklch(0.97 0.003 40);
+  --blyrics-lyric-inactive-color: oklch(0.97 0.003 40 / 0.22);
+  --blyrics-translated-color: oklch(0.97 0.003 40 / 0.6);
+  --blyrics-word-wobble-transform-from: translateY(0);
+  --blyrics-word-wobble-transform-peak: translateY(-0.005em);
+  --blyrics-word-wobble-transform-settle: translateY(-0.028em);
+  --blyrics-word-wobble-transform-to: translateY(-0.0375em);
+}
+
+.stage h2 {
+  margin: 0;
+  padding: 14px 24px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.55;
+}
+
+.view {
+  min-height: 0;
+  padding-inline: clamp(20px, 3vw, 44px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 84%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 84%, transparent);
+}
+
+body[data-view-scroll="on"] .view {
+  overflow-y: auto;
+}
+
+braccato-lyrics,
+braccato-lyrics-rs {
+  display: block;
+}
+
+.blyrics-container {
+  padding-top: var(--blyrics-padding-top, 2rem);
+}
+
+[data-page-rules="on"] .blyrics-container {
+  letter-spacing: var(--demo-lyric-tracking, -1px);
+}
+
+.blyrics-word-highlight:not([data-long-word]) {
+  --blyrics-glow-color: transparent;
+}
+
+/* The demo's stage layout: the element is placed inside the view and shows only what is sung. */
+.panes[data-layout="stage"] .view {
+  position: relative;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.panes[data-layout="stage"] :is(braccato-lyrics, braccato-lyrics-rs) {
+  position: absolute;
+  inset: 24px clamp(28px, 3vw, 44px) 28px;
+}
+
+.plate {
+  position: absolute;
+  border-radius: 16px;
+  background: oklch(0.17 0.007 30 / 0.42);
+  backdrop-filter: blur(18px);
+  pointer-events: none;
+  transition: opacity 300ms ease 70ms, translate 380ms cubic-bezier(0.2, 0, 0, 1), width 380ms cubic-bezier(0.2, 0, 0, 1), height 380ms cubic-bezier(0.2, 0, 0, 1);
+}

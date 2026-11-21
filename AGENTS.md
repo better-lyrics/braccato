@@ -3,19 +3,21 @@
 Operating notes for AI agents working in this repo. They cover what the config files do not make
 obvious; read the package READMEs for the API itself.
 
-## Nothing runs the test suite on PRs
+## The gate
 
-`.github/workflows/release.yml` is the only GitHub Actions workflow, and it runs on pushes to
-`master`. The checks a PR gets (Cloudflare Pages, Socket Security, Graphite) do not lint, typecheck
-or test, so these local runs are the whole gate. Run them before calling work done:
+`.github/workflows/ci.yml` runs these on every pull request, with the Rust toolchain, and the release
+workflow runs them again before it publishes. Run them locally before calling work done:
 
 ```bash
-pnpm lint        # biome check, read-only; pnpm lint:fix writes
-pnpm typecheck
-pnpm test        # vitest: parsers, highlight, provider-blyrics, rics
+pnpm lint        # biome check (read-only; pnpm lint:fix writes), then cargo fmt --check and clippy
+pnpm typecheck   # every package, and tooling/
+pnpm test        # vitest (parsers, highlight, provider-blyrics, rics) and cargo test
 pnpm selfcheck   # core's self-checks (see below)
 pnpm build
 ```
+
+Without Rust, the core-rs steps print a notice and skip; CI sets `BRACCATO_REQUIRE_RUST` so they fail
+instead. Turbo does not cache those steps, so a skip is never replayed once Rust is installed.
 
 Run `pnpm install` in each git worktree. In a non-interactive shell use `CI=true pnpm install`: pnpm
 can stop at a hidden "reinstall from scratch?" prompt and leave packages without `node_modules`,
@@ -56,11 +58,13 @@ every release from it is a prerelease such as `2.0.0-beta.3`, published under th
 - To release the major version, run `pnpm changeset pre exit` on `next`, then squash-merge `next`
   into `master`.
 
-## `@braccato/core` is the Better Lyrics renderer
+## `@braccato/core-dom` is the 1.x DOM renderer
 
-`packages/core` is the rendering engine Better Lyrics runs on YouTube Music, moved here from
-[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics). Behaviour changes ship
-straight into the extension, so check them against it, not only against the demo.
+`packages/core` is the DOM rendering engine `@braccato/core` 1.x published, which Better Lyrics ran
+on YouTube Music. On `next` it is the private `@braccato/core-dom`: 2.0 replaces it with the Rust
+renderer in `packages/core-rs` (below), and it stays as the reference that renderer is checked
+against, the source of the leaf modules and stylesheets 2.0 publishes, and what the demo page runs.
+On `master` it is still `@braccato/core` 1.x, where its fixes go.
 
 - The demo (`pnpm -C demo dev`, http://localhost:5173/) covers most renderer work. It imports core's
   built `dist/`, and nothing watches core, so run `pnpm package` after each renderer edit and reload
@@ -80,6 +84,42 @@ straight into the extension, so check them against it, not only against the demo
   `packages/core/README.md` name a property, attribute, event, class name, custom property, stylesheet
   or theme setting the emitted package lacks. Renaming public API breaks the build until both are
   updated; adding it should update both too.
+
+## `@braccato/core` 2 is the Rust + WebGL2 rewrite
+
+`packages/core-rs` is `@braccato/core` from 2.0. It renders the same lyrics as the DOM renderer from
+one canvas, behind 1.x's `createLyricsRenderer` interface (see its README), and is what Better Lyrics
+runs. Behaviour changes ship straight into the extension, so check them against it, not only against
+the demo; changes need a changeset. Its build first copies the leaf modules and stylesheets from
+`packages/core/dist` (`scripts/shared.mjs`), so those keep 1.x's import paths. Building
+it needs Rust with the `wasm32-unknown-unknown` target and `wasm-pack`. `scripts/run.mjs` skips its
+build, lint and test with a notice when those are missing, so the gate above still runs without Rust;
+with Rust installed, check that the notice did not appear.
+
+- `cargo test --lib` in the package covers the pure logic (song building, scroll, stage, clock,
+  the line pages' allocator). `pnpm lint` runs `cargo fmt --check` and clippy on the wasm target
+  with warnings as errors.
+- The demo's compare page imports core-rs's `pkg/` by path, and nothing rebuilds it: run
+  `pnpm -C packages/core-rs build` (or `build:profiling`, for named CPU profiles) after a Rust edit.
+- The shader is `src/shaders/quad.wgsl`. `build.rs` validates it with naga and writes GLSL ES 3.00
+  into `OUT_DIR`, together with the uniform block and sampler names naga chose; `gpu.rs` binds by
+  those generated constants, so never hard-code a `_group_0_binding_*` name. naga is a
+  build-dependency only and must stay out of `[dependencies]`.
+- Rust doc comments are copied into the generated JavaScript as block comments, so one containing
+  `*/` breaks the glue file. Write theme settings as `blyrics-key = value;` in docs.
+- Performance is measured with `pnpm bench` (`tooling/bench.ts`, options in its header): save a
+  baseline before a change that could cost or save time, then compare against it. A change smaller
+  than the runs' range is noise. `--profile` with a `build:profiling` wasm names Rust functions.
+- Visual parity is checked on `demo/compare.html` (dev server only: the deployed demo has no Rust),
+  which puts both renderers on one clock. Diff the
+  two panes rather than eyeballing them; `window.compareRects()` gives the crop rectangles.
+- The hidden layout DOM shares core's class names so a page's `--blyrics-*` variables reach it, which
+  also means core's stylesheets do. `style.rs` therefore pins every transform, animation and
+  `::before` in the renderer's own elements: anything that moves them skews the measurement. Their
+  text is transparent, not hidden, and what a host adds to the container stays visible, so pin and
+  hide by the renderer's own classes, never `.brs-layout *`.
+- `js/renderer.js` is the core-compatible adapter. Better Lyrics consumes it, so keep its behaviour
+  in step with core's renderer interface (`packages/core/src/types.ts`).
 
 ## Tests
 

@@ -6,9 +6,9 @@
 		"dev": "turbo dev",
 		"build": "turbo build",
 		"build:packages": "turbo build --filter='./packages/*'",
-		"lint": "biome check .",
+		"lint": "biome check . && turbo lint",
 		"lint:fix": "biome check --write .",
-		"typecheck": "turbo typecheck",
+		"typecheck": "turbo typecheck && tsc -p tooling",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"clean": "turbo clean && rm -rf node_modules",
@@ -17,7 +17,8 @@
 		"version-packages": "changeset version",
 		"release": "bash scripts/release.sh",
 		"package": "tsx tooling/build-package.ts",
-		"selfcheck": "tsx tooling/run-selfchecks.ts"
+		"selfcheck": "tsx tooling/run-selfchecks.ts",
+		"bench": "tsx tooling/bench.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

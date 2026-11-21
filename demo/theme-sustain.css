@@ -22,6 +22,13 @@
   --blyrics-letter-wave-duration: 0.9s;
 }
 
+/* The same effect for a renderer that draws the lines itself (@braccato/core 2), which reads it as
+   curves by distance after the sung line rather than from the rules below. */
+.blyrics-container {
+  --blyrics-line-opacity-after: 1 0.88 0.72 0.52 0.28 0;
+  --blyrics-line-blur-after: 0 1.125px 2.5px 4.125px 6px;
+}
+
 /* Lines blur and fade the further they are from the one being sung. `.blyrics--active` follows the
    scroll and ends a little before the line does, `.blyrics--animating` follows the audio, so
    matching either keeps the effect steady. */
