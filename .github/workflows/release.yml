@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # @braccato/core-rs is built from Rust into WebAssembly.
+      # @braccato/core (packages/core-rs) is built from Rust into WebAssembly.
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

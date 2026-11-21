@@ -1,7 +1,9 @@
-# @braccato/core-rs
+# @braccato/core 2
 
-The braccato lyrics renderer rewritten in Rust and drawn with WebGL2. It shows the same lyrics the
-same way as [`@braccato/core`](../core): the same layout and wrapping, syllable sweep, glow, word
+The braccato lyrics renderer rewritten in Rust and drawn with WebGL2. From 2.0, this is
+`@braccato/core`, in beta under the npm `beta` tag (`npm i @braccato/core@beta`) while `latest` stays
+on 1.x. It shows the same lyrics the same way as the 1.x DOM renderer ([`packages/core`](../core),
+kept in this repo as the private `@braccato/core-dom`): the same layout and wrapping, syllable sweep, glow, word
 wobble, letter wave, line scale, autoscroll glide, background vocals, timed romanizations,
 translations, instrumental note, credits and stage layout. It does all of that from one canvas, so a
 playing song costs no style, layout or paint work per frame.
@@ -11,15 +13,15 @@ radius shrinks from `--blyrics-highlight-glow-radius-from` to nothing.
 
 ## Use
 
-### As `@braccato/core`'s renderer
+### As 1.x's renderer
 
-The package's main export has `@braccato/core`'s renderer interface, so a consumer written against
-core switches by changing where it imports from and loading the wasm first:
+The package's main export has 1.x's renderer interface, so a consumer written against 1.x upgrades
+by loading the wasm first:
 
 ```js
-import { createLyricsRenderer, injectTranslation, load } from "@braccato/core-rs";
+import { createLyricsRenderer, injectTranslation, load } from "@braccato/core";
 
-await load(); // or load(wasmUrl), or loadSync(bytes); the file is "@braccato/core-rs/wasm"
+await load(); // or load(wasmUrl), or loadSync(bytes); the file is "@braccato/core/wasm"
 const view = createLyricsRenderer({ document, window, host: { getScrollElement: () => scroller } });
 view.setLyrics(lyrics, { mount, songKey: videoId });
 view.tick(player.currentTime, { isPlaying: true, eventCreationTime: Date.now() });
@@ -28,8 +30,9 @@ view.scheduleLyricPositionUpdate(() => true, () => {});
 ```
 
 `createLyricsRenderer`, `injectTranslation`, `injectRomanization`, `removeTranslation`,
-`removeRomanization`, `resetPlaybackClock` and `resumeAllAutoscroll` take what core's do. What is
-different underneath:
+`removeRomanization`, `resetPlaybackClock` and `resumeAllAutoscroll` take what 1.x's do, and the
+leaf modules `@braccato/core/constants`, `/text`, `/themeSettings` and `/util` and the stylesheets
+under `@braccato/core/styles/` are 1.x's own. What is different underneath:
 
 - The renderer draws on its own animation frames, so `tick` only hands it the player snapshot (time,
   play state, and when it was read); frames in between carry the time forward. Ticking at 20 ms is
@@ -53,7 +56,7 @@ different underneath:
 <braccato-lyrics source="#player"></braccato-lyrics>
 
 <script type="module">
-  import { defineLyricsElement, load } from "@braccato/core-rs/element";
+  import { defineLyricsElement, load } from "@braccato/core/element";
 
   await load();
   defineLyricsElement(); // or defineLyricsElement("my-lyrics")

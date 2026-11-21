@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@braccato/core": "workspace:*",
+    "@braccato/core-dom": "workspace:*",
     "@braccato/highlight": "workspace:*",
     "@braccato/parsers": "workspace:*",
     "torph": "^0.1.3"

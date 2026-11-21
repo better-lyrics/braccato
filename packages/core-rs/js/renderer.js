@@ -227,7 +227,7 @@ function resolveTickOptions(options) {
  * `load()` must have resolved first.
  */
 export function createLyricsRenderer(rendererOptions) {
-	if (!loaded) throw new Error("@braccato/core-rs: call load() before createLyricsRenderer()");
+	if (!loaded) throw new Error("@braccato/core: call load() before createLyricsRenderer()");
 	const doc = rendererOptions.document;
 	const win = rendererOptions.window;
 	const layout = rendererOptions.layout ?? "scroll";
@@ -300,7 +300,7 @@ export function createLyricsRenderer(rendererOptions) {
 
 	function ensure(nextMount) {
 		if (rust && nextMount.ownerDocument !== doc) {
-			throw new Error("@braccato/core-rs: a renderer stays in the document it was created for");
+			throw new Error("@braccato/core: a renderer stays in the document it was created for");
 		}
 		if (!rust) {
 			rust = new Renderer(nextMount);

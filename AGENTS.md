@@ -58,11 +58,13 @@ every release from it is a prerelease such as `2.0.0-beta.3`, published under th
 - To release the major version, run `pnpm changeset pre exit` on `next`, then squash-merge `next`
   into `master`.
 
-## `@braccato/core` is the Better Lyrics renderer
+## `@braccato/core-dom` is the 1.x DOM renderer
 
-`packages/core` is the rendering engine Better Lyrics runs on YouTube Music, moved here from
-[better-lyrics/better-lyrics](https://github.com/better-lyrics/better-lyrics). Behaviour changes ship
-straight into the extension, so check them against it, not only against the demo.
+`packages/core` is the DOM rendering engine `@braccato/core` 1.x published, which Better Lyrics ran
+on YouTube Music. On `next` it is the private `@braccato/core-dom`: 2.0 replaces it with the Rust
+renderer in `packages/core-rs` (below), and it stays as the reference that renderer is checked
+against, the source of the leaf modules and stylesheets 2.0 publishes, and what the demo page runs.
+On `master` it is still `@braccato/core` 1.x, where its fixes go.
 
 - The demo (`pnpm -C demo dev`, http://localhost:5173/) covers most renderer work. It imports core's
   built `dist/`, and nothing watches core, so run `pnpm package` after each renderer edit and reload
@@ -83,10 +85,13 @@ straight into the extension, so check them against it, not only against the demo
   or theme setting the emitted package lacks. Renaming public API breaks the build until both are
   updated; adding it should update both too.
 
-## `@braccato/core-rs` is the Rust + WebGL2 rewrite
+## `@braccato/core` 2 is the Rust + WebGL2 rewrite
 
-`packages/core-rs` renders the same lyrics as core from one canvas, behind core's `createLyricsRenderer`
-interface (see its README). It is published, so changes to it need a changeset like core's. Building
+`packages/core-rs` is `@braccato/core` from 2.0. It renders the same lyrics as the DOM renderer from
+one canvas, behind 1.x's `createLyricsRenderer` interface (see its README), and is what Better Lyrics
+runs. Behaviour changes ship straight into the extension, so check them against it, not only against
+the demo; changes need a changeset. Its build first copies the leaf modules and stylesheets from
+`packages/core/dist` (`scripts/shared.mjs`), so those keep 1.x's import paths. Building
 it needs Rust with the `wasm32-unknown-unknown` target and `wasm-pack`. `scripts/run.mjs` skips its
 build, lint and test with a notice when those are missing, so the gate above still runs without Rust;
 with Rust installed, check that the notice did not appear.

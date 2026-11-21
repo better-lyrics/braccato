@@ -10,10 +10,10 @@
 //   mode    split | dom | rs (the other view is taken off the page, so it does no work)
 //   bench   turn off the page's own per-frame work (`pnpm bench` sets it)
 
-import "@braccato/core/styles/variables.css";
-import "@braccato/core/styles/lyrics.css";
-import "@braccato/core/styles/instrumental.css";
-import "@braccato/core/styles/stage.css";
+import "@braccato/core-dom/styles/variables.css";
+import "@braccato/core-dom/styles/lyrics.css";
+import "@braccato/core-dom/styles/instrumental.css";
+import "@braccato/core-dom/styles/stage.css";
 import "./compare.css";
 
 // Imported by path rather than as a dependency: the Rust renderer needs a Rust toolchain to build,
@@ -109,7 +109,7 @@ function shape(score, timing) {
   return score;
 }
 
-const [, core] = await Promise.all([import("@braccato/core/element"), import("@braccato/core"), load()]).then(
+const [, core] = await Promise.all([import("@braccato/core-dom/element"), import("@braccato/core-dom"), load()]).then(
   ([a, b]) => [a, b]
 );
 defineLyricsElement("braccato-lyrics-rs");

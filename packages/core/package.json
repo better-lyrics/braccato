@@ -1,7 +1,8 @@
 {
-  "name": "@braccato/core",
+  "name": "@braccato/core-dom",
   "version": "1.22.0",
-  "description": "Synchronized lyrics renderer with word-by-word animations",
+  "private": true,
+  "description": "The DOM lyrics renderer @braccato/core 1.x published, kept as the reference the Rust renderer is checked against",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -41,9 +42,6 @@
     "./package.json": "./package.json"
   },
   "files": ["dist"],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsx ../../tooling/build-package.ts",
     "typecheck": "tsc --noEmit",

@@ -18,7 +18,7 @@ jobs:
     name: Build, lint, typecheck and test
     runs-on: ubuntu-latest
     env:
-      # Fail rather than skip @braccato/core-rs when the Rust toolchain is missing.
+      # Fail rather than skip the Rust renderer (packages/core-rs) when the Rust toolchain is missing.
       BRACCATO_REQUIRE_RUST: "1"
 
     steps:

@@ -47,7 +47,7 @@ if (!step) {
 
 const missing = step.needs.filter((tool) => spawnSync(tool, ["--version"], { stdio: "ignore" }).error);
 if (missing.length > 0) {
-	const message = `@braccato/core-rs: ${missing.join(" and ")} not installed. See packages/core-rs/README.md.`;
+	const message = `@braccato/core (packages/core-rs): ${missing.join(" and ")} not installed. See packages/core-rs/README.md.`;
 	if (process.env.BRACCATO_REQUIRE_RUST) {
 		console.error(message);
 		process.exit(1);

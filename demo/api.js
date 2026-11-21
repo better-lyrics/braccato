@@ -9,7 +9,7 @@
 // stops where the reasoning starts. The reasoning lives beside the code it explains, in the module's
 // own file headers.
 
-import corePackage from "@braccato/core/package.json" with { type: "json" };
+import corePackage from "@braccato/core-dom/package.json" with { type: "json" };
 
 // -- The package --------------------------------------------
 
