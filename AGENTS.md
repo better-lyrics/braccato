@@ -41,6 +41,21 @@ only the version bump, so review here is the only review the code gets.
 - The repo only allows squash merges. The PR title becomes the commit subject:
   `type(scope): lowercase imperative`, for example `fix(core): keep lines apart when the view scrolls far`.
 
+### `next` publishes betas
+
+`next` holds the next major version. The release workflow runs on it too, and while
+`.changeset/pre.json` is there (changesets' pre mode, entered with `pnpm changeset pre enter beta`)
+every release from it is a prerelease such as `2.0.0-beta.3`, published under the npm `beta` tag.
+`latest` stays with what `master` publishes.
+
+- Open pull requests for the next major version against `next`. Fixes to the current version go to
+  `master` as usual.
+- Pre mode releases every package with a changeset on `next` as a beta, so only changes that belong
+  to the next major version get one there.
+- `next` is kept rebased onto `master`.
+- To release the major version, run `pnpm changeset pre exit` on `next`, then squash-merge `next`
+  into `master`.
+
 ## `@braccato/core` is the Better Lyrics renderer
 
 `packages/core` is the rendering engine Better Lyrics runs on YouTube Music, moved here from

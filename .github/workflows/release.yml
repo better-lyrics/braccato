@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+      # Betas of the next major version, published under the npm `beta` tag (see AGENTS.md).
+      - next
   workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
@@ -62,7 +64,7 @@ jobs:
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
             git commit -m "chore: version packages [skip ci]"
-            git push origin HEAD:master
+            git push origin HEAD:${{ github.ref_name }}
             echo "released=true" >> "$GITHUB_OUTPUT"
           fi
           pnpm changeset publish --no-git-tag
@@ -70,7 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
 
       - name: Rebuild docs
-        if: steps.version.outputs.released == 'true'
+        if: steps.version.outputs.released == 'true' && github.ref_name == 'master'
         run: curl -fsS -X POST "$DOCS_DEPLOY_HOOK_URL"
         env:
           DOCS_DEPLOY_HOOK_URL: ${{ secrets.DOCS_DEPLOY_HOOK_URL }}
