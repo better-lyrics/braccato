@@ -52,6 +52,9 @@ const HOST_RECHECK_MS: f64 = 250.0;
 /// Scrolls this soon after the lines were built or measured are the page settling (a scroll position
 /// clamped to new content), not a reader.
 const SETTLING_SCROLL_MS: f64 = 600.0;
+/// And until this many frames have started since: a scroll event waits for the next frame, which a
+/// hidden or covered window may not draw for seconds.
+const SETTLING_SCROLL_FRAMES: u8 = 2;
 /// A user scroll stops autoscroll for this long, synced and unsynced.
 const USER_SCROLL_PAUSE_MS: f64 = 25_000.0;
 const USER_SCROLL_PAUSE_UNSYNCED_MS: f64 = 5_000.0;
@@ -210,6 +213,8 @@ pub struct View {
     riders: Vec<Rider>,
     /// Until when scroll events are taken for the page settling rather than a reader.
     settling_until: f64,
+    /// Frames still to start before they stop being taken for it.
+    settling_frames: u8,
     /// Whether the view watches its scroll element for readers itself. A host that reports scrolls
     /// (`noteUserScroll`) turns this off, as the DOM renderer left it to the host.
     pub own_scroll_detection: bool,
@@ -338,6 +343,7 @@ impl View {
             credits_curves: Vec::new(),
             riders: Vec::new(),
             settling_until: 0.0,
+            settling_frames: 0,
             own_scroll_detection: true,
             prior: None,
             images_asked: Default::default(),
@@ -869,6 +875,7 @@ impl View {
     /// scrolls for a moment are its doing.
     fn settle_scrolls(&mut self) {
         self.settling_until = self.now.ms() + SETTLING_SCROLL_MS;
+        self.settling_frames = SETTLING_SCROLL_FRAMES;
     }
 
     /// A scroll event: if it is not the one autoscroll just caused, nor the page settling after the
@@ -876,7 +883,8 @@ impl View {
     pub fn on_scroll(&mut self, now_ms: f64) {
         let top = self.scroll_top();
         let ours = self.autoscroll.last_written.is_some_and(|w| (w - top).abs() <= 1.0);
-        if ours || now_ms < self.settling_until || self.song.as_ref().is_none_or(|s| s.no_lyrics) {
+        let settling = now_ms < self.settling_until || self.settling_frames > 0;
+        if ours || settling || self.song.as_ref().is_none_or(|s| s.no_lyrics) {
             return;
         }
         let unsynced = self.song.as_ref().is_some_and(|s| s.sync == SyncType::None);
@@ -1371,6 +1379,8 @@ impl View {
 
     /// Draws the frame at `now_ms`. Returns whether another frame is wanted.
     pub fn frame(&mut self, now_ms: f64) -> bool {
+        // The scroll events this frame's rendering brought have been dispatched by now.
+        self.settling_frames = self.settling_frames.saturating_sub(1);
         // Off the screen nothing is drawn or measured, and above all the scroll element is not
         // written: the page may be showing something else in it.
         if self.hidden || !self.on_page {
