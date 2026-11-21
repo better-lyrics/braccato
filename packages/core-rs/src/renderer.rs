@@ -735,11 +735,28 @@ impl View {
     }
 
     /// A player snapshot: the time it showed, whether it was playing, and when it was read, as
-    /// `Date.now()`, so frames between snapshots carry it forward.
-    pub fn set_snapshot(&mut self, seconds: f64, playing: bool, event_ms: f64) {
+    /// `Date.now()`, so frames between snapshots carry it forward. Returns whether it can change what
+    /// is drawn: a host ticks many times a second, and each frame asked for redraws the whole view.
+    pub fn set_snapshot(&mut self, seconds: f64, playing: bool, event_ms: f64) -> bool {
+        let flipped = playing != self.manual_playing;
+        let changed = flipped || seconds != self.manual_time;
         self.manual_time = seconds;
         self.manual_playing = playing;
         self.manual_event_ms = event_ms;
+        let Some(song) = &self.song else { return false };
+        if self.stage {
+            return true;
+        }
+        if song.no_lyrics {
+            // The message is drawn the same at any time.
+            return false;
+        }
+        if song.sync == SyncType::None {
+            // Only the passive drift follows the player, and only whether it plays.
+            return flipped;
+        }
+        // Playing, the frames run on their own; paused, only a move shows.
+        changed
     }
 
     pub fn reset_clock(&mut self) {

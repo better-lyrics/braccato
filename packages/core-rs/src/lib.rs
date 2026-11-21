@@ -511,8 +511,9 @@ impl Renderer {
     /// `Date.now()` (negative when it was not read off a player).
     #[wasm_bindgen(js_name = setSnapshot)]
     pub fn set_snapshot(&self, seconds: f64, playing: bool, event_ms: f64) {
-        self.shared.view.borrow_mut().set_snapshot(seconds, playing, event_ms);
-        self.shared.request_frame();
+        if self.shared.view.borrow_mut().set_snapshot(seconds, playing, event_ms) {
+            self.shared.request_frame();
+        }
     }
 
     #[wasm_bindgen(js_name = resetClock)]
