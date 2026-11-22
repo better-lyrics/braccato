@@ -562,7 +562,9 @@ impl View {
             let _ = container.insert_before(credits, first_foreign.as_ref());
         }
 
-        self.autoscroll.remap(|old| origins.iter().position(|o| *o == Some(old)));
+        let moved = |old: usize| origins.iter().position(|o| *o == Some(old));
+        self.autoscroll.remap(moved);
+        self.hovered = self.hovered.and_then(moved);
         if !self.stage_motion.is_empty() {
             let mut motions: Vec<stage::Motion> = origins
                 .iter()
@@ -958,17 +960,15 @@ impl View {
             return false;
         }
         let previous = std::mem::replace(&mut self.hovered, index);
+        // Followed whether or not the theme has a hover look: it can gain or lose one mid-hover.
         let hover = self.theme.line_hover;
-        if !hover.is_set() {
-            return false;
-        }
         let now = self.now.ms();
         for (i, to) in [(previous, 0.0), (index, 1.0)].into_iter().filter_map(|(i, to)| Some((i?, to))) {
             if let Some(state) = self.lines.get_mut(i) {
                 state.hover.aim(to, now, hover.duration_s, hover.easing);
             }
         }
-        true
+        hover.is_set()
     }
 
     /// A click on a line: the player time it seeks to, if any.
