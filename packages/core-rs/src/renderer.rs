@@ -938,6 +938,8 @@ impl View {
     /// A scroll event: if it is not the one autoscroll just caused, nor the page settling after the
     /// lines changed, a reader is scrolling.
     pub fn on_scroll(&mut self, now_ms: f64) {
+        // A host's listener can run before the view's own, which is what marks the position stale.
+        self.scroll_changed();
         let top = self.scroll_top();
         let ours = self.autoscroll.last_written.is_some_and(|w| (w - top).abs() <= 1.0);
         let settling = now_ms < self.settling_until || self.settling_frames > 0;
@@ -946,13 +948,12 @@ impl View {
         }
         let unsynced = self.song.as_ref().is_some_and(|s| s.sync == SyncType::None);
         let pause = if unsynced { USER_SCROLL_PAUSE_UNSYNCED_MS } else { USER_SCROLL_PAUSE_MS };
-        let was_paused = self.user_paused_until > now_ms;
         self.user_paused_until = now_ms + pause;
         self.autoscroll.last_written = None;
-        if !was_paused {
-            self.container.class_list().add_1("blyrics-user-scrolling").ok();
-            self.events.push(Event::ScrollState { user_scrolling: true });
-        }
+        self.container.class_list().add_1("blyrics-user-scrolling").ok();
+        // On every scroll, as the DOM renderer told it: a host may have hidden its resume button
+        // since the pause began.
+        self.events.push(Event::ScrollState { user_scrolling: true });
     }
 
     /// The pointer moved to `client`, or off the lines. Returns whether that changes the hovered
@@ -1501,7 +1502,8 @@ impl View {
         let Some(song) = self.song.take() else { return false };
         let keep_going = self.frame_with(&song, now_ms);
         self.song = Some(song);
-        keep_going
+        // Settling is counted in frames, so it needs them: paused, nothing else asks for one.
+        keep_going || self.settling_frames > 0
     }
 
     fn frame_with(&mut self, song: &Song, now_ms: f64) -> bool {
