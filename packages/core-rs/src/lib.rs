@@ -246,25 +246,20 @@ impl Renderer {
                 shared.request_frame();
             }
         })];
-        // The line under the pointer, for the theme's hover look. A touch has no hover: its
-        // `pointerover` comes with the tap and would leave the line looking hovered.
-        listeners.push(listen(&shared, &container, "pointerover", false, |shared, event| {
+        // Where the pointer is, for the theme's hover look. A touch has no hover: its move comes
+        // with the tap and would leave the line looking hovered.
+        listeners.push(listen(&shared, &container, "pointermove", false, |shared, event| {
             if dom::get(&event, "pointerType").as_string().as_deref() == Some("touch") {
                 return;
             }
-            let index = event
-                .target()
-                .map(|t| t.unchecked_into::<Element>())
-                .filter(|t| js_sys::Reflect::has(t, &"closest".into()).unwrap_or(false))
-                .and_then(|t| t.closest(".blyrics--line").ok().flatten())
-                .and_then(|line| line.get_attribute("data-line-number"))
-                .and_then(|n| n.parse::<usize>().ok());
-            if shared.view.borrow_mut().set_hovered(index) {
+            let mouse: &web_sys::MouseEvent = event.unchecked_ref();
+            let client = (mouse.client_x() as f32, mouse.client_y() as f32);
+            if shared.view.borrow_mut().set_pointer(Some(client)) {
                 shared.request_frame();
             }
         }));
         listeners.push(listen(&shared, &container, "pointerleave", false, |shared, _| {
-            if shared.view.borrow_mut().set_hovered(None) {
+            if shared.view.borrow_mut().set_pointer(None) {
                 shared.request_frame();
             }
         }));

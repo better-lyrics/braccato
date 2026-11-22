@@ -271,8 +271,9 @@ pub struct View {
     pub tick_options: TickOptions,
     /// The host says nothing of the view is on the screen (another tab, an ad), so no frames.
     pub hidden: bool,
-    /// The line under the pointer.
-    hovered: Option<usize>,
+    /// Where the pointer is over the lines, in client coordinates. The line under it is found each
+    /// frame (`pointed_line`): lines glide and scroll beneath a pointer that rests.
+    pointer: Option<(f32, f32)>,
     /// Whether any of the lines' container is on the page: false while the page hides the panel
     /// it is in (another tab of it showing, the player minimized), whatever the host says.
     pub on_page: bool,
@@ -392,7 +393,7 @@ impl View {
             manual_event_ms: -1.0,
             tick_options: TickOptions { rate: 1.0, smooth_scroll: true, ..Default::default() },
             hidden: false,
-            hovered: None,
+            pointer: None,
             on_page: true,
             started: false,
             last_lyric: 0.0,
@@ -562,9 +563,7 @@ impl View {
             let _ = container.insert_before(credits, first_foreign.as_ref());
         }
 
-        let moved = |old: usize| origins.iter().position(|o| *o == Some(old));
-        self.autoscroll.remap(moved);
-        self.hovered = self.hovered.and_then(moved);
+        self.autoscroll.remap(|old| origins.iter().position(|o| *o == Some(old)));
         if !self.stage_motion.is_empty() {
             let mut motions: Vec<stage::Motion> = origins
                 .iter()
@@ -827,6 +826,9 @@ impl View {
             self.autoscroll.force = true;
         }
         self.on_page = on_page;
+        if !on_page {
+            self.pointer = None;
+        }
     }
 
     fn read_theme(&mut self) {
@@ -953,22 +955,28 @@ impl View {
         }
     }
 
-    /// The pointer moved onto line `index`, or off every line. Returns whether a frame is wanted.
-    pub fn set_hovered(&mut self, index: Option<usize>) -> bool {
-        let index = index.filter(|&i| i < self.lines.len());
-        if index == self.hovered {
-            return false;
+    /// The pointer moved to `client`, or off the lines. Returns whether that changes the hovered
+    /// line, and so wants a frame.
+    pub fn set_pointer(&mut self, client: Option<(f32, f32)>) -> bool {
+        self.pointer = client;
+        let Some(song) = &self.song else { return false };
+        self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
+    }
+
+    /// The line drawn under the pointer, if the theme has a hover look. Not the element under it:
+    /// while a glide runs the lines are drawn away from their boxes, which are already at its end.
+    fn pointed_line(&self, song: &Song, now_ms: f64) -> Option<usize> {
+        if self.stage || song.no_lyrics || !self.theme.line_hover.is_set() {
+            return None;
         }
-        let previous = std::mem::replace(&mut self.hovered, index);
-        // Followed whether or not the theme has a hover look: it can gain or lose one mid-hover.
-        let hover = self.theme.line_hover;
-        let now = self.now.ms();
-        for (i, to) in [(previous, 0.0), (index, 1.0)].into_iter().filter_map(|(i, to)| Some((i?, to))) {
-            if let Some(state) = self.lines.get_mut(i) {
-                state.hover.aim(to, now, hover.duration_s, hover.easing);
-            }
-        }
-        hover.is_set()
+        let (client_x, client_y) = self.pointer?;
+        let measured = self.measured.as_ref()?;
+        let origin = self.container.get_bounding_client_rect();
+        let (x, y) = (client_x - origin.left() as f32, client_y - origin.top() as f32);
+        measured.lines.iter().zip(&self.lines).position(|(layout, state)| {
+            let top = layout.top + state.curves.iter().map(|curve| curve.value(now_ms)).sum::<f32>();
+            (top..top + layout.height).contains(&y) && (layout.left..layout.left + layout.width).contains(&x)
+        })
     }
 
     /// A click on a line: the player time it seeks to, if any.
@@ -1024,7 +1032,10 @@ impl View {
     /// Builds the lines from scratch. `keep_host` keeps what the host added to the container and to
     /// the credits; new lyrics clear it, as the DOM renderer does.
     fn build(&mut self, keep_host: bool) {
-        self.hovered = None;
+        if !keep_host {
+            // Another song: its lines may be put where no `pointerleave` was sent from.
+            self.pointer = None;
+        }
         self.scroll_changed();
         self.needs_build = false;
         self.settle_scrolls();
@@ -1679,6 +1690,7 @@ impl View {
         let view_h = self.canvas_size.1;
         let mut prefetched = 0;
         let mut last_line_offset = 0.0;
+        let pointed = self.pointed_line(song, now_ms);
         let Some(measured) = self.measured.as_mut() else { return false };
         for (index, line) in song.lines.iter().enumerate() {
             let layout = &mut measured.lines[index];
@@ -1713,6 +1725,8 @@ impl View {
             }
             // The line under the pointer eases to the theme's hover look.
             let hover = self.theme.line_hover;
+            let target = if pointed == Some(index) { 1.0 } else { 0.0 };
+            state.hover.aim(target, now_ms, hover.duration_s, hover.easing);
             let hovered = if self.stage || song.no_lyrics || !hover.is_set() {
                 0.0
             } else {
