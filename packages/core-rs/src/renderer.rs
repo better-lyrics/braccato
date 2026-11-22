@@ -90,6 +90,13 @@ struct Tween {
     since_ms: f64,
 }
 
+impl LineState {
+    /// How far from its box the line is drawn, by the glides running on it.
+    fn glide_offset(&self, now_ms: f64) -> f32 {
+        self.curves.iter().map(|curve| curve.value(now_ms)).sum()
+    }
+}
+
 impl Tween {
     fn at(&self, now_ms: f64, duration_s: f32, easing: crate::easing::Easing) -> f32 {
         if self.from == self.to {
@@ -963,36 +970,63 @@ impl View {
         self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
     }
 
-    /// The line drawn under the pointer, if the theme has a hover look. Not the element under it:
-    /// while a glide runs the lines are drawn away from their boxes, which are already at its end.
+    /// The line drawn under the pointer, if the theme has a hover look.
     fn pointed_line(&self, song: &Song, now_ms: f64) -> Option<usize> {
         if self.stage || song.no_lyrics || !self.theme.line_hover.is_set() {
             return None;
         }
-        let (client_x, client_y) = self.pointer?;
+        self.line_at(self.pointer?, now_ms)
+    }
+
+    /// The line drawn at `client`. Not the element there: while a glide runs the lines are drawn
+    /// away from their boxes, which are already at its end.
+    fn line_at(&self, client: (f32, f32), now_ms: f64) -> Option<usize> {
         let measured = self.measured.as_ref()?;
         let origin = self.container.get_bounding_client_rect();
-        let (x, y) = (client_x - origin.left() as f32, client_y - origin.top() as f32);
+        let (x, y) = (client.0 - origin.left() as f32, client.1 - origin.top() as f32);
         measured.lines.iter().zip(&self.lines).position(|(layout, state)| {
-            let top = layout.top + state.curves.iter().map(|curve| curve.value(now_ms)).sum::<f32>();
+            let top = layout.top + state.glide_offset(now_ms);
             (top..top + layout.height).contains(&y) && (layout.left..layout.left + layout.width).contains(&x)
         })
     }
 
+    /// The line a click meant: the one drawn where it landed, or its element's when it has no
+    /// position (a keyboard, a script) or nothing glides.
+    fn clicked_line(&self, target: &Element, client: Option<(f32, f32)>, now_ms: f64) -> Option<usize> {
+        let of_target =
+            || target.closest(".blyrics--line").ok().flatten()?.get_attribute("data-line-number")?.parse().ok();
+        let gliding = !self.stage && self.lines.iter().any(|state| !state.curves.is_empty());
+        let Some(client) = client.filter(|_| gliding) else { return of_target() };
+        if target.closest(".blyrics--line").ok().flatten().is_none() {
+            // A glide can draw a line over the container's padding or the credits' text. Anything
+            // else there is the host's, and a drag that selected text across lines is no click.
+            let ours = target.is_same_node(Some(&self.container))
+                || target
+                    .matches(".blyrics-credits, .blyrics-credits__text, .blyrics-credits__text *")
+                    .unwrap_or(false);
+            let selected = self.win.get_selection().ok().flatten().is_some_and(|selection| !selection.is_collapsed());
+            if !ours || selected {
+                return None;
+            }
+        }
+        self.line_at(client, now_ms)
+    }
+
     /// A click on a line: the player time it seeks to, if any.
-    pub fn on_click(&mut self, target: &Element, alt: bool, client: (f32, f32)) -> Option<f64> {
+    pub fn on_click(&mut self, target: &Element, alt: bool, client: Option<(f32, f32)>) -> Option<f64> {
         let song = self.song.as_ref()?;
         if song.sync == SyncType::None || song.no_lyrics {
             return None;
         }
-        let line_el = target.closest(".blyrics--line").ok().flatten()?;
-        let index: usize = line_el.get_attribute("data-line-number")?.parse().ok()?;
+        let now = self.now.ms();
+        let index = self.clicked_line(target, client, now)?;
         let line = song.lines.get(index)?;
         let mut time = line.start_s as f64;
-        if alt && song.sync == SyncType::Richsync {
+        if let (true, SyncType::Richsync, Some(client)) = (alt, song.sync, client) {
             let layout = self.measured.as_ref()?.lines.get(index)?;
             let origin = self.container.get_bounding_client_rect();
-            let (px, py) = (client.0 - origin.left() as f32 - layout.left, client.1 - origin.top() as f32 - layout.top);
+            let top = layout.top + self.lines.get(index)?.glide_offset(now);
+            let (px, py) = (client.0 - origin.left() as f32 - layout.left, client.1 - origin.top() as f32 - top);
             let nearest = layout
                 .slots
                 .iter()
