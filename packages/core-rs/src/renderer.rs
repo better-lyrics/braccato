@@ -281,6 +281,8 @@ pub struct View {
     /// Where the pointer is over the lines, in client coordinates. The line under it is found each
     /// frame (`pointed_line`): lines glide and scroll beneath a pointer that rests.
     pointer: Option<(f32, f32)>,
+    /// The time of the frame on the canvas, which a click is judged by.
+    drawn_ms: f64,
     /// Whether any of the lines' container is on the page: false while the page hides the panel
     /// it is in (another tab of it showing, the player minimized), whatever the host says.
     pub on_page: bool,
@@ -401,6 +403,7 @@ impl View {
             tick_options: TickOptions { rate: 1.0, smooth_scroll: true, ..Default::default() },
             hidden: false,
             pointer: None,
+            drawn_ms: 0.0,
             on_page: true,
             started: false,
             last_lyric: 0.0,
@@ -992,7 +995,7 @@ impl View {
 
     /// The line a click meant: the one drawn where it landed, or its element's when it has no
     /// position (a keyboard, a script) or nothing glides.
-    fn clicked_line(&self, target: &Element, client: Option<(f32, f32)>, now_ms: f64) -> Option<usize> {
+    fn clicked_line(&self, target: &Element, client: Option<(f32, f32)>, drawn_ms: f64) -> Option<usize> {
         let of_target =
             || target.closest(".blyrics--line").ok().flatten()?.get_attribute("data-line-number")?.parse().ok();
         let gliding = !self.stage && self.lines.iter().any(|state| !state.curves.is_empty());
@@ -1009,7 +1012,7 @@ impl View {
                 return None;
             }
         }
-        self.line_at(client, now_ms)
+        self.line_at(client, drawn_ms)
     }
 
     /// A click on a line: the player time it seeks to, if any.
@@ -1018,14 +1021,15 @@ impl View {
         if song.sync == SyncType::None || song.no_lyrics {
             return None;
         }
-        let now = self.now.ms();
-        let index = self.clicked_line(target, client, now)?;
+        // What was clicked is what the last frame drew: the glides have moved on since.
+        let drawn = self.drawn_ms;
+        let index = self.clicked_line(target, client, drawn)?;
         let line = song.lines.get(index)?;
         let mut time = line.start_s as f64;
         if let (true, SyncType::Richsync, Some(client)) = (alt, song.sync, client) {
             let layout = self.measured.as_ref()?.lines.get(index)?;
             let origin = self.container.get_bounding_client_rect();
-            let top = layout.top + self.lines.get(index)?.glide_offset(now);
+            let top = layout.top + self.lines.get(index)?.glide_offset(drawn);
             let (px, py) = (client.0 - origin.left() as f32 - layout.left, client.1 - origin.top() as f32 - top);
             let nearest = layout
                 .slots
@@ -1904,6 +1908,7 @@ impl View {
         self.profile.lap(profile::Phase::Riders);
 
         self.submit();
+        self.drawn_ms = now_ms;
         self.profile.lap(profile::Phase::Submit);
         self.stats.quads = self.quads.len();
         self.stats.resident = self.lines.iter().filter(|l| l.texture.is_some()).count();
