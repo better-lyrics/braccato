@@ -236,11 +236,12 @@ impl Renderer {
             if !js_sys::Reflect::has(&target, &"closest".into()).unwrap_or(false) {
                 return;
             }
-            let seeked = shared.view.borrow_mut().on_click(
-                &target,
-                mouse.alt_key(),
-                (mouse.client_x() as f32, mouse.client_y() as f32),
-            );
+            // A click from a keyboard or a script counts no presses and has no position.
+            let client = dom::get(&event, "detail")
+                .as_f64()
+                .filter(|presses| *presses > 0.0)
+                .map(|_| (mouse.client_x() as f32, mouse.client_y() as f32));
+            let seeked = shared.view.borrow_mut().on_click(&target, mouse.alt_key(), client);
             if seeked.is_some() {
                 shared.flush_events();
                 shared.request_frame();
