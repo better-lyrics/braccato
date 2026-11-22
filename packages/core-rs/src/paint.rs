@@ -49,6 +49,8 @@ pub struct Placement {
     pub opacity: f32,
     /// How far the decorations' entry has run, 0 to 1.
     pub entry: f32,
+    /// The scale the pointer draws the line toward, and how far, 0 to 1.
+    pub hover_scale: (f32, f32),
 }
 
 const DECORATION_EASE: Easing = Easing::Bezier(0.25, 1.0, 0.5, 1.0);
@@ -336,6 +338,8 @@ pub fn paint_line(
     theme: &Theme,
 ) {
     let scale = line_scale(line, phase, moment, theme);
+    let (hover_to, hovered) = placement.hover_scale;
+    let scale = scale + (hover_to - scale) * hovered;
     let line_affine = Affine::scale_about((layout.origin_x, layout.height / 2.0), scale);
     let dpr = placement.dpr;
     // Lines at rest are drawn on whole device pixels, so their texels land one to one.

@@ -246,6 +246,28 @@ impl Renderer {
                 shared.request_frame();
             }
         })];
+        // The line under the pointer, for the theme's hover look. A touch has no hover: its
+        // `pointerover` comes with the tap and would leave the line looking hovered.
+        listeners.push(listen(&shared, &container, "pointerover", false, |shared, event| {
+            if dom::get(&event, "pointerType").as_string().as_deref() == Some("touch") {
+                return;
+            }
+            let index = event
+                .target()
+                .map(|t| t.unchecked_into::<Element>())
+                .filter(|t| js_sys::Reflect::has(t, &"closest".into()).unwrap_or(false))
+                .and_then(|t| t.closest(".blyrics--line").ok().flatten())
+                .and_then(|line| line.get_attribute("data-line-number"))
+                .and_then(|n| n.parse::<usize>().ok());
+            if shared.view.borrow_mut().set_hovered(index) {
+                shared.request_frame();
+            }
+        }));
+        listeners.push(listen(&shared, &container, "pointerleave", false, |shared, _| {
+            if shared.view.borrow_mut().set_hovered(None) {
+                shared.request_frame();
+            }
+        }));
         let fonts: web_sys::EventTarget = doc.fonts().unchecked_into();
         listeners.push(listen(&shared, &fonts, "loadingdone", true, |shared, _| {
             shared.view.borrow_mut().invalidate_layout();

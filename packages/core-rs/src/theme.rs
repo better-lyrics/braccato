@@ -313,6 +313,49 @@ pub struct Theme {
     /// whole line away, starting at 0. Between whole lines the values are interpolated; past the
     /// last, the last holds. Empty when the theme sets none.
     pub line_effects: LineEffects,
+
+    /// What the line under the pointer eases to.
+    pub line_hover: LineHover,
+}
+
+/// What a theme makes the line under the pointer look like: each value it sets replaces the line's
+/// own (its distance opacity and blur, its scale) while the pointer is over it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineHover {
+    pub opacity: Option<f32>,
+    /// Blur standard deviation, CSS pixels.
+    pub blur_px: Option<f32>,
+    pub scale: Option<f32>,
+    pub duration_s: f32,
+    pub easing: Easing,
+}
+
+impl LineHover {
+    pub fn is_set(&self) -> bool {
+        self.opacity.is_some() || self.blur_px.is_some() || self.scale.is_some()
+    }
+
+    /// Reads the hover variables from their raw values. A blur may be written as `blur(4px)`.
+    pub fn parse(opacity: &str, blur: &str, scale: &str, duration_s: f32, easing: Easing, root_font_px: f32) -> Self {
+        let number = |value: &str| {
+            let value = value.trim();
+            let parsed = match value.strip_suffix('%') {
+                Some(percent) => percent.trim().parse::<f32>().map(|v| v / 100.0),
+                None => value.parse::<f32>(),
+            };
+            parsed.ok().filter(|v| v.is_finite())
+        };
+        let blur = blur.trim();
+        let blur = blur.strip_prefix("blur(").and_then(|b| b.strip_suffix(')')).unwrap_or(blur);
+        let blur_px = if blur == "none" { Some(0.0) } else { parse_list(blur, root_font_px).first().copied() };
+        LineHover {
+            opacity: number(opacity).map(|v| v.clamp(0.0, 1.0)),
+            blur_px: blur_px.map(|v| v.max(0.0)),
+            scale: number(scale).filter(|v| *v > 0.0),
+            duration_s,
+            easing,
+        }
+    }
 }
 
 /// A theme's distance curves (see `Theme::line_effects`).
@@ -516,6 +559,14 @@ impl Theme {
                     blur_after: side("--blyrics-line-blur", "--blyrics-line-blur-after"),
                 }
             },
+            line_hover: LineHover::parse(
+                &raw("--blyrics-line-hover-opacity"),
+                &raw("--blyrics-line-hover-blur"),
+                &raw("--blyrics-line-hover-scale"),
+                secs("--blyrics-line-hover-duration", 0.2),
+                ease("--blyrics-line-hover-easing", Easing::EASE),
+                root_font_px,
+            ),
             settings,
         }
     }
@@ -542,6 +593,16 @@ mod tests {
         assert_eq!(effects.at(5.0), (0.0, 2.0));
         // Nothing set for lines before: untouched.
         assert_eq!(effects.at(-3.0), (1.0, 0.0));
+    }
+
+    #[test]
+    fn hover_reads_what_the_theme_sets_and_nothing_else() {
+        let hover = LineHover::parse("1", "blur(0)", "1.04", 0.2, Easing::EASE, 16.0);
+        assert_eq!((hover.opacity, hover.blur_px, hover.scale), (Some(1.0), Some(0.0), Some(1.04)));
+        let hover = LineHover::parse("80%", "0.25rem", "", 0.2, Easing::EASE, 16.0);
+        assert_eq!((hover.opacity, hover.blur_px, hover.scale), (Some(0.8), Some(4.0), None));
+        assert!(!LineHover::parse("", "", "", 0.2, Easing::EASE, 16.0).is_set());
+        assert_eq!(LineHover::parse("", "none", "", 0.2, Easing::EASE, 16.0).blur_px, Some(0.0));
     }
 
     #[test]
