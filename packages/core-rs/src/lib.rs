@@ -246,6 +246,23 @@ impl Renderer {
                 shared.request_frame();
             }
         })];
+        // Where the pointer is, for the theme's hover look. A touch has no hover: its move comes
+        // with the tap and would leave the line looking hovered.
+        listeners.push(listen(&shared, &container, "pointermove", false, |shared, event| {
+            if dom::get(&event, "pointerType").as_string().as_deref() == Some("touch") {
+                return;
+            }
+            let mouse: &web_sys::MouseEvent = event.unchecked_ref();
+            let client = (mouse.client_x() as f32, mouse.client_y() as f32);
+            if shared.view.borrow_mut().set_pointer(Some(client)) {
+                shared.request_frame();
+            }
+        }));
+        listeners.push(listen(&shared, &container, "pointerleave", false, |shared, _| {
+            if shared.view.borrow_mut().set_pointer(None) {
+                shared.request_frame();
+            }
+        }));
         let fonts: web_sys::EventTarget = doc.fonts().unchecked_into();
         listeners.push(listen(&shared, &fonts, "loadingdone", true, |shared, _| {
             shared.view.borrow_mut().invalidate_layout();

@@ -114,6 +114,22 @@ replace one side: lines already sung, or still to come. Values between whole lin
 the last value holds past the end, and blurs are the standard deviation, as CSS `blur()` takes it.
 The distance follows the scroll smoothly, and the effects ease off while the reader scrolls.
 
+The line under the mouse can look different, as a `:hover` rule made it in the DOM renderer. Each
+value the theme sets replaces the line's own while the pointer is on it, and leaving it unset keeps
+the line as it is:
+
+```css
+.blyrics-container {
+  --blyrics-line-hover-opacity: 1;   /* over the distance opacity */
+  --blyrics-line-hover-blur: 0;      /* over the distance blur; px, rem or blur(…) */
+  --blyrics-line-hover-scale: 1.04;  /* over --blyrics-scale / --blyrics-active-scale */
+  --blyrics-line-hover-duration: 0.2s;
+  --blyrics-line-hover-easing: ease;
+}
+```
+
+Touch has no hover, so a tap never leaves a line looking hovered.
+
 ## How it works
 
 The lines are laid out by the browser in an invisible copy of `@braccato/core`'s markup, inside the

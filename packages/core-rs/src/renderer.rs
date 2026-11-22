@@ -78,6 +78,39 @@ struct LineState {
     texture: Option<LineTexture>,
     /// When the line's translation or romanization appeared, which their entry runs from.
     decorated_ms: f64,
+    /// How far the line has eased toward the theme's hover look, 0 to 1.
+    hover: Tween,
+}
+
+/// A value easing from `from` to `to` since `since_ms`.
+#[derive(Clone, Copy, Debug, Default)]
+struct Tween {
+    from: f32,
+    to: f32,
+    since_ms: f64,
+}
+
+impl Tween {
+    fn at(&self, now_ms: f64, duration_s: f32, easing: crate::easing::Easing) -> f32 {
+        if self.from == self.to {
+            return self.to;
+        }
+        let t = ((now_ms - self.since_ms) / (duration_s.max(0.001) as f64 * 1000.0)).clamp(0.0, 1.0) as f32;
+        self.from + (self.to - self.from) * easing.at(t)
+    }
+
+    fn moving(&self, now_ms: f64, duration_s: f32) -> bool {
+        self.from != self.to && now_ms < self.since_ms + duration_s as f64 * 1000.0
+    }
+
+    /// Heads for `to` from wherever it is now.
+    fn aim(&mut self, to: f32, now_ms: f64, duration_s: f32, easing: crate::easing::Easing) {
+        if self.to == to {
+            return;
+        }
+        let from = self.at(now_ms, duration_s, easing);
+        *self = Tween { from, to, since_ms: now_ms };
+    }
 }
 
 /// What the lines looked like before a rebuild, so the measurement after it can keep the textures
@@ -238,6 +271,9 @@ pub struct View {
     pub tick_options: TickOptions,
     /// The host says nothing of the view is on the screen (another tab, an ad), so no frames.
     pub hidden: bool,
+    /// Where the pointer is over the lines, in client coordinates. The line under it is found each
+    /// frame (`pointed_line`): lines glide and scroll beneath a pointer that rests.
+    pointer: Option<(f32, f32)>,
     /// Whether any of the lines' container is on the page: false while the page hides the panel
     /// it is in (another tab of it showing, the player minimized), whatever the host says.
     pub on_page: bool,
@@ -357,6 +393,7 @@ impl View {
             manual_event_ms: -1.0,
             tick_options: TickOptions { rate: 1.0, smooth_scroll: true, ..Default::default() },
             hidden: false,
+            pointer: None,
             on_page: true,
             started: false,
             last_lyric: 0.0,
@@ -789,6 +826,9 @@ impl View {
             self.autoscroll.force = true;
         }
         self.on_page = on_page;
+        if !on_page {
+            self.pointer = None;
+        }
     }
 
     fn read_theme(&mut self) {
@@ -915,6 +955,30 @@ impl View {
         }
     }
 
+    /// The pointer moved to `client`, or off the lines. Returns whether that changes the hovered
+    /// line, and so wants a frame.
+    pub fn set_pointer(&mut self, client: Option<(f32, f32)>) -> bool {
+        self.pointer = client;
+        let Some(song) = &self.song else { return false };
+        self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
+    }
+
+    /// The line drawn under the pointer, if the theme has a hover look. Not the element under it:
+    /// while a glide runs the lines are drawn away from their boxes, which are already at its end.
+    fn pointed_line(&self, song: &Song, now_ms: f64) -> Option<usize> {
+        if self.stage || song.no_lyrics || !self.theme.line_hover.is_set() {
+            return None;
+        }
+        let (client_x, client_y) = self.pointer?;
+        let measured = self.measured.as_ref()?;
+        let origin = self.container.get_bounding_client_rect();
+        let (x, y) = (client_x - origin.left() as f32, client_y - origin.top() as f32);
+        measured.lines.iter().zip(&self.lines).position(|(layout, state)| {
+            let top = layout.top + state.curves.iter().map(|curve| curve.value(now_ms)).sum::<f32>();
+            (top..top + layout.height).contains(&y) && (layout.left..layout.left + layout.width).contains(&x)
+        })
+    }
+
     /// A click on a line: the player time it seeks to, if any.
     pub fn on_click(&mut self, target: &Element, alt: bool, client: (f32, f32)) -> Option<f64> {
         let song = self.song.as_ref()?;
@@ -968,6 +1032,10 @@ impl View {
     /// Builds the lines from scratch. `keep_host` keeps what the host added to the container and to
     /// the credits; new lyrics clear it, as the DOM renderer does.
     fn build(&mut self, keep_host: bool) {
+        if !keep_host {
+            // Another song: its lines may be put where no `pointerleave` was sent from.
+            self.pointer = None;
+        }
         self.scroll_changed();
         self.needs_build = false;
         self.settle_scrolls();
@@ -1622,6 +1690,7 @@ impl View {
         let view_h = self.canvas_size.1;
         let mut prefetched = 0;
         let mut last_line_offset = 0.0;
+        let pointed = self.pointed_line(song, now_ms);
         let Some(measured) = self.measured.as_mut() else { return false };
         for (index, line) in song.lines.iter().enumerate() {
             let layout = &mut measured.lines[index];
@@ -1654,6 +1723,27 @@ impl View {
                 opacity *= 1.0 + (effect_opacity - 1.0) * strength;
                 line_blur = blur * strength;
             }
+            // The line under the pointer eases to the theme's hover look.
+            let hover = self.theme.line_hover;
+            let target = if pointed == Some(index) { 1.0 } else { 0.0 };
+            state.hover.aim(target, now_ms, hover.duration_s, hover.easing);
+            let hovered = if self.stage || song.no_lyrics || !hover.is_set() {
+                0.0
+            } else {
+                if state.hover.moving(now_ms, hover.duration_s) {
+                    moving = true;
+                }
+                state.hover.at(now_ms, hover.duration_s, hover.easing)
+            };
+            if hovered > 0.0 {
+                if let Some(to) = hover.opacity {
+                    opacity += (to - opacity) * hovered;
+                }
+                if let Some(to) = hover.blur_px {
+                    line_blur += (to - line_blur) * hovered;
+                }
+            }
+            let hover_scale = hover.scale.map(|to| (to, hovered)).unwrap_or((1.0, 0.0));
             let margin = layout.font_px;
             let visible = opacity > 0.001 && y + layout.height + margin > 0.0 && y - margin < view_h;
             let near = y + layout.height > -view_h * PREFETCH_VIEWPORTS && y < view_h * (1.0 + PREFETCH_VIEWPORTS);
@@ -1681,7 +1771,8 @@ impl View {
             if entry < 1.0 && (line.translation.is_some() || line.romanization.is_some() || line.rows.len() > 1) {
                 moving = true;
             }
-            let placement = Placement { x: self.bleed_left + layout.left, y, dpr: self.dpr, opacity, entry };
+            let placement =
+                Placement { x: self.bleed_left + layout.left, y, dpr: self.dpr, opacity, entry, hover_scale };
             self.line_quads.clear();
             self.line_blurs.clear();
             paint::paint_line(
@@ -1757,8 +1848,14 @@ impl View {
                 if let Some(texture) = &self.credits_texture {
                     let first = self.quads.len();
                     let opacity = if self.stage { stage_opacity * self.theme.credits_focused_opacity } else { opacity };
-                    let placement =
-                        Placement { x: self.bleed_left + credits.left, y, dpr: self.dpr, opacity, entry: 1.0 };
+                    let placement = Placement {
+                        x: self.bleed_left + credits.left,
+                        y,
+                        dpr: self.dpr,
+                        opacity,
+                        entry: 1.0,
+                        hover_scale: (1.0, 0.0),
+                    };
                     paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
                     texture.place(&mut self.quads[first..]);
                 }
@@ -2123,4 +2220,23 @@ pub fn event_detail(event: &Event) -> (&'static str, JsValue) {
         }
     };
     (name, detail.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tween;
+    use crate::easing::Easing;
+
+    #[test]
+    fn a_hover_reversed_midway_eases_back_from_where_it_was() {
+        let mut hover = Tween::default();
+        hover.aim(1.0, 0.0, 0.2, Easing::Linear);
+        assert!((hover.at(100.0, 0.2, Easing::Linear) - 0.5).abs() < 1e-6);
+        assert!(hover.moving(100.0, 0.2));
+        hover.aim(0.0, 100.0, 0.2, Easing::Linear);
+        assert!((hover.at(100.0, 0.2, Easing::Linear) - 0.5).abs() < 1e-6);
+        assert!((hover.at(200.0, 0.2, Easing::Linear) - 0.25).abs() < 1e-6);
+        assert_eq!(hover.at(400.0, 0.2, Easing::Linear), 0.0);
+        assert!(!hover.moving(400.0, 0.2));
+    }
 }
