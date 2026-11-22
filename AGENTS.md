@@ -132,9 +132,11 @@ Add a self-check when it pins a regression whose cause was not obvious, or trick
 timing, scroll or a state machine. Do not add one that restates the implementation or checks what
 `tsc` already proves. Extend the nearest existing `.selfcheck.ts` before creating a file.
 
-The node fakes have no layout or WAAPI. Real-browser checks for image highlights and letter masks are
-in `tooling/browser/`; the core README explains how to run them. They need a built `dist/`, are not
-part of any gate, and do not belong in the discovered self-check set.
+The node fakes have no layout or WAAPI, and `cargo test` has no DOM. What needs a real browser (the
+Rust renderer's scroll pauses, clicks and the like) is checked by the scripts in `tooling/browser/`.
+Build core-rs, then run one with `pnpm exec tsx tooling/browser/<check>.ts`; each takes another
+build's directory as an argument, to show a regression on it. They need Chrome, are not part of any
+gate, and do not belong in the discovered self-check set.
 
 ## Attribution for agent-authored PRs
 
