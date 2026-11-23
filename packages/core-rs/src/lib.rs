@@ -332,9 +332,11 @@ impl Renderer {
         Ok(renderer)
     }
 
-    /// The song. `lyrics` is a `Lyric[]`, `options` a `{ noLyrics?, language?, songwriters? }`.
+    /// The song. `lyrics` is a `Lyric[]`, `options` a `{ noLyrics?, language?, songwriters?, songKey? }`.
+    /// Returns whether it is another song rather than lyrics swapped into the one on screen: the time
+    /// set for the old one is forgotten, so tick the new one before expecting it to scroll.
     #[wasm_bindgen(js_name = setLyrics)]
-    pub fn set_lyrics(&self, lyrics: JsValue, options: JsValue) -> Result<(), JsValue> {
+    pub fn set_lyrics(&self, lyrics: JsValue, options: JsValue) -> Result<bool, JsValue> {
         let lyrics: Vec<model::Lyric> = if lyrics.is_null() || lyrics.is_undefined() {
             Vec::new()
         } else {
@@ -345,9 +347,9 @@ impl Renderer {
         } else {
             serde_wasm_bindgen::from_value(options)?
         };
-        self.shared.view.borrow_mut().set_lyrics(lyrics, options);
+        let other_song = self.shared.view.borrow_mut().set_lyrics(lyrics, options);
         self.observe_after_change();
-        Ok(())
+        Ok(other_song)
     }
 
     /// A theme stylesheet: `--blyrics-*` custom properties, and `blyrics-key = value;` settings in its comments.

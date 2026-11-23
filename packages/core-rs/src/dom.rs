@@ -59,6 +59,43 @@ pub fn computed_value(element: &Element, property: &str) -> String {
     computed(element).get_property_value(property).unwrap_or_default().trim().to_string()
 }
 
+/// How far the element's `transform` and `translate` move it down, in pixels. Only translations are
+/// read, which is what a page slides content in with.
+pub fn translated_y(element: &Element) -> f32 {
+    let style = computed(element);
+    let read = |property: &str| style.get_property_value(property).unwrap_or_default();
+    let transform = read("transform");
+    let transform = transform.trim();
+    let matrix = |prefix: &str, index: usize| {
+        let args = transform.strip_prefix(prefix)?.strip_suffix(')')?;
+        args.split(',').nth(index).map(px)
+    };
+    let mut y = matrix("matrix(", 5).or_else(|| matrix("matrix3d(", 13)).unwrap_or(0.0);
+    // `translate` is "none", or "x", "x y" or "x y z"; a percentage is of the element's own height.
+    if let Some(second) = read("translate").split_whitespace().nth(1) {
+        y += match second.strip_suffix('%') {
+            Some(percent) => {
+                percent.parse::<f32>().unwrap_or(0.0) / 100.0 * element.get_bounding_client_rect().height() as f32
+            }
+            None => px(second),
+        };
+    }
+    y
+}
+
+/// The element's parent, crossing out of a shadow root to its host.
+pub fn parent_across_shadow(element: &Element) -> Option<Element> {
+    element.parent_element().or_else(|| {
+        let parent = element.parent_node()?;
+        // A shadow root is the only document fragment an element in the page can sit in.
+        if parent.node_type() != web_sys::Node::DOCUMENT_FRAGMENT_NODE {
+            return None;
+        }
+        let host = get(&parent, "host");
+        (!host.is_null() && !host.is_undefined()).then(|| host.unchecked_into())
+    })
+}
+
 /// `performance.now()` in `win`, which is the clock that window's animation frames are stamped in.
 /// `performance.now()` in one window. It holds on to the window's `Performance`: fetching it for
 /// every reading is a second call, and an object for the page to collect.
