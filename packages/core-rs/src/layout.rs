@@ -674,6 +674,9 @@ struct ElementStyle {
 
 impl ElementStyle {
     fn shadows(&self, root_px: f32) -> Rc<[TextShadow]> {
+        if self.text_shadow.is_empty() || self.text_shadow == "none" {
+            return Rc::from([]);
+        }
         // A shadow without a colour, or with `currentColor`, takes the text's own, as in CSS.
         let [r, g, b, a] = self.color;
         let current = format!("rgb({} {} {} / {a})", r * 255.0, g * 255.0, b * 255.0);

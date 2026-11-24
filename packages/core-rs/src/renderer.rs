@@ -498,7 +498,6 @@ impl View {
         self.time_overrides.clear();
         self.lyrics = lyrics;
         self.options = options;
-        self.mark_no_lyrics();
         let song = self.build_song();
         self.apply_song(song, &origins, true);
         self.layout();
@@ -891,19 +890,15 @@ impl View {
         song
     }
 
-    /// Marks the container `data-no-lyrics` for the lyrics on hand before the song is built, and
-    /// rereads the theme when that changes it, so the no-lyrics text and icon a theme sets under
-    /// that attribute are there to build with.
-    fn mark_no_lyrics(&mut self) {
-        if self.container.has_attribute("data-no-lyrics") == self.options.no_lyrics {
-            return;
-        }
+    /// Marks the container `data-no-lyrics` for the lyrics on hand before the theme is read and
+    /// the song built, so the no-lyrics text and icon a theme sets under that attribute are there
+    /// to build with.
+    fn mark_no_lyrics(&self) {
         if self.options.no_lyrics {
             let _ = self.container.set_attribute("data-no-lyrics", "true");
         } else {
             let _ = self.container.remove_attribute("data-no-lyrics");
         }
-        self.read_theme();
     }
 
     fn read_theme(&mut self) {
@@ -1891,8 +1886,9 @@ impl View {
             };
             if let Some(to) = browsing_opacity {
                 // The lines being sung now, not the ones autoscroll last followed, which stand
-                // still while a reader has paused it.
-                let is_sung = state.phase == Phase::Live;
+                // still while a reader has paused it. A line is live a little before it starts,
+                // to prepare its animation; it is sung from its start.
+                let is_sung = state.phase == Phase::Live && lyric >= line.start_s;
                 let share = browsing * (1.0 - hovered);
                 if !is_sung && share > 0.0 {
                     opacity += (to - opacity) * share;

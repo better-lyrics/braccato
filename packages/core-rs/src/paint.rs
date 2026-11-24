@@ -584,17 +584,22 @@ pub fn paint_line(
                     continue;
                 }
                 let flat = premultiply(filtered(color, &placement), placement.opacity * entry);
-                // The romanization's box goes under everything, its text's shadow included.
-                let target = if slot.owner == Owner::Pill { &mut *under } else { &mut *out };
                 for glyph in &slot.glyphs {
-                    target.push(Quad {
+                    let quad = Quad {
                         rect: to_canvas(line_affine.then(slide).rect(glyph.rect), &placement),
                         uv: uv_of(slot, glyph.rect, dpr),
                         unlit: flat,
                         lit: flat,
                         ramp: [0.0, 0.0, 1.0, 0.0],
                         wave: [0.0, 0.0, if slot.color { Quad::COLOR } else { Quad::TEXT }, 0.0],
-                    });
+                    };
+                    // The romanization's box goes under everything, the shadows of its text
+                    // included, whether that text was laid out before it (timed) or after.
+                    if slot.owner == Owner::Pill {
+                        under.insert(0, quad);
+                    } else {
+                        out.push(quad);
+                    }
                 }
             }
         }
