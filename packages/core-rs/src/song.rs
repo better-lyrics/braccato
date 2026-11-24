@@ -86,6 +86,8 @@ pub struct Line {
     pub translation: Option<(String, String)>,
     /// An untimed romanization, shown as plain text in the pill.
     pub romanization: Option<String>,
+    /// Text the theme puts above the no-lyrics message (`--blyrics-no-lyrics-icon`).
+    pub icon: Option<String>,
 }
 
 impl Line {
@@ -188,6 +190,7 @@ fn build_line(
         parts: Vec::new(),
         translation: None,
         romanization: None,
+        icon: None,
     };
     if lyric.is_instrumental {
         return line;

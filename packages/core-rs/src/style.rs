@@ -261,6 +261,13 @@ pub const CSS: &str = r#"
   margin-right: auto;
 }
 
+/* The theme's text above the no-lyrics message; a theme sizes it by its class. */
+:where(.brs-layout) .blyrics-no-lyrics-icon {
+  display: block;
+  font-size: 4em;
+  line-height: 1.2;
+}
+
 .brs-layout .brs-note {
   display: inline-block;
   height: var(--blyrics-font-size, 3rem);

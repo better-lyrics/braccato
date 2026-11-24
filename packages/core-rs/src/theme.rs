@@ -324,6 +324,81 @@ pub struct Theme {
     /// (`--blyrics-word-rest-transform`, read per word), and the rise's easing.
     pub word_rise_extra_s: f32,
     pub word_rise_easing: Easing,
+
+    /// What the instrumental lines show (`--blyrics-instrumental-icon`), and the pulse it beats with
+    /// while the instrumental plays: the scale it swells to (1 for none) and its period.
+    pub instrumental_icon: InstrumentalIcon,
+    pub instrumental_pulse_scale: f32,
+    pub instrumental_pulse_s: f32,
+
+    /// The message shown when there are no lyrics, in place of the host's
+    /// (`--blyrics-no-lyrics-text`), and text drawn above it (`--blyrics-no-lyrics-icon`).
+    pub no_lyrics_text: Option<String>,
+    pub no_lyrics_icon: Option<String>,
+}
+
+/// What an instrumental line shows.
+#[derive(Clone, Debug, PartialEq)]
+pub enum InstrumentalIcon {
+    /// The music note, filling from the bottom.
+    Note,
+    /// Three dots, lighting one after another in reading order.
+    Dots,
+    /// Text, such as "♫", filling from the bottom like the note.
+    Text(String),
+}
+
+impl InstrumentalIcon {
+    pub fn parse(value: &str) -> InstrumentalIcon {
+        match css_string(value) {
+            Some(text) if !text.trim().is_empty() => InstrumentalIcon::Text(text),
+            Some(_) => InstrumentalIcon::Note,
+            None if value.trim() == "dots" => InstrumentalIcon::Dots,
+            None => InstrumentalIcon::Note,
+        }
+    }
+}
+
+/// The text of a quoted CSS string (`"♫"`, `'No lyrics'`), with `\"`-style escapes undone. `None`
+/// when the value is not a string.
+pub fn css_string(value: &str) -> Option<String> {
+    let value = value.trim();
+    let quote = value.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+    let inner = value.strip_prefix(quote)?.strip_suffix(quote)?;
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        // A hex escape (`\266B`) or an escaped character.
+        let mut hex = String::new();
+        let mut rest = chars.clone();
+        while hex.len() < 6 {
+            match rest.clone().next() {
+                Some(h) if h.is_ascii_hexdigit() => {
+                    hex.push(h);
+                    rest.next();
+                }
+                _ => break,
+            }
+        }
+        if hex.is_empty() {
+            if let Some(next) = chars.next() {
+                out.push(next);
+            }
+            continue;
+        }
+        chars = rest;
+        if chars.clone().next() == Some(' ') {
+            chars.next();
+        }
+        if let Some(c) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
+            out.push(c);
+        }
+    }
+    Some(out)
 }
 
 /// What a theme makes the line under the pointer look like: each value it sets replaces the line's
@@ -713,6 +788,11 @@ impl Theme {
             line_opacity_browsing: fraction(&raw("--blyrics-line-opacity-browsing")),
             word_rise_extra_s: parse_seconds(&raw("--blyrics-word-rise-extra-duration")).unwrap_or(0.2).max(0.0),
             word_rise_easing: ease("--blyrics-word-rise-easing", Easing::EASE),
+            instrumental_icon: InstrumentalIcon::parse(&raw("--blyrics-instrumental-icon")),
+            instrumental_pulse_scale: num("--blyrics-instrumental-pulse-scale", 1.0).max(0.0),
+            instrumental_pulse_s: secs("--blyrics-instrumental-pulse-duration", 1.5),
+            no_lyrics_text: css_string(&raw("--blyrics-no-lyrics-text")),
+            no_lyrics_icon: css_string(&raw("--blyrics-no-lyrics-icon")).filter(|t| !t.trim().is_empty()),
             settings,
         }
     }
@@ -747,6 +827,19 @@ mod tests {
         assert!((filters.at(0.5).brightness - 1.1).abs() < 1e-6);
         // A reader scrolling eases every value back to plain.
         assert_eq!(effects.at(5.0).scaled(0.0), LineLook::PLAIN);
+    }
+
+    #[test]
+    fn strings_and_icons() {
+        assert_eq!(css_string("\"No lyrics found\""), Some("No lyrics found".into()));
+        assert_eq!(css_string("'it\\'s'"), Some("it's".into()));
+        assert_eq!(css_string("\"\\266B\""), Some("♫".into()));
+        assert_eq!(css_string("\"\\266B  x\""), Some("♫ x".into()));
+        assert_eq!(css_string("none"), None);
+        assert_eq!(InstrumentalIcon::parse("\"♫\""), InstrumentalIcon::Text("♫".into()));
+        assert_eq!(InstrumentalIcon::parse("dots"), InstrumentalIcon::Dots);
+        assert_eq!(InstrumentalIcon::parse(""), InstrumentalIcon::Note);
+        assert_eq!(InstrumentalIcon::parse("note"), InstrumentalIcon::Note);
     }
 
     #[test]

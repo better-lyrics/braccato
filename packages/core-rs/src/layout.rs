@@ -13,7 +13,7 @@
 use crate::dom::{self, append, element, set_attr, text_node};
 use crate::song::{Line, RowKind, Song};
 use crate::text;
-use crate::theme::{self, Motion, TextShadow, Theme};
+use crate::theme::{self, InstrumentalIcon, Motion, TextShadow, Theme};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -74,6 +74,11 @@ pub enum Ink {
     Text(Vec<TextRun>),
     /// The instrumental note, drawn from its SVG path.
     Note,
+    /// Text in the note's place (`--blyrics-instrumental-icon: "♫"`), centred in the square, in
+    /// the CSS font given.
+    NoteText(String, String),
+    /// Three dots in the note's place (`--blyrics-instrumental-icon: dots`), filling the rect.
+    Dots,
     /// The note filled with an image (image highlights), in the image's own colours.
     NoteImage(Rc<str>),
     /// The romanization's rounded background.
@@ -93,6 +98,8 @@ pub enum Owner {
     Romanization,
     Pill,
     Credits,
+    /// The theme's text above the no-lyrics message.
+    Icon,
     Note,
     /// The note's image fill, drawn with the note.
     NoteImage,
@@ -206,6 +213,7 @@ pub struct LineDom {
     pub romanization: Option<HtmlElement>,
     pub romanization_text: Option<HtmlElement>,
     pub note: Option<HtmlElement>,
+    pub icon: Option<HtmlElement>,
 }
 
 pub struct LayoutDom {
@@ -323,6 +331,7 @@ pub fn fill_line(doc: &Document, el: HtmlElement, line: &Line, index: usize, the
         romanization: None,
         romanization_text: None,
         note: None,
+        icon: None,
     };
     if line.instrumental {
         el.class_list().add_1("blyrics--instrumental").ok();
@@ -334,6 +343,12 @@ pub fn fill_line(doc: &Document, el: HtmlElement, line: &Line, index: usize, the
     }
     if line.blank {
         set_attr(&el, "data-blank", "true");
+    }
+    if let Some(text) = &line.icon {
+        let icon = element(doc, "span", "blyrics-no-lyrics-icon");
+        text_node(doc, &icon, text);
+        append(&el, &icon);
+        dom.icon = Some(icon);
     }
 
     // Word spans first, indexed like the parts, then placed into their rows.
@@ -839,17 +854,39 @@ fn measure_line(
         // The 24-unit view box is fitted to the box's height and centred across its width.
         let side = rect.h;
         let square = Rect { x: rect.x + (rect.w - side) / 2.0, y: rect.y, w: side, h: side };
+        let (ink, rect) = match &theme.instrumental_icon {
+            InstrumentalIcon::Note => (Ink::Note, square),
+            InstrumentalIcon::Text(text) => {
+                let style = dom::computed(note);
+                let get = |name: &str| style.get_property_value(name).unwrap_or_default();
+                let font = format!("{} {} {}px {}", get("font-style"), get("font-weight"), side, get("font-family"));
+                (Ink::NoteText(text.clone(), font), square)
+            }
+            InstrumentalIcon::Dots => {
+                // Apple Music's dots: 0.36em across, 0.32em apart, starting where the text would.
+                let (dot, gap) = (0.36 * side, 0.32 * side);
+                let width = 3.0 * dot + 2.0 * gap;
+                let text_start = rect.x + side / 3.0;
+                let x = match line.align() {
+                    crate::song::Align::Left => text_start,
+                    crate::song::Align::Right => rect.right() - side / 3.0 - width,
+                    crate::song::Align::Center => square.x + (side - width) / 2.0,
+                };
+                (Ink::Dots, Rect { x, y: square.y + (side - dot) / 2.0, w: width, h: dot })
+            }
+        };
+        let plain_note = ink == Ink::Note;
         layout.slots.push(Slot {
-            ink: Ink::Note,
+            ink,
             owner: Owner::Note,
-            rect: square,
+            rect,
             margin: HALO_MARGIN,
             halo: true,
-            glyphs: vec![Glyph { rect: square, letter: None, sweep: SweepMap::default() }],
+            glyphs: vec![Glyph { rect, letter: None, sweep: SweepMap::default() }],
             placement: Placement::default(),
             color: false,
         });
-        if let (Some(url), true) = (&theme.highlight_image, theme.highlight_image_ready) {
+        if let (Some(url), true, true) = (&theme.highlight_image, theme.highlight_image_ready, plain_note) {
             layout.slots.push(Slot {
                 ink: Ink::NoteImage(Rc::from(url.as_str())),
                 owner: Owner::NoteImage,
@@ -1049,6 +1086,9 @@ fn measure_line(
     }
     if let Some(translation) = &dom_.translation {
         push_static_text(&mut layout, translation, origin, Owner::Translation, root_px);
+    }
+    if let Some(icon) = &dom_.icon {
+        push_static_text(&mut layout, icon, origin, Owner::Icon, root_px);
     }
     layout
 }

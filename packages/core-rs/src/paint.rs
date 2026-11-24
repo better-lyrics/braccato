@@ -510,16 +510,28 @@ pub fn paint_line(
                     blurs.push(glow);
                 }
             }
-            Owner::Note => push_note(out, blurs, slot, layout, line, phase, moment, line_affine, &placement, theme),
+            Owner::Note => {
+                let pulse = Affine::scale_about(centre(&slot.rect), pulse(line, phase, moment, theme));
+                let affine = line_affine.then(pulse);
+                if slot.ink == Ink::Dots {
+                    push_dots(out, slot, layout, line, phase, moment, affine, &placement, theme);
+                } else {
+                    push_note(out, blurs, slot, layout, line, phase, moment, affine, &placement, theme);
+                }
+            }
             // Drawn by `push_note`, with the note it fills.
             Owner::NoteImage => {}
-            Owner::Pill | Owner::Translation | Owner::Romanization | Owner::Credits => {
+            Owner::Pill | Owner::Translation | Owner::Romanization | Owner::Credits | Owner::Icon => {
                 let color = match slot.owner {
                     Owner::Pill => layout.pill_color,
                     _ => layout.static_color,
                 };
                 // Decorations fade in and settle from 0.4em above when they first appear.
-                let entry = if slot.owner == Owner::Credits { 1.0 } else { DECORATION_EASE.at(placement.entry) };
+                let entry = if matches!(slot.owner, Owner::Credits | Owner::Icon) {
+                    1.0
+                } else {
+                    DECORATION_EASE.at(placement.entry)
+                };
                 let slide = Affine { sx: 1.0, sy: 1.0, tx: 0.0, ty: -0.4 * layout.static_em * (1.0 - entry) };
                 if shadow {
                     push_shadow(under, slot, line_affine.then(slide), placement.opacity * entry, &placement);
@@ -643,6 +655,86 @@ fn push_note(
         blurs.push(Blur { quads: vec![Quad { lit: glow, ..fill }], sigma: NOTE_GLOW_UNITS * unit });
     }
     out.push(fill);
+}
+
+/// The scale the instrumental icon beats to (`--blyrics-instrumental-pulse-scale`), swelling and
+/// settling once a period while the instrumental plays, and back to 1 as it ends.
+fn pulse(line: &Line, phase: Phase, moment: Moment, theme: &Theme) -> f32 {
+    let to = theme.instrumental_pulse_scale;
+    if to == 1.0 || theme.reduced_motion || !theme.animate_instrumental {
+        return 1.0;
+    }
+    let at = |lyric: f32| {
+        let t = lyric - line.start_s;
+        if t < 0.0 {
+            return 1.0;
+        }
+        let swell = 0.5 - 0.5 * (std::f32::consts::TAU * t / theme.instrumental_pulse_s).cos();
+        1.0 + (to - 1.0) * swell
+    };
+    match phase {
+        Phase::Idle => 1.0,
+        Phase::Live => at(moment.lyric),
+        Phase::Exiting { since_ms, lyric_s } => 1.0 + (at(lyric_s) - 1.0) * (1.0 - exit_fade(since_ms, moment, theme)),
+    }
+}
+
+/// The instrumental as three dots: inactive, and over them the lit colour sweeping across in
+/// reading order over the instrumental, a dot's width soft.
+#[allow(clippy::too_many_arguments)]
+fn push_dots(
+    out: &mut Vec<Quad>,
+    slot: &Slot,
+    layout: &LineLayout,
+    line: &Line,
+    phase: Phase,
+    moment: Moment,
+    affine: Affine,
+    placement: &Placement,
+    theme: &Theme,
+) {
+    let dpr = placement.dpr;
+    let rect = slot.rect;
+    let uv = uv_of(slot, rect, dpr);
+    let canvas_rect = to_canvas(affine.rect(rect), placement);
+    let base = premultiply(filtered(layout.inactive, placement), placement.opacity);
+    let quad = Quad {
+        rect: canvas_rect,
+        uv,
+        unlit: base,
+        lit: base,
+        ramp: [0.0, 0.0, 1.0, 0.0],
+        wave: [0.0, 0.0, Quad::TEXT, 0.0],
+    };
+    out.push(quad);
+    let (opacity, progress) = match phase {
+        Phase::Idle => return,
+        Phase::Exiting { since_ms, .. } => (1.0 - exit_fade(since_ms, moment, theme), 1.0),
+        Phase::Live => {
+            let t = moment.lyric - line.start_s;
+            if t < 0.0 {
+                return;
+            }
+            let progress =
+                if theme.animate_instrumental { (t / line.duration_s.max(0.001)).clamp(0.0, 1.0) } else { 1.0 };
+            (1.0, progress)
+        }
+    };
+    if opacity <= 0.0 || progress <= 0.0 {
+        return;
+    }
+    // How lit a texel is, as a ramp in the line's texels: 1 behind the edge, 0 a dot past it.
+    let soft = rect.h.max(1e-3);
+    let to_x = (slot.placement.tex.0 - slot.placement.origin.0) / dpr;
+    let ramp = if line.rtl {
+        let edge = rect.right() - progress * (rect.w + soft);
+        [1.0 / (dpr * soft), 0.0, (-edge - to_x) / soft, 0.0]
+    } else {
+        let edge = rect.x + progress * (rect.w + soft);
+        [-1.0 / (dpr * soft), 0.0, (edge + to_x) / soft, 0.0]
+    };
+    let lit = premultiply(filtered(layout.active, placement), opacity * placement.opacity);
+    out.push(Quad { unlit: [0.0; 4], lit, ramp, ..quad });
 }
 
 /// The note's lowest point in its 24-unit view box, which the fill rises from.

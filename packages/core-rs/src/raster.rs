@@ -82,6 +82,8 @@ impl Rasterizer {
                 }
                 Ink::Text(runs) => self.text_layer(runs, "#ff0000"),
                 Ink::Note => self.note(slot.rect),
+                Ink::NoteText(text, font) => self.note_text(slot.rect, text, font),
+                Ink::Dots => self.dots(slot.rect),
                 Ink::NoteImage(url) => {
                     ctx.set_global_composite_operation("source-over").ok();
                     self.note_image(slot.rect, dpr, url);
@@ -163,6 +165,33 @@ impl Rasterizer {
         ctx.set_shadow_blur(0.0);
         ctx.set_shadow_offset_x(0.0);
         ctx.set_shadow_offset_y(0.0);
+    }
+
+    /// The theme's text in the note's square, as coverage, centred on it.
+    fn note_text(&self, square: Rect, text: &str, font: &str) {
+        let ctx = &self.context;
+        ctx.set_font(font);
+        set_optional(ctx, "letterSpacing", "0px");
+        ctx.set_text_align("center");
+        ctx.set_text_baseline("middle");
+        ctx.set_fill_style_str("#ff0000");
+        let _ = ctx.fill_text(text, (square.x + square.w / 2.0) as f64, (square.y + square.h / 2.0) as f64);
+        ctx.set_text_align("left");
+        ctx.set_text_baseline("alphabetic");
+    }
+
+    /// Three dots across `rect`, each as tall as it, as coverage.
+    fn dots(&self, rect: Rect) {
+        let ctx = &self.context;
+        let d = rect.h;
+        let gap = (rect.w - 3.0 * d) / 2.0;
+        ctx.set_fill_style_str("#ff0000");
+        for i in 0..3 {
+            ctx.begin_path();
+            let cx = rect.x + d / 2.0 + i as f32 * (d + gap);
+            let _ = ctx.arc((cx) as f64, (rect.y + d / 2.0) as f64, (d / 2.0) as f64, 0.0, std::f64::consts::TAU);
+            ctx.fill();
+        }
     }
 
     fn note(&self, square: Rect) {

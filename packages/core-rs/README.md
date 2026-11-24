@@ -159,6 +159,25 @@ A few more properties stand in for rules that styled lines and words by state:
 The shadow, the past opacity and the rest pose are read from each element, so selectors scope them
 as they do colours. The browsing opacity and the distance lists are read from the container.
 
+Instrumental lines and the no-lyrics message, which themes restyled with `::before` and `::after`,
+take these instead:
+
+```css
+.blyrics-container {
+  /* note (the default), dots (lit one after another in reading order), or text such as "♫" */
+  --blyrics-instrumental-icon: dots;
+  /* swells to this scale and back once a period while the instrumental plays */
+  --blyrics-instrumental-pulse-scale: 1.14;
+  --blyrics-instrumental-pulse-duration: 3s;
+  /* in place of the host's message when there are no lyrics, and text drawn above it */
+  --blyrics-no-lyrics-text: "No lyrics found";
+  --blyrics-no-lyrics-icon: "♫";
+}
+
+/* the no-lyrics icon is an element of its own, 4em by default */
+.blyrics-no-lyrics-icon { font-size: 6rem; }
+```
+
 ## How it works
 
 The lines are laid out by the browser in an invisible copy of `@braccato/core`'s markup, inside the

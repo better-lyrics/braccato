@@ -498,7 +498,7 @@ impl View {
         self.time_overrides.clear();
         self.lyrics = lyrics;
         self.options = options;
-        let song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        let song = self.build_song();
         self.apply_song(song, &origins, true);
         self.layout();
     }
@@ -509,7 +509,7 @@ impl View {
         if self.song.is_none() {
             return;
         }
-        let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        let mut song = self.build_song();
         self.apply_time_overrides(&mut song);
         let origins: Vec<Option<usize>> = (0..song.lines.len()).map(Some).collect();
         self.apply_song(song, &origins, settle);
@@ -864,6 +864,32 @@ impl View {
         }
     }
 
+    /// The song from the lyrics on hand, with the theme's no-lyrics message and icon in place of
+    /// the host's message.
+    fn build_song(&self) -> Song {
+        let message = self.theme.no_lyrics_text.as_ref().filter(|_| self.options.no_lyrics);
+        let replaced: Vec<Lyric>;
+        let lyrics = match message {
+            Some(text) => {
+                replaced = self
+                    .lyrics
+                    .iter()
+                    .take(1)
+                    .map(|l| Lyric { words: text.clone(), parts: None, ..l.clone() })
+                    .collect();
+                &replaced
+            }
+            None => &self.lyrics,
+        };
+        let mut song = song::build_song(lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        if song.no_lyrics {
+            if let Some(first) = song.lines.first_mut() {
+                first.icon = self.theme.no_lyrics_icon.clone();
+            }
+        }
+        song
+    }
+
     fn read_theme(&mut self) {
         self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px(&self.doc));
         if let Some(url) = &self.theme.highlight_image {
@@ -1109,7 +1135,7 @@ impl View {
         }
         self.read_theme();
         self.hung.resize(self.lyrics.len(), Hung::default());
-        let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        let mut song = self.build_song();
         self.apply_time_overrides(&mut song);
         self.release_textures();
         let old_dom = self.dom.take().filter(|_| keep_host);
