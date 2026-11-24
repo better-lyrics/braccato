@@ -446,7 +446,8 @@ impl View {
 
     /// A new song, built at once so its elements exist when this returns. Lyrics given with the
     /// `song_key` of the song on screen are swapped into it instead (see `swap`). Answers whether
-    /// they are another song, whose player time starts over: the last snapshot was the old song's.
+    /// they are another song, so a caller whose last snapshot was the old song's can forget it
+    /// (`reset_clock`). A time set by hand stays: `<braccato-lyrics>` sets it before its lyrics.
     pub fn set_lyrics(&mut self, lyrics: Vec<Lyric>, options: LyricsOptions) -> bool {
         let same_song = options.song_key.is_some() && options.song_key == self.options.song_key;
         if same_song && self.song.is_some() && !options.no_lyrics && !self.options.no_lyrics {
@@ -454,9 +455,6 @@ impl View {
             return false;
         }
         if !same_song {
-            // Carried forward, the old song's time would scroll the new one to wherever the old
-            // one had got to, until the player's next reading pulled it back.
-            self.forget_snapshot();
             self.last_lyric = 0.0;
             self.passive = (0.0, None);
             self.fresh_song = true;
@@ -823,10 +821,6 @@ impl View {
     /// Forgets the player's time, as a new song should, as 1.x's `resetPlaybackClock` did.
     pub fn reset_clock(&mut self) {
         self.clock.reset();
-        self.forget_snapshot();
-    }
-
-    fn forget_snapshot(&mut self) {
         self.manual_time = 0.0;
         self.manual_playing = false;
         self.manual_event_ms = -1.0;

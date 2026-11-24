@@ -136,6 +136,25 @@ window.switchSong = async ({ clear = false, slide = false, reset = false, playOn
   await wait(1500);
   return { furthest, after: scroller.scrollTop };
 };
+// \`<braccato-lyrics>\` given its lyrics and a paused time before it connects, as a page writes them.
+// Answers where it scrolled to.
+window.elementAt = async seconds => {
+  clearInterval(ticker);
+  view?.destroy();
+  view = null;
+  document.getElementById("scroller").outerHTML = '<div id="scroller"></div>';
+  scroller = document.getElementById("scroller");
+  const { defineLyricsElement } = await import("/js/element.js");
+  const element = new (defineLyricsElement())();
+  element.host = { getScrollElement: () => scroller };
+  element.lyrics = Array.from({ length: 40 }, (_, i) => ({ startTimeMs: i * ${STEP_S * 1000}, durationMs: ${STEP_S * 1000},
+    words: "line number " + i + " of the song" }));
+  element.currentTime = seconds;
+  element.playing = false;
+  scroller.append(element);
+  await new Promise(done => setTimeout(done, 1500));
+  return scroller.scrollTop;
+};
 window.scrollByReader = px => { scroller.scrollTop += px };
 window.hideButton = () => { button = false };
 window.relayout = () => view.relayout();

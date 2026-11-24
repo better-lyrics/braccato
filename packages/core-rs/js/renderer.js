@@ -450,9 +450,9 @@ export function createLyricsRenderer(rendererOptions) {
 				songwriters: options.songwriters ? [...options.songwriters] : undefined,
 				songKey: options.songKey,
 			});
-			// The snapshot a stop at zero holds on to was the old song's: between songs the player
-			// reads zero, and holding the old time there would scroll the new song to it.
-			if (otherSong) sent = null;
+			// The last snapshot was the old song's. Carried forward, or held by a stop at zero (the
+			// player between songs), it would scroll the new song to wherever the old one had got to.
+			if (otherSong) view.resetClock();
 			rust.container.dataset.loaderVisible = String(options.loaderVisible ?? false);
 		},
 		setLanguage(language) {

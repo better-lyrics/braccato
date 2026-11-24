@@ -30,4 +30,7 @@ runCheck(async check => {
     );
     check.expect(`${name}: then follows the song`, after > 500, `scrolled to ${after} at 30 s`);
   }
+  // A time set by hand is not the old song's, and stays with the lyrics that follow it.
+  const scrolled = await check.evaluate<number>("elementAt(40)");
+  check.expect("<braccato-lyrics> keeps the time set before its lyrics", scrolled > 500, `scrolled to ${scrolled}`);
 });

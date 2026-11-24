@@ -333,8 +333,8 @@ impl Renderer {
     }
 
     /// The song. `lyrics` is a `Lyric[]`, `options` a `{ noLyrics?, language?, songwriters?, songKey? }`.
-    /// Returns whether it is another song rather than lyrics swapped into the one on screen: the time
-    /// set for the old one is forgotten, so tick the new one before expecting it to scroll.
+    /// Returns whether it is another song rather than lyrics swapped into the one on screen, so a
+    /// caller whose last snapshot was the old song's can forget it with `resetClock`.
     #[wasm_bindgen(js_name = setLyrics)]
     pub fn set_lyrics(&self, lyrics: JsValue, options: JsValue) -> Result<bool, JsValue> {
         let lyrics: Vec<model::Lyric> = if lyrics.is_null() || lyrics.is_undefined() {
