@@ -261,6 +261,28 @@ pub const CSS: &str = r#"
   margin-right: auto;
 }
 
+/*
+ * Themes hid the host's no-lyrics message and drew their own in pseudo-elements, and drew their own
+ * instrumental icon in one. The renderer draws the theme's message and icon itself, so it keeps the
+ * rows it draws them from and takes the pseudo-elements out of the layout, where they would take room.
+ * `:is()` with two ids outranks a theme's own `!important` rules.
+ */
+:is(.brs-layout, #brs-pin#brs-pin)[data-no-lyrics="true"] > .blyrics--line :is(.blyrics-line-main, .blyrics-bidi-run),
+:is(.brs-layout, #brs-pin#brs-pin) .blyrics-no-lyrics-icon {
+  display: block !important;
+}
+
+:is(.brs-layout, #brs-pin#brs-pin)[data-no-lyrics="true"] > .blyrics--line::before,
+:is(.brs-layout, #brs-pin#brs-pin)[data-no-lyrics="true"] > .blyrics--line::after,
+:is(.brs-layout, #brs-pin#brs-pin)[data-no-lyrics="true"] > .blyrics--line *::before,
+:is(.brs-layout, #brs-pin#brs-pin)[data-no-lyrics="true"] > .blyrics--line *::after,
+:is(.brs-layout, #brs-pin#brs-pin) > .blyrics--instrumental::before,
+:is(.brs-layout, #brs-pin#brs-pin) > .blyrics--instrumental::after,
+:is(.brs-layout, #brs-pin#brs-pin) > .blyrics--instrumental *::before,
+:is(.brs-layout, #brs-pin#brs-pin) > .blyrics--instrumental *::after {
+  content: none !important;
+}
+
 /* The theme's text above the no-lyrics message; a theme sizes it by its class. */
 :where(.brs-layout) .blyrics-no-lyrics-icon {
   display: block;
