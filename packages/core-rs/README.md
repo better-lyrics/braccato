@@ -198,10 +198,10 @@ letters, so a long word like "everybody" is not one however long it is held.
   --blyrics-word-wobble-easing: linear(0, 0.6 20%, 1.08 40%, 0.98 65%, 1);
 }
 
-.blyrics-container .blyrics--romanized {
+.blyrics--romanized {
   /* the box behind romanization; transparent for none */
   --blyrics-romanized-bg-color: transparent;
-  /* the box's padding still places the text, so plain-text romanization drops it too */
+  /* the box's padding and border-radius are the theme's own, as in the DOM renderer */
   padding: 0;
 }
 ```

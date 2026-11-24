@@ -229,11 +229,15 @@ pub const CSS: &str = r#"
 
 .brs-layout .blyrics--romanized {
   border: 1px solid transparent;
-  border-radius: 1rem;
   box-sizing: border-box;
   font-size: calc(var(--blyrics-translated-font-size, 2rem) / 1.25);
-  padding: 0.25rem 0.75rem;
   width: fit-content;
+}
+
+/* The box's shape, which a theme's own .blyrics--romanized rule replaces whatever its specificity. */
+:where(.brs-layout .blyrics--romanized) {
+  border-radius: 1rem;
+  padding: 0.25rem 0.75rem;
 }
 
 .brs-layout .blyrics-rtl {

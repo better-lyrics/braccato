@@ -14,7 +14,7 @@ Themes get more ways to say what `:hover`, `filter`, `text-shadow`, `::before`/`
 - `blyrics-letter-wave = long;` waves only held words, and `blyrics-long-word-max-letters = 8;` keeps words longer than 8 letters from counting as held. On held words, `--blyrics-letter-wave-spread` moves letters out from the word's centre at their crest, and `--blyrics-letter-wave-glow` brightens each letter's glow as its crest passes.
 - `--blyrics-word-wobble-scope: syllable` wobbles each syllable on its own, and `--blyrics-word-wobble-duration-ratio` lengthens the wobble by a share of the syllable's duration.
 - Every easing property accepts CSS `linear()`, so spring curves can be written directly. It used to fall back to `ease`.
-- `--blyrics-romanized-bg-color` sets the box behind romanization; `transparent` draws none.
+- `--blyrics-romanized-bg-color` sets the box behind romanization; `transparent` draws none. A theme's own `padding` and `border-radius` on `.blyrics--romanized` now apply whatever their selector, as they did in the DOM renderer, so plain-text romanization sits flush with the line.
 - `--blyrics-text-shadow` takes `text-shadow`'s syntax on lines, words, translations and romanizations. It is drawn once into the line's texture under its text, so it costs nothing per frame, and it is static: the same whether the line is sung or hovered.
 
 A theme that sets none of them looks the same as before.
