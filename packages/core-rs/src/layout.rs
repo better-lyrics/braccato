@@ -13,7 +13,7 @@
 use crate::dom::{self, append, element, set_attr, text_node};
 use crate::song::{Line, RowKind, Song};
 use crate::text;
-use crate::theme::Theme;
+use crate::theme::{self, Motion, TextShadow, Theme};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -80,6 +80,9 @@ pub enum Ink {
     Pill {
         radius: f32,
     },
+    /// The text-shadows of the runs, in their own colours, without the text: drawn under the text
+    /// slot that follows it, which has the same owner and rect.
+    Shadow(Vec<TextRun>, Rc<[TextShadow]>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,6 +160,10 @@ pub struct PartStyle {
     pub letters: u16,
     /// Whether the word is its own box (swept as one) rather than flowing inline.
     pub atomic: bool,
+    /// The opacity the word eases to once it has been sung (`--blyrics-word-past-opacity`).
+    pub past_opacity: f32,
+    /// The pose the word waits in until it is sung (`--blyrics-word-rest-transform`).
+    pub rest: Motion,
 }
 
 #[derive(Clone, Debug)]
@@ -642,6 +649,16 @@ struct ElementStyle {
     active: Rgba,
     glow: Rgba,
     rtl: bool,
+    /// `--blyrics-text-shadow`, as written.
+    text_shadow: String,
+    past_opacity: f32,
+    rest: Motion,
+}
+
+impl ElementStyle {
+    fn shadows(&self, root_px: f32) -> Rc<[TextShadow]> {
+        Rc::from(theme::parse_text_shadows(&self.text_shadow, self.font_px, root_px))
+    }
 }
 
 fn element_style(el: &Element) -> ElementStyle {
@@ -661,6 +678,9 @@ fn element_style(el: &Element) -> ElementStyle {
         active: parse_color(&doc, &get("text-decoration-color")),
         glow: parse_color(&doc, &get("caret-color")),
         rtl: get("direction") == "rtl",
+        text_shadow: get("--blyrics-text-shadow").trim().to_string(),
+        past_opacity: theme::fraction(&get("--blyrics-word-past-opacity")).unwrap_or(1.0),
+        rest: Motion::parse(&get("--blyrics-word-rest-transform")),
         doc,
     }
 }
@@ -770,7 +790,7 @@ pub fn measure(dom_: &LayoutDom, song: &Song, theme: &Theme, root_px: f32) -> Me
         .zip(&dom_.lines)
         .map(|(line, line_dom)| measure_line(line, line_dom, container_origin, &container_style, song, theme, root_px))
         .collect();
-    let credits = dom_.credits.as_ref().map(|p| measure_credits(p, container_origin));
+    let credits = dom_.credits.as_ref().map(|p| measure_credits(p, container_origin, root_px));
     Measured { lines, credits, content_height: container_rect.height() as f32 }
 }
 
@@ -865,7 +885,11 @@ fn measure_line(
             em: style.font_px,
             letters: letters.len().max(1) as u16,
             atomic,
+            past_opacity: style.past_opacity,
+            rest: style.rest,
         });
+        let shadows = style.shadows(root_px);
+        let shadow_reach = shadows.iter().map(TextShadow::reach).fold(0.0, f32::max);
 
         // The pieces of the word as drawn: its letters, or its text cut where it wraps or reorders.
         let pieces: Vec<(Rect, String, Option<u16>)> = if part.lettered && !letters.is_empty() {
@@ -974,6 +998,9 @@ fn measure_line(
                 .collect();
             let runs: Vec<TextRun> = row_pieces.iter().map(|(r, text, _)| run_for(r, text)).collect();
             let color = runs.iter().any(|run| text::has_color_glyphs(&run.text));
+            if !shadows.is_empty() {
+                layout.slots.push(shadow_slot(&runs, &shadows, Owner::Part(index), rect, overhang + shadow_reach));
+            }
             layout.slots.push(Slot {
                 ink: Ink::Text(runs),
                 owner: Owner::Part(index),
@@ -1017,18 +1044,35 @@ fn measure_line(
             color: false,
         });
         if let Some(text_el) = &dom_.romanization_text {
-            push_static_text(&mut layout, text_el, origin, Owner::Romanization);
+            push_static_text(&mut layout, text_el, origin, Owner::Romanization, root_px);
         }
     }
     if let Some(translation) = &dom_.translation {
-        push_static_text(&mut layout, translation, origin, Owner::Translation);
+        push_static_text(&mut layout, translation, origin, Owner::Translation, root_px);
     }
     layout
 }
 
+/// The slot `Ink::Shadow` draws into: the text's rect, with room for the shadows to spread.
+fn shadow_slot(runs: &[TextRun], shadows: &Rc<[TextShadow]>, owner: Owner, rect: Rect, margin: f32) -> Slot {
+    Slot {
+        ink: Ink::Shadow(runs.to_vec(), shadows.clone()),
+        owner,
+        rect,
+        margin,
+        halo: false,
+        glyphs: Vec::new(),
+        placement: Placement::default(),
+        color: true,
+    }
+}
+
 /// Untimed text (translations, plain romanizations, credits): one slot per visual piece.
-fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32), owner: Owner) {
+fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32), owner: Owner, root_px: f32) {
     let style = element_style(el);
+    // The credits are drawn flat (`paint_static`), without shadows.
+    let shadows = if owner == Owner::Credits { Rc::from([]) } else { style.shadows(root_px) };
+    let shadow_reach = shadows.iter().map(TextShadow::reach).fold(0.0, f32::max);
     layout.static_color = style.color;
     layout.static_em = style.font_px;
     let base_ascent = ascent(&style.doc, &style.font);
@@ -1049,6 +1093,9 @@ fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32
         };
         let glyph_rect = rect.expand(overhang * 0.5, overhang);
         let color = text::has_color_glyphs(&run.text);
+        if !shadows.is_empty() {
+            layout.slots.push(shadow_slot(std::slice::from_ref(&run), &shadows, owner, rect, overhang + shadow_reach));
+        }
         layout.slots.push(Slot {
             ink: Ink::Text(vec![run]),
             owner,
@@ -1062,7 +1109,7 @@ fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32
     }
 }
 
-fn measure_credits(p: &HtmlElement, container_origin: (f32, f32)) -> LineLayout {
+fn measure_credits(p: &HtmlElement, container_origin: (f32, f32), root_px: f32) -> LineLayout {
     let bounds = line_box(p, container_origin);
     let origin = (container_origin.0 + bounds.x, container_origin.1 + bounds.y);
     let style = element_style(p);
@@ -1084,7 +1131,7 @@ fn measure_credits(p: &HtmlElement, container_origin: (f32, f32)) -> LineLayout 
         static_em: style.font_px,
     };
     if let Some(text) = p.first_element_child() {
-        push_static_text(&mut layout, text.unchecked_ref(), origin, Owner::Credits);
+        push_static_text(&mut layout, text.unchecked_ref(), origin, Owner::Credits, root_px);
     }
     layout
 }

@@ -130,6 +130,35 @@ the line as it is:
 
 Touch has no hover, so a tap never leaves a line looking hovered.
 
+A few more properties stand in for rules that styled lines and words by state:
+
+```css
+.blyrics-container {
+  /* other lines while the pointer is over the lyrics or a reader scrolls */
+  --blyrics-line-opacity-browsing: 0.5;
+  /* distance lists like the opacity ones, applied to the line's colours */
+  --blyrics-line-saturate-after: 1 0.9 0.8;
+  --blyrics-line-brightness-before: 1 0.8;
+}
+
+.blyrics--word {
+  /* a sung word, while its line is still being sung */
+  --blyrics-word-past-opacity: 0.6;
+  /* word-synced words wait here until sung, then rise out of it over their duration */
+  --blyrics-word-rest-transform: translateY(3px);
+  --blyrics-word-rise-extra-duration: 0.2s;
+  --blyrics-word-rise-easing: ease;
+}
+
+.blyrics--line, .blyrics--translated {
+  /* text-shadow's syntax; drawn once with the line, the same in every state */
+  --blyrics-text-shadow: 0 0.3rem 0.5rem rgb(0 0 0 / 0.15);
+}
+```
+
+The shadow, the past opacity and the rest pose are read from each element, so selectors scope them
+as they do colours. The browsing opacity and the distance lists are read from the container.
+
 ## How it works
 
 The lines are laid out by the browser in an invisible copy of `@braccato/core`'s markup, inside the

@@ -16,6 +16,7 @@ use crate::scroll::{self, AutoScroll, Curve, ScrollLine, ScrollParams, Viewport}
 use crate::song::{self, Decorations, Hung, Song};
 use crate::stage::{self, Role};
 use crate::style;
+use crate::theme::LineLook;
 use crate::theme::{CommentSettings, Theme};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement, Window};
@@ -320,6 +321,7 @@ pub struct View {
     /// What is drawn blurred this frame (see `gpu.rs`), and scratch space for a line's paint.
     blur_jobs: Vec<BlurJob>,
     line_quads: Vec<Quad>,
+    line_under: Vec<Quad>,
     line_blurs: Vec<paint::Blur>,
     pub events: Vec<Event>,
     pub stats: Stats,
@@ -329,6 +331,9 @@ pub struct View {
     /// (1, easing to 0 while a reader scrolls): (from, to, since).
     focus: Focus,
     effects: (f32, f32, f64),
+    /// How far the lines have eased to the theme's browsing opacity, 1 while the pointer is over the
+    /// lyrics or a reader scrolls.
+    browsing: Tween,
 
     /// The stage layout: only the lines being sung, at the bottom of the element.
     pub stage: bool,
@@ -430,12 +435,14 @@ impl View {
             quads: Vec::new(),
             blur_jobs: Vec::new(),
             line_quads: Vec::new(),
+            line_under: Vec::new(),
             line_blurs: Vec::new(),
             events: Vec::new(),
             stats: Stats::default(),
             profile: Profile::default(),
             focus: Focus::default(),
             effects: (1.0, 1.0, 0.0),
+            browsing: Tween::default(),
             stage: false,
             stage_motion: Vec::new(),
             stage_area: None,
@@ -985,9 +992,11 @@ impl View {
     /// The pointer moved to `client`, or off the lines. Returns whether that changes the hovered
     /// line, and so wants a frame.
     pub fn set_pointer(&mut self, client: Option<(f32, f32)>) -> bool {
+        let entered = self.pointer.is_some() != client.is_some();
         self.pointer = client;
         let Some(song) = &self.song else { return false };
-        self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
+        (entered && self.theme.line_opacity_browsing.is_some())
+            || self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
     }
 
     /// The line drawn under the pointer, if the theme has a hover look.
@@ -1752,6 +1761,17 @@ impl View {
         if effects_on && (self.focus.moving(now_ms) || now_ms < self.effects.2 + EFFECTS_FADE_MS) {
             moving = true;
         }
+        // Lines other than the sung and hovered ones ease to the browsing opacity while the pointer
+        // is over the lyrics or a reader scrolls.
+        let hover_timing = (self.theme.line_hover.duration_s, self.theme.line_hover.easing);
+        let browsing_opacity = self.theme.line_opacity_browsing.filter(|_| !self.stage && !song.no_lyrics);
+        let browsing_to = if browsing_opacity.is_some() && (self.pointer.is_some() || !following) { 1.0 } else { 0.0 };
+        self.browsing.aim(browsing_to, now_ms, hover_timing.0, hover_timing.1);
+        if self.browsing.moving(now_ms, hover_timing.0) {
+            moving = true;
+        }
+        let browsing = self.browsing.at(now_ms, hover_timing.0, hover_timing.1);
+        let sung = self.autoscroll.followed_range();
 
         // Unsynced lyrics have nothing to follow, so they drift instead.
         if song.sync == SyncType::None
@@ -1801,7 +1821,7 @@ impl View {
                 _ if self.stage => (0.0, 0.0),
                 _ => (layout.top + offset - canvas_top, 1.0),
             };
-            let mut line_blur = 0.0;
+            let mut look = LineLook::PLAIN;
             if effects_on {
                 let (first, last) = self.focus.at(now_ms, self.theme.scroll_easing);
                 let at = index as f32;
@@ -1812,11 +1832,10 @@ impl View {
                 } else {
                     0.0
                 };
-                let (effect_opacity, blur) = self.theme.line_effects.at(distance);
-                let strength = effect_strength(self.effects, now_ms);
-                opacity *= 1.0 + (effect_opacity - 1.0) * strength;
-                line_blur = blur * strength;
+                look = self.theme.line_effects.at(distance).scaled(effect_strength(self.effects, now_ms));
+                opacity *= look.opacity;
             }
+            let mut line_blur = look.blur;
             // The line under the pointer eases to the theme's hover look.
             let hover = self.theme.line_hover;
             let target = if pointed == Some(index) { 1.0 } else { 0.0 };
@@ -1829,6 +1848,13 @@ impl View {
                 }
                 state.hover.at(now_ms, hover.duration_s, hover.easing)
             };
+            if let Some(to) = browsing_opacity {
+                let is_sung = sung.is_some_and(|(first, last)| (first..=last).contains(&index));
+                let share = browsing * (1.0 - hovered);
+                if !is_sung && share > 0.0 {
+                    opacity += (to - opacity) * share;
+                }
+            }
             if hovered > 0.0 {
                 if let Some(to) = hover.opacity {
                     opacity += (to - opacity) * hovered;
@@ -1865,12 +1891,22 @@ impl View {
             if entry < 1.0 && (line.translation.is_some() || line.romanization.is_some() || line.rows.len() > 1) {
                 moving = true;
             }
-            let placement =
-                Placement { x: self.bleed_left + layout.left, y, dpr: self.dpr, opacity, entry, hover_scale };
+            let placement = Placement {
+                x: self.bleed_left + layout.left,
+                y,
+                dpr: self.dpr,
+                opacity,
+                entry,
+                hover_scale,
+                saturate: look.saturate,
+                brightness: look.brightness,
+            };
             self.line_quads.clear();
+            self.line_under.clear();
             self.line_blurs.clear();
             paint::paint_line(
                 &mut self.line_quads,
+                &mut self.line_under,
                 &mut self.line_blurs,
                 line,
                 layout,
@@ -1881,18 +1917,22 @@ impl View {
             );
             let texture = state.texture.as_ref().unwrap();
             texture.place(&mut self.line_quads);
+            texture.place(&mut self.line_under);
             for blur in &mut self.line_blurs {
                 texture.place(&mut blur.quads);
             }
             // A line the theme blurs for its distance is drawn whole into the atlas, glows and all.
             if line_blur * self.dpr >= MIN_BLUR_PX {
-                let mut quads: Vec<Quad> = self.line_blurs.drain(..).flat_map(|b| b.quads).collect();
+                let mut quads: Vec<Quad> = self.line_under.clone();
+                quads.extend(self.line_blurs.drain(..).flat_map(|b| b.quads));
                 quads.extend_from_slice(&self.line_quads);
                 self.blur_jobs.push(BlurJob { quads, sigma: line_blur, composite: self.quads.len() });
                 self.quads.push(Quad::default());
                 continue;
             }
-            // Glows go under the line's text: blurred, or as they are once too small to blur.
+            // Shadows go under everything of the line, and glows under its text: blurred, or as they
+            // are once too small to blur.
+            self.quads.extend_from_slice(&self.line_under);
             for blur in self.line_blurs.drain(..) {
                 if blur.sigma * self.dpr >= MIN_BLUR_PX {
                     self.blur_jobs.push(BlurJob { quads: blur.quads, sigma: blur.sigma, composite: self.quads.len() });
@@ -1949,6 +1989,8 @@ impl View {
                         opacity,
                         entry: 1.0,
                         hover_scale: (1.0, 0.0),
+                        saturate: 1.0,
+                        brightness: 1.0,
                     };
                     paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
                     texture.place(&mut self.quads[first..]);

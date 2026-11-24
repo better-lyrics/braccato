@@ -316,6 +316,14 @@ pub struct Theme {
 
     /// What the line under the pointer eases to.
     pub line_hover: LineHover,
+    /// The opacity lines other than the sung and hovered ones ease to while the pointer is over the
+    /// lyrics or a reader scrolls (`--blyrics-line-opacity-browsing`), over the hover's duration.
+    pub line_opacity_browsing: Option<f32>,
+
+    /// How much longer than its own duration a word takes to rise from its rest pose
+    /// (`--blyrics-word-rest-transform`, read per word), and the rise's easing.
+    pub word_rise_extra_s: f32,
+    pub word_rise_easing: Easing,
 }
 
 /// What a theme makes the line under the pointer look like: each value it sets replaces the line's
@@ -365,25 +373,64 @@ pub struct LineEffects {
     pub opacity_after: Vec<f32>,
     pub blur_before: Vec<f32>,
     pub blur_after: Vec<f32>,
+    pub saturate_before: Vec<f32>,
+    pub saturate_after: Vec<f32>,
+    pub brightness_before: Vec<f32>,
+    pub brightness_after: Vec<f32>,
+}
+
+/// What the distance curves give one line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineLook {
+    pub opacity: f32,
+    /// Blur standard deviation, CSS pixels.
+    pub blur: f32,
+    pub saturate: f32,
+    pub brightness: f32,
+}
+
+impl LineLook {
+    pub const PLAIN: LineLook = LineLook { opacity: 1.0, blur: 0.0, saturate: 1.0, brightness: 1.0 };
+
+    /// `self` eased toward plain by `1 - strength`.
+    pub fn scaled(self, strength: f32) -> LineLook {
+        let toward = |plain: f32, v: f32| plain + (v - plain) * strength;
+        LineLook {
+            opacity: toward(1.0, self.opacity),
+            blur: toward(0.0, self.blur),
+            saturate: toward(1.0, self.saturate),
+            brightness: toward(1.0, self.brightness),
+        }
+    }
 }
 
 impl LineEffects {
     pub fn is_empty(&self) -> bool {
-        self.opacity_before.is_empty()
-            && self.opacity_after.is_empty()
-            && self.blur_before.is_empty()
-            && self.blur_after.is_empty()
+        [
+            &self.opacity_before,
+            &self.opacity_after,
+            &self.blur_before,
+            &self.blur_after,
+            &self.saturate_before,
+            &self.saturate_after,
+            &self.brightness_before,
+            &self.brightness_after,
+        ]
+        .iter()
+        .all(|list| list.is_empty())
     }
 
-    /// Opacity and blur at `distance` lines away, before (negative) or after (positive).
-    pub fn at(&self, distance: f32) -> (f32, f32) {
-        let (opacity, blur) = if distance < 0.0 {
-            (&self.opacity_before, &self.blur_before)
-        } else {
-            (&self.opacity_after, &self.blur_after)
-        };
+    /// The look at `distance` lines away, before (negative) or after (positive).
+    pub fn at(&self, distance: f32) -> LineLook {
+        let before = distance < 0.0;
         let d = distance.abs();
-        (sample(opacity, d, 1.0), sample(blur, d, 0.0))
+        let at = |b: &[f32], a: &[f32], empty: f32| sample(if before { b } else { a }, d, empty);
+        LineLook {
+            opacity: at(&self.opacity_before, &self.opacity_after, 1.0),
+            blur: at(&self.blur_before, &self.blur_after, 0.0),
+            saturate: at(&self.saturate_before, &self.saturate_after, 1.0),
+            brightness: at(&self.brightness_before, &self.brightness_after, 1.0),
+        }
     }
 }
 
@@ -396,6 +443,98 @@ fn sample(values: &[f32], d: f32, empty: f32) -> f32 {
     }
     let t = d - i as f32;
     values[i] + (values[i + 1] - values[i]) * t
+}
+
+/// A number or a percentage, as an opacity: `0.5` or `50%`, clamped to 0 to 1. `None` when unset or
+/// unreadable.
+pub fn fraction(value: &str) -> Option<f32> {
+    let value = value.trim();
+    let parsed = match value.strip_suffix('%') {
+        Some(percent) => percent.trim().parse::<f32>().map(|v| v / 100.0),
+        None => value.parse::<f32>(),
+    };
+    parsed.ok().filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0))
+}
+
+/// One shadow of a `text-shadow` list, lengths in CSS pixels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextShadow {
+    /// As the theme wrote it, for the canvas to parse; black when it gave none.
+    pub color: String,
+    pub x: f32,
+    pub y: f32,
+    pub blur: f32,
+}
+
+impl TextShadow {
+    /// How far past the text the shadow can reach, CSS pixels.
+    pub fn reach(&self) -> f32 {
+        self.x.abs().max(self.y.abs()) + 1.5 * self.blur
+    }
+}
+
+/// A `text-shadow` value: comma-separated shadows of an optional colour and two or three lengths in
+/// px, em or rem. A shadow the renderer cannot read is left out. `none` and the empty value give none.
+pub fn parse_text_shadows(value: &str, em_px: f32, root_font_px: f32) -> Vec<TextShadow> {
+    let value = value.trim();
+    if value.is_empty() || value == "none" {
+        return Vec::new();
+    }
+    let length = |token: &str| -> Option<f32> {
+        let parsed = if let Some(rem) = token.strip_suffix("rem") {
+            rem.parse::<f32>().ok().map(|v| v * root_font_px)
+        } else if let Some(em) = token.strip_suffix("em") {
+            em.parse::<f32>().ok().map(|v| v * em_px)
+        } else if let Some(px) = token.strip_suffix("px") {
+            px.parse::<f32>().ok()
+        } else {
+            token.parse::<f32>().ok().filter(|v| *v == 0.0)
+        };
+        parsed.filter(|v| v.is_finite())
+    };
+    split_top_level(value, ',')
+        .into_iter()
+        .filter_map(|shadow| {
+            let mut lengths = Vec::new();
+            let mut color = None;
+            for token in split_top_level(shadow, ' ') {
+                match length(token) {
+                    Some(v) => lengths.push(v),
+                    None if color.is_none() => color = Some(token.to_string()),
+                    None => return None,
+                }
+            }
+            if !(2..=3).contains(&lengths.len()) {
+                return None;
+            }
+            Some(TextShadow {
+                color: color.unwrap_or_else(|| "black".into()),
+                x: lengths[0],
+                y: lengths[1],
+                blur: lengths.get(2).copied().unwrap_or(0.0).max(0.0),
+            })
+        })
+        .collect()
+}
+
+/// `text` cut at `separator` (or any whitespace, for a space) outside parentheses, pieces trimmed
+/// and empty ones dropped.
+fn split_top_level(text: &str, separator: char) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    let (mut depth, mut start) = (0i32, 0usize);
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            c if depth == 0 && (c == separator || (separator == ' ' && c.is_whitespace())) => {
+                pieces.push(&text[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    pieces.push(&text[start..]);
+    pieces.into_iter().map(str::trim).filter(|p| !p.is_empty()).collect()
 }
 
 /// A list of numbers or lengths, as `1 0.88 0.72` or `0 1.125px 2.5px`, separated by spaces or
@@ -541,8 +680,8 @@ impl Theme {
             credits_opacity: num("--blyrics-credits-opacity", 0.2),
             credits_focused_opacity: num("--blyrics-credits-focused-opacity", 0.85),
             line_effects: {
-                // `--blyrics-line-opacity` and `--blyrics-line-blur` hold for both sides; a
-                // `-before` or `-after` variant replaces one side.
+                // `--blyrics-line-opacity`, `-blur`, `-saturate` and `-brightness` hold for both
+                // sides; a `-before` or `-after` variant replaces one side.
                 let list = |name: &str| parse_list(&raw(name), root_font_px);
                 let side = |both: &str, one: &str| {
                     let own = list(one);
@@ -557,6 +696,10 @@ impl Theme {
                     opacity_after: side("--blyrics-line-opacity", "--blyrics-line-opacity-after"),
                     blur_before: side("--blyrics-line-blur", "--blyrics-line-blur-before"),
                     blur_after: side("--blyrics-line-blur", "--blyrics-line-blur-after"),
+                    saturate_before: side("--blyrics-line-saturate", "--blyrics-line-saturate-before"),
+                    saturate_after: side("--blyrics-line-saturate", "--blyrics-line-saturate-after"),
+                    brightness_before: side("--blyrics-line-brightness", "--blyrics-line-brightness-before"),
+                    brightness_after: side("--blyrics-line-brightness", "--blyrics-line-brightness-after"),
                 }
             },
             line_hover: LineHover::parse(
@@ -567,6 +710,9 @@ impl Theme {
                 ease("--blyrics-line-hover-easing", Easing::EASE),
                 root_font_px,
             ),
+            line_opacity_browsing: fraction(&raw("--blyrics-line-opacity-browsing")),
+            word_rise_extra_s: parse_seconds(&raw("--blyrics-word-rise-extra-duration")).unwrap_or(0.2).max(0.0),
+            word_rise_easing: ease("--blyrics-word-rise-easing", Easing::EASE),
             settings,
         }
     }
@@ -588,11 +734,39 @@ mod tests {
         assert!(parse_list("", 16.0).is_empty());
         let effects =
             LineEffects { opacity_after: vec![1.0, 0.5, 0.0], blur_after: vec![0.0, 2.0], ..Default::default() };
-        assert_eq!(effects.at(0.0), (1.0, 0.0));
-        assert_eq!(effects.at(0.5), (0.75, 1.0));
-        assert_eq!(effects.at(5.0), (0.0, 2.0));
+        let pair = |look: LineLook| (look.opacity, look.blur);
+        assert_eq!(pair(effects.at(0.0)), (1.0, 0.0));
+        assert_eq!(pair(effects.at(0.5)), (0.75, 1.0));
+        assert_eq!(pair(effects.at(5.0)), (0.0, 2.0));
         // Nothing set for lines before: untouched.
-        assert_eq!(effects.at(-3.0), (1.0, 0.0));
+        assert_eq!(effects.at(-3.0), LineLook::PLAIN);
+        let filters =
+            LineEffects { saturate_before: vec![1.0, 0.8], brightness_after: vec![1.0, 1.2], ..Default::default() };
+        assert_eq!(filters.at(-2.0).saturate, 0.8);
+        assert_eq!(filters.at(2.0).saturate, 1.0);
+        assert!((filters.at(0.5).brightness - 1.1).abs() < 1e-6);
+        // A reader scrolling eases every value back to plain.
+        assert_eq!(effects.at(5.0).scaled(0.0), LineLook::PLAIN);
+    }
+
+    #[test]
+    fn text_shadows_read_like_css() {
+        let shadows = parse_text_shadows("0 .3rem .5rem rgba(0, 0, 0, .15), hsl(0, 0%, 0%, .5) 1px 2px", 20.0, 16.0);
+        assert_eq!(
+            shadows,
+            vec![
+                TextShadow { color: "rgba(0, 0, 0, .15)".into(), x: 0.0, y: 4.8, blur: 8.0 },
+                TextShadow { color: "hsl(0, 0%, 0%, .5)".into(), x: 1.0, y: 2.0, blur: 0.0 },
+            ]
+        );
+        assert_eq!(
+            parse_text_shadows("0 0 0.5em", 20.0, 16.0)[0],
+            TextShadow { color: "black".into(), x: 0.0, y: 0.0, blur: 10.0 }
+        );
+        // What it cannot read is left out, and the rest kept.
+        assert_eq!(parse_text_shadows("0 0 2vw red, 0 1px red", 20.0, 16.0).len(), 1);
+        assert!(parse_text_shadows("none", 20.0, 16.0).is_empty());
+        assert!(parse_text_shadows("", 20.0, 16.0).is_empty());
     }
 
     #[test]

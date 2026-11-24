@@ -7,6 +7,7 @@
 
 use crate::dom;
 use crate::layout::{Ink, LineLayout, Placement, Rect, TextRun};
+use crate::theme::TextShadow;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 
@@ -14,6 +15,8 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 const NOTE_PATH: &str = "M10 21q-1.65 0-2.825-1.175T6 17t1.175-2.825T10 13q.575 0 1.063.138t.937.412V4q0-.425.288-.712T13 3h4q.425 0 .713.288T18 4v2q0 .425-.288.713T17 7h-3v10q0 1.65-1.175 2.825T10 21";
 
 const MAX_TEXTURE_WIDTH: f32 = 4096.0;
+/// How far left of a shadow its text is drawn, in CSS pixels: past any slot's clip.
+const SHADOW_AWAY_PX: f32 = 100_000.0;
 const GAP: f32 = 2.0;
 
 pub struct Rasterizer {
@@ -85,6 +88,11 @@ impl Rasterizer {
                     ctx.set_global_composite_operation("lighter").ok();
                 }
                 Ink::Pill { radius } => self.pill(slot.rect, *radius),
+                Ink::Shadow(runs, shadows) => {
+                    ctx.set_global_composite_operation("source-over").ok();
+                    self.shadows(runs, shadows, dpr);
+                    ctx.set_global_composite_operation("lighter").ok();
+                }
             }
             ctx.restore();
         }
@@ -111,6 +119,50 @@ impl Rasterizer {
                 ctx.restore();
             }
         }
+    }
+
+    /// The runs' shadows in their own colours, without the runs: the text is drawn far to the left,
+    /// outside the slot's clip, and its shadow offset back to where the text is. The last shadow is
+    /// drawn first, so the first is on top, as in CSS. Shadow lengths are in texture pixels: the
+    /// context's transform does not scale them.
+    fn shadows(&self, runs: &[TextRun], shadows: &[TextShadow], dpr: f32) {
+        let ctx = &self.context;
+        let away = SHADOW_AWAY_PX as f64;
+        ctx.set_fill_style_str("#000");
+        for shadow in shadows.iter().rev() {
+            ctx.set_shadow_color("transparent");
+            ctx.set_shadow_color(&shadow.color);
+            ctx.set_shadow_offset_x(shadow.x as f64 * dpr as f64 + away * dpr as f64);
+            ctx.set_shadow_offset_y(shadow.y as f64 * dpr as f64);
+            ctx.set_shadow_blur(shadow.blur as f64 * dpr as f64);
+            for run in runs {
+                ctx.set_font(&run.font);
+                set_optional(ctx, "direction", if run.rtl { "rtl" } else { "ltr" });
+                set_optional(ctx, "letterSpacing", &run.letter_spacing);
+                set_optional(ctx, "lang", if run.lang.is_empty() { "inherit" } else { &run.lang });
+                if let Some(clip) = run.clip {
+                    // A joined run is cut to its word; the shadow of that cut spreads past it.
+                    let reach = shadow.reach();
+                    ctx.save();
+                    ctx.begin_path();
+                    ctx.rect(
+                        (clip.x - reach) as f64,
+                        (clip.y - clip.h - reach) as f64,
+                        (clip.w + 2.0 * reach) as f64,
+                        (clip.h * 3.0 + 2.0 * reach) as f64,
+                    );
+                    ctx.clip();
+                }
+                let _ = ctx.fill_text(&run.text, run.x as f64 - away, run.baseline as f64);
+                if run.clip.is_some() {
+                    ctx.restore();
+                }
+            }
+        }
+        ctx.set_shadow_color("transparent");
+        ctx.set_shadow_blur(0.0);
+        ctx.set_shadow_offset_x(0.0);
+        ctx.set_shadow_offset_y(0.0);
     }
 
     fn note(&self, square: Rect) {
