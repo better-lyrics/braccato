@@ -1166,7 +1166,17 @@ impl View {
         self.stage_roles.clear();
         self.stage_area = None;
         let now = self.now.ms();
-        self.lines = song.lines.iter().map(|_| LineState { decorated_ms: now, ..Default::default() }).collect();
+        // A rebuild of the same lyrics keeps how far each line has eased to the browsing opacity,
+        // so a reader's dimmed view doesn't flash.
+        let browse: Vec<Tween> =
+            if keep_host { self.lines.iter().map(|state| state.browse).collect() } else { Vec::new() };
+        self.lines = (0..song.lines.len())
+            .map(|i| LineState {
+                decorated_ms: now,
+                browse: browse.get(i).copied().unwrap_or_default(),
+                ..Default::default()
+            })
+            .collect();
         self.events.push(Event::LyricsLoaded { line_count: song.lines.len(), sync: song.sync });
         self.song = Some(song);
         self.dom = Some(dom_);
