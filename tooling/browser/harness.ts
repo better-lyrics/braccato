@@ -94,6 +94,67 @@ window.start = ({ hostFirst = false, playing = true, synced = true, words = fals
   tick();
   ticker = setInterval(tick, 20);
 };
+// Another song, as Better Lyrics puts one up: the player reads a stopped zero between songs, the
+// view may be cleared first, the player clock reset, and the wrapper may slide the new lines in from
+// below with a transform.
+// Answers the furthest the scroll went before the new song had played two seconds, then plays on
+// from playOn seconds and answers where the scroll got to.
+window.switchSong = async ({ clear = false, slide = false, reset = false, playOn = 30 }) => {
+  clearInterval(ticker);
+  // Better Lyrics forgets the old song's time this way before it has the new song's lyrics.
+  if (reset) core.resetPlaybackClock();
+  const mount = document.getElementById("mount");
+  const tickAt = (at, playing) => view.tick(at, { isPlaying: playing, passiveScrollEnabled: true, eventCreationTime: Date.now() });
+  const zero = () => tickAt(0, false);
+  zero();
+  if (clear) view.clear();
+  if (slide) {
+    mount.style.transition = "none";
+    mount.style.transform = "translateY(700px)";
+  }
+  view.setLyrics(Array.from({ length: 40 }, (_, i) => ({ startTimeMs: i * ${STEP_S * 1000}, durationMs: ${STEP_S * 1000},
+    words: "line number " + i + " of the next song" })), { mount, songKey: "next" });
+  if (slide) {
+    mount.getBoundingClientRect();
+    mount.style.transition = "transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)";
+    mount.style.transform = "translateY(0)";
+  }
+  let furthest = 0, recording = true;
+  const record = () => { furthest = Math.max(furthest, scroller.scrollTop); if (recording) requestAnimationFrame(record) };
+  requestAnimationFrame(record);
+  const wait = ms => new Promise(done => setTimeout(done, ms));
+  ticker = setInterval(zero, 20);
+  await wait(300);
+  clearInterval(ticker);
+  let started = now();
+  ticker = setInterval(() => tickAt((now() - started) / 1000, true), 20);
+  await wait(2000);
+  recording = false;
+  clearInterval(ticker);
+  started = now() - playOn * 1000;
+  ticker = setInterval(() => tickAt((now() - started) / 1000, true), 20);
+  await wait(1500);
+  return { furthest, after: scroller.scrollTop };
+};
+// \`<braccato-lyrics>\` given its lyrics and a paused time before it connects, as a page writes them.
+// Answers where it scrolled to.
+window.elementAt = async seconds => {
+  clearInterval(ticker);
+  view?.destroy();
+  view = null;
+  document.getElementById("scroller").outerHTML = '<div id="scroller"></div>';
+  scroller = document.getElementById("scroller");
+  const { defineLyricsElement } = await import("/js/element.js");
+  const element = new (defineLyricsElement())();
+  element.host = { getScrollElement: () => scroller };
+  element.lyrics = Array.from({ length: 40 }, (_, i) => ({ startTimeMs: i * ${STEP_S * 1000}, durationMs: ${STEP_S * 1000},
+    words: "line number " + i + " of the song" }));
+  element.currentTime = seconds;
+  element.playing = false;
+  scroller.append(element);
+  await new Promise(done => setTimeout(done, 1500));
+  return scroller.scrollTop;
+};
 window.scrollByReader = px => { scroller.scrollTop += px };
 window.hideButton = () => { button = false };
 window.relayout = () => view.relayout();

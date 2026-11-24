@@ -342,6 +342,9 @@ export function createLyricsRenderer(rendererOptions) {
 		return rust && attached ? rust.lineIndex(lyricElement) : -1;
 	}
 
+	/** The snapshot last handed to Rust. */
+	let sent = null;
+
 	// What the records and the module-level helpers reach this renderer through.
 	const view = {
 		indexOf,
@@ -362,6 +365,7 @@ export function createLyricsRenderer(rendererOptions) {
 			return index >= 0 ? rust.hangRomanization(index, text ?? undefined, timed ?? null) : false;
 		},
 		resetClock() {
+			sent = null;
 			rust?.resetClock();
 		},
 		canvas() {
@@ -378,9 +382,6 @@ export function createLyricsRenderer(rendererOptions) {
 		},
 	};
 	live.add(view);
-
-	/** The snapshot last handed to Rust. */
-	let sent = null;
 
 	function tick(currentTimeS, options) {
 		if (destroyed) return "lyrics-missing";
@@ -443,12 +444,15 @@ export function createLyricsRenderer(rendererOptions) {
 				throw new Error("A lyrics renderer needs a mount: give one to createLyricsRenderer or to setLyrics");
 			}
 			ensure(nextMount);
-			rust.setLyrics(lyrics, {
+			const otherSong = rust.setLyrics(lyrics, {
 				noLyrics: options.noLyrics ?? false,
 				language: normalizeLanguage(options.language) || undefined,
 				songwriters: options.songwriters ? [...options.songwriters] : undefined,
 				songKey: options.songKey,
 			});
+			// The last snapshot was the old song's. Carried forward, or held by a stop at zero (the
+			// player between songs), it would scroll the new song to wherever the old one had got to.
+			if (otherSong) view.resetClock();
 			rust.container.dataset.loaderVisible = String(options.loaderVisible ?? false);
 		},
 		setLanguage(language) {
@@ -469,6 +473,7 @@ export function createLyricsRenderer(rendererOptions) {
 			if (destroyed || !rust) return;
 			rust.clear();
 			attached = false;
+			sent = null;
 			syncRecords();
 		},
 		destroy() {

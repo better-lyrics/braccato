@@ -288,6 +288,9 @@ pub struct View {
     pub on_page: bool,
     started: bool,
     last_lyric: f32,
+    /// Another song was put up and has not been scrolled to yet: its first layout puts the scroll
+    /// where it starts, at once, wherever the old song had it.
+    fresh_song: bool,
 
     pub scroller: Option<Element>,
     /// The scroller's `scrollTop`, as last read. Reading it can make the browser lay the page out,
@@ -407,6 +410,7 @@ impl View {
             on_page: true,
             started: false,
             last_lyric: 0.0,
+            fresh_song: false,
             scroller: None,
             scroll_cache: Default::default(),
             autoscroll: AutoScroll::default(),
@@ -441,12 +445,19 @@ impl View {
     // -- Inputs --------------------------------------------
 
     /// A new song, built at once so its elements exist when this returns. Lyrics given with the
-    /// `song_key` of the song on screen are swapped into it instead (see `swap`).
-    pub fn set_lyrics(&mut self, lyrics: Vec<Lyric>, options: LyricsOptions) {
+    /// `song_key` of the song on screen are swapped into it instead (see `swap`). Answers whether
+    /// they are another song, so a caller whose last snapshot was the old song's can forget it
+    /// (`reset_clock`). A time set by hand stays: `<braccato-lyrics>` sets it before its lyrics.
+    pub fn set_lyrics(&mut self, lyrics: Vec<Lyric>, options: LyricsOptions) -> bool {
         let same_song = options.song_key.is_some() && options.song_key == self.options.song_key;
         if same_song && self.song.is_some() && !options.no_lyrics && !self.options.no_lyrics {
             self.swap(lyrics, options);
-            return;
+            return false;
+        }
+        if !same_song {
+            self.last_lyric = 0.0;
+            self.passive = (0.0, None);
+            self.fresh_song = true;
         }
         self.hung = vec![Hung::default(); lyrics.len()];
         self.time_overrides.clear();
@@ -461,6 +472,7 @@ impl View {
         self.started = false;
         self.clock.reset();
         self.build(false);
+        !same_song
     }
 
     /// Lyrics for the song already on screen: lines the two share keep their elements, state and
@@ -806,8 +818,12 @@ impl View {
         changed
     }
 
+    /// Forgets the player's time, as a new song should, as 1.x's `resetPlaybackClock` did.
     pub fn reset_clock(&mut self) {
         self.clock.reset();
+        self.manual_time = 0.0;
+        self.manual_playing = false;
+        self.manual_event_ms = -1.0;
     }
 
     pub fn set_profiling(&mut self, on: bool) -> bool {
@@ -1406,7 +1422,7 @@ impl View {
                 (height, 0.0, left, right, window.scroll_y().unwrap_or(0.0) as f32)
             }
         };
-        self.host_top_in_scroll = host_rect.top() as f32 - view_top + scroll_top;
+        self.host_top_in_scroll = host_rect.top() as f32 - self.host_translation() - view_top + scroll_top;
         let (inset_top, inset_bottom) = self.scroll_insets(view_height);
         let content = self.container.get_bounding_client_rect().height() as f32;
         self.viewport = Viewport {
@@ -1469,9 +1485,26 @@ impl View {
         }
     }
 
+    /// How far translations on the host and the elements between it and the scroll element move it.
+    /// A page can slide the lyrics in that way (Better Lyrics does, as its loader leaves a new song),
+    /// but neither the scroll position nor the canvas's sticky position moves with it: both work on
+    /// the page's layout before transforms, so where the host is in the scroller is read without them.
+    fn host_translation(&self) -> f32 {
+        let mut shift = 0.0;
+        let mut node: Option<web_sys::Element> = Some(self.host.clone().into());
+        while let Some(element) = node {
+            if self.scroller.as_ref().is_some_and(|s| s.is_same_node(Some(&element))) {
+                break;
+            }
+            shift += dom::translated_y(&element);
+            node = dom::parent_across_shadow(&element);
+        }
+        shift
+    }
+
     /// Where the element's top is in the scroll element's content.
     fn host_top_now(&self) -> f32 {
-        let host = self.host.get_bounding_client_rect().top() as f32;
+        let host = self.host.get_bounding_client_rect().top() as f32 - self.host_translation();
         match &self.scroller {
             Some(el) => {
                 let rect = el.get_bounding_client_rect();
@@ -1621,7 +1654,22 @@ impl View {
             self.resume_autoscroll();
         }
         let following = self.user_paused_until <= now_ms;
-        if animating && following && !self.stage && (self.started || self.autoscroll.force) {
+        // Another song starts where its first scroll would put it, before it plays: left where the old
+        // song was, it would glide there from the old song's place once it did.
+        let fresh = self.fresh_song && self.measured.is_some() && !self.stage;
+        if fresh {
+            self.fresh_song = false;
+            if song.no_lyrics || song.sync == SyncType::None {
+                // Unsynced lyrics drift from the top, and a message stands at it.
+                let start = self.host_top_in_scroll.max(0.0);
+                if scroll_top > start + 0.5 {
+                    self.write_scroll_top(start);
+                }
+            }
+        }
+        let synced = !song.no_lyrics && song.sync != SyncType::None;
+        let first = fresh && synced;
+        if (animating || first) && following && !self.stage && (self.started || self.autoscroll.force || first) {
             if let Some(measured) = &self.measured {
                 let offset = self.host_top_in_scroll;
                 let lines: Vec<ScrollLine> = song
@@ -1648,10 +1696,16 @@ impl View {
                     early_consider_s: self.settings.early_scroll_consider_s,
                     ending_threshold_s: self.settings.lyric_ending_threshold_s,
                 };
-                if let Some(plan) =
-                    self.autoscroll.tick(&lines, credits, scroll_time, &params, self.viewport, scroll_top, jumped)
-                {
-                    if self.tick_options.smooth_scroll && self.theme.animate_scroll {
+                if let Some(plan) = self.autoscroll.tick(
+                    &lines,
+                    credits,
+                    scroll_time,
+                    &params,
+                    self.viewport,
+                    scroll_top,
+                    jumped || first,
+                ) {
+                    if !first && self.tick_options.smooth_scroll && self.theme.animate_scroll {
                         let tops: Vec<(f32, f32)> = lines
                             .iter()
                             .map(|l| (l.top, l.height))
