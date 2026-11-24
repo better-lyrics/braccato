@@ -7,6 +7,7 @@
 
 use crate::dom;
 use crate::layout::{Ink, LineLayout, Placement, Rect, TextRun};
+use crate::theme::TextShadow;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 
@@ -14,6 +15,8 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 const NOTE_PATH: &str = "M10 21q-1.65 0-2.825-1.175T6 17t1.175-2.825T10 13q.575 0 1.063.138t.937.412V4q0-.425.288-.712T13 3h4q.425 0 .713.288T18 4v2q0 .425-.288.713T17 7h-3v10q0 1.65-1.175 2.825T10 21";
 
 const MAX_TEXTURE_WIDTH: f32 = 4096.0;
+/// How far left of a shadow its text is drawn, in CSS pixels: past any slot's clip.
+const SHADOW_AWAY_PX: f32 = 100_000.0;
 const GAP: f32 = 2.0;
 
 pub struct Rasterizer {
@@ -79,12 +82,19 @@ impl Rasterizer {
                 }
                 Ink::Text(runs) => self.text_layer(runs, "#ff0000"),
                 Ink::Note => self.note(slot.rect),
+                Ink::NoteText(text, font) => self.note_text(slot.rect, text, font),
+                Ink::Dots => self.dots(slot.rect),
                 Ink::NoteImage(url) => {
                     ctx.set_global_composite_operation("source-over").ok();
                     self.note_image(slot.rect, dpr, url);
                     ctx.set_global_composite_operation("lighter").ok();
                 }
-                Ink::Pill { radius } => self.pill(slot.rect, *radius),
+                Ink::Pill { radius, solid } => self.pill(slot.rect, *radius, *solid),
+                Ink::Shadow(runs, shadows) => {
+                    ctx.set_global_composite_operation("source-over").ok();
+                    self.shadows(runs, shadows, dpr);
+                    ctx.set_global_composite_operation("lighter").ok();
+                }
             }
             ctx.restore();
         }
@@ -110,6 +120,77 @@ impl Rasterizer {
             if run.clip.is_some() {
                 ctx.restore();
             }
+        }
+    }
+
+    /// The runs' shadows in their own colours, without the runs: the text is drawn far to the left,
+    /// outside the slot's clip, and its shadow offset back to where the text is. The last shadow is
+    /// drawn first, so the first is on top, as in CSS. Shadow lengths are in texture pixels: the
+    /// context's transform does not scale them.
+    fn shadows(&self, runs: &[TextRun], shadows: &[TextShadow], dpr: f32) {
+        let ctx = &self.context;
+        let away = SHADOW_AWAY_PX as f64;
+        ctx.set_fill_style_str("#000");
+        for shadow in shadows.iter().rev() {
+            ctx.set_shadow_color("transparent");
+            ctx.set_shadow_color(&shadow.color);
+            ctx.set_shadow_offset_x(shadow.x as f64 * dpr as f64 + away * dpr as f64);
+            ctx.set_shadow_offset_y(shadow.y as f64 * dpr as f64);
+            ctx.set_shadow_blur(shadow.blur as f64 * dpr as f64);
+            for run in runs {
+                ctx.set_font(&run.font);
+                set_optional(ctx, "direction", if run.rtl { "rtl" } else { "ltr" });
+                set_optional(ctx, "letterSpacing", &run.letter_spacing);
+                set_optional(ctx, "lang", if run.lang.is_empty() { "inherit" } else { &run.lang });
+                if let Some(clip) = run.clip {
+                    // A joined run is cut to its word; the shadow of that cut spreads past it.
+                    let reach = shadow.reach();
+                    ctx.save();
+                    ctx.begin_path();
+                    ctx.rect(
+                        (clip.x - reach) as f64,
+                        (clip.y - clip.h - reach) as f64,
+                        (clip.w + 2.0 * reach) as f64,
+                        (clip.h * 3.0 + 2.0 * reach) as f64,
+                    );
+                    ctx.clip();
+                }
+                let _ = ctx.fill_text(&run.text, run.x as f64 - away, run.baseline as f64);
+                if run.clip.is_some() {
+                    ctx.restore();
+                }
+            }
+        }
+        ctx.set_shadow_color("transparent");
+        ctx.set_shadow_blur(0.0);
+        ctx.set_shadow_offset_x(0.0);
+        ctx.set_shadow_offset_y(0.0);
+    }
+
+    /// The theme's text in the note's square, as coverage, centred on it.
+    fn note_text(&self, square: Rect, text: &str, font: &str) {
+        let ctx = &self.context;
+        ctx.set_font(font);
+        set_optional(ctx, "letterSpacing", "0px");
+        ctx.set_text_align("center");
+        ctx.set_text_baseline("middle");
+        ctx.set_fill_style_str("#ff0000");
+        let _ = ctx.fill_text(text, (square.x + square.w / 2.0) as f64, (square.y + square.h / 2.0) as f64);
+        ctx.set_text_align("left");
+        ctx.set_text_baseline("alphabetic");
+    }
+
+    /// Three dots across `rect`, each as tall as it, as coverage.
+    fn dots(&self, rect: Rect) {
+        let ctx = &self.context;
+        let d = rect.h;
+        let gap = (rect.w - 3.0 * d) / 2.0;
+        ctx.set_fill_style_str("#ff0000");
+        for i in 0..3 {
+            ctx.begin_path();
+            let cx = rect.x + d / 2.0 + i as f32 * (d + gap);
+            let _ = ctx.arc((cx) as f64, (rect.y + d / 2.0) as f64, (d / 2.0) as f64, 0.0, std::f64::consts::TAU);
+            ctx.fill();
         }
     }
 
@@ -153,15 +234,19 @@ impl Rasterizer {
         let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(&scratch, x, y, w, h);
     }
 
-    /// The romanization's background and border, as coverage the shader tints: the border is
-    /// opaque and the fill a third of it, matching 5% and 10% white over the line.
-    fn pill(&self, rect: Rect, radius: f32) {
+    /// The romanization's background, as coverage the shader tints. A `solid` one is filled in
+    /// the theme's colour. The default has a border, and a fill a third of it, matching 5% and 10%
+    /// white over the line.
+    fn pill(&self, rect: Rect, radius: f32, solid: bool) {
         let ctx = &self.context;
         let radius = radius.min(rect.h / 2.0) as f64;
         ctx.begin_path();
         round_rect(ctx, rect.x as f64, rect.y as f64, rect.w as f64, rect.h as f64, radius);
-        ctx.set_fill_style_str("rgb(255 0 0 / 0.345)");
+        ctx.set_fill_style_str(if solid { "rgb(255 0 0)" } else { "rgb(255 0 0 / 0.345)" });
         ctx.fill();
+        if solid {
+            return;
+        }
         ctx.begin_path();
         round_rect(
             ctx,

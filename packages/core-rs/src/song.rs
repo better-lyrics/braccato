@@ -4,7 +4,7 @@
 
 use crate::model::{Lyric, LyricPart, LyricsOptions, SyncType};
 use crate::text;
-use crate::theme::CommentSettings;
+use crate::theme::{CommentSettings, LetterWave};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Align {
@@ -32,7 +32,8 @@ pub struct Part {
     pub background: bool,
     /// No duration of its own: it fades in rather than being swept.
     pub line_synced: bool,
-    /// Held past `blyrics-long-word-threshold`.
+    /// Held past `blyrics-long-word-threshold`, in a word of at most `blyrics-long-word-max-letters`
+    /// letters.
     pub long_word: bool,
     /// Split into letters for the letter wave.
     pub lettered: bool,
@@ -86,6 +87,8 @@ pub struct Line {
     pub translation: Option<(String, String)>,
     /// An untimed romanization, shown as plain text in the pill.
     pub romanization: Option<String>,
+    /// Text the theme puts above the no-lyrics message (`--blyrics-no-lyrics-icon`).
+    pub icon: Option<String>,
 }
 
 impl Line {
@@ -188,6 +191,7 @@ fn build_line(
         parts: Vec::new(),
         translation: None,
         romanization: None,
+        icon: None,
     };
     if lyric.is_instrumental {
         return line;
@@ -532,9 +536,13 @@ impl<'s> RowBuilder<'s> {
             group.long = units > 2 * threshold && text::grapheme_ranges(&text).len() > 2 * threshold;
             let joining = text::has_joining_script(&text);
             let mixed = text::is_mixed_direction(&text);
-            let lettered = self.settings.letter_wave && !joining && !mixed;
+            let max_letters = self.settings.long_word_max_letters;
+            let capped = max_letters > 0 && text::grapheme_ranges(text.trim()).len() > max_letters;
+            let lettered = self.settings.letter_wave != LetterWave::Off && !joining && !mixed;
             for &p in &group.parts {
-                line.parts[p].lettered = lettered;
+                let part = &mut line.parts[p];
+                part.long_word &= !capped;
+                part.lettered = lettered && (self.settings.letter_wave == LetterWave::All || part.long_word);
             }
         }
     }
@@ -697,6 +705,16 @@ mod tests {
     fn credits_join_names() {
         assert_eq!(join_names(&["A".into(), "B".into(), "C".into()]), "A, B & C");
         assert_eq!(join_names(&["A".into(), "B".into()]), "A & B");
+    }
+
+    #[test]
+    fn held_words_can_be_the_only_ones_lettered_and_capped_by_length() {
+        let lyrics =
+            vec![lyric(vec![part(0.0, "ooh ", 2000.0), part(2000.0, "everybody ", 2000.0), part(4000.0, "hi", 500.0)])];
+        let settings = CommentSettings::parse("/* blyrics-letter-wave = long; blyrics-long-word-max-letters = 8; */");
+        let song = build_song(&lyrics, &[], &LyricsOptions::default(), &settings, Decorations::default());
+        let held: Vec<(bool, bool)> = song.lines[0].parts.iter().map(|p| (p.long_word, p.lettered)).collect();
+        assert_eq!(held, [(true, true), (false, false), (false, false)]);
     }
 
     #[test]

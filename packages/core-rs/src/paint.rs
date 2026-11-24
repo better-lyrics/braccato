@@ -11,7 +11,7 @@
 
 use crate::easing::Easing;
 use crate::gpu::Quad;
-use crate::layout::{Glyph, LineLayout, Owner, Rect, Rgba, Slot};
+use crate::layout::{Glyph, Ink, LineLayout, Owner, PartStyle, Rect, Rgba, Slot};
 use crate::model::SyncType;
 use crate::song::{Line, Part};
 use crate::theme::{Motion, Theme};
@@ -51,6 +51,11 @@ pub struct Placement {
     pub entry: f32,
     /// The scale the pointer draws the line toward, and how far, 0 to 1.
     pub hover_scale: (f32, f32),
+    /// The inactive colour the pointer draws the line's words toward, and how far, 0 to 1.
+    pub hover_color: Option<(Rgba, f32)>,
+    /// The line's `saturate()` and `brightness()`, 1 for none.
+    pub saturate: f32,
+    pub brightness: f32,
 }
 
 const DECORATION_EASE: Easing = Easing::Bezier(0.25, 1.0, 0.5, 1.0);
@@ -225,16 +230,17 @@ fn keyframes(frames: &[(f32, Motion, Easing)], progress: f32) -> Motion {
     frames[frames.len() - 1].1
 }
 
-/// The word wobble on a group, started by its first word.
-fn wobble(first: &Part, group_long: bool, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
+/// The word wobble on a word or syllable sung from `start_s` for `duration_s`.
+fn wobble(start_s: f32, duration_s: f32, group_long: bool, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
     if !theme.animate_wobble || group_long || phase != Phase::Live || moment.sync == SyncType::None {
         return Motion::IDENTITY;
     }
-    let t = moment.lyric - first.start_s;
+    let t = moment.lyric - start_s;
     if t < 0.0 {
         return Motion::IDENTITY;
     }
-    let progress = theme.wobble_easing.at(t / theme.wobble_s);
+    let length = theme.wobble_s + theme.wobble_duration_ratio * duration_s.max(0.0);
+    let progress = theme.wobble_easing.at(t / length);
     let settle = theme.wobble_settle_offset.max(theme.wobble_peak_offset);
     keyframes(
         &[
@@ -248,10 +254,20 @@ fn wobble(first: &Part, group_long: bool, phase: Phase, moment: Moment, theme: &
 }
 
 /// The letter wave on letter `index` of `count`: each letter rises to its crest as the sweep
-/// finishes lighting it, then settles a little below.
-fn letter_wave(part: &Part, index: u16, count: u16, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
+/// finishes lighting it, then settles a little below. `outward` is where the letter sits from the
+/// word's centre, -1 for its leftmost letter to 1 for its rightmost, which the spread moves it along. Also
+/// returns how near its crest the letter is, 0 to 1, which its glow peak follows.
+fn letter_wave(
+    part: &Part,
+    index: u16,
+    count: u16,
+    outward: f32,
+    phase: Phase,
+    moment: Moment,
+    theme: &Theme,
+) -> (Motion, f32) {
     if !theme.animate_wobble || !part.lettered || phase != Phase::Live || moment.sync == SyncType::None {
-        return Motion::IDENTITY;
+        return (Motion::IDENTITY, 0.0);
     }
     let wave_ms = theme.wave_s * 1000.0;
     let rise_ms = 0.4 * wave_ms;
@@ -277,18 +293,128 @@ fn letter_wave(part: &Part, index: u16, count: u16, phase: Phase, moment: Moment
     };
     let local = (moment.lyric - part.start_s) * 1000.0 - delay_ms;
     if local < 0.0 {
-        return Motion::IDENTITY;
+        return (Motion::IDENTITY, 0.0);
     }
+    // Only held words swell at the crest, whatever scale the crest transform has.
     let emphasis = if part.long_word { theme.wave_emphasis_scale } else { 1.0 };
-    let crest = Motion { sx: emphasis, sy: emphasis, ..theme.wave_crest };
-    keyframes(
+    let mut crest = Motion { sx: emphasis, sy: emphasis, ..theme.wave_crest };
+    if part.long_word {
+        crest.tx_em += theme.wave_spread.tx_em * outward;
+        crest.tx_px += theme.wave_spread.tx_px * outward;
+    }
+    let progress = local / duration_ms;
+    let motion = keyframes(
         &[
             (0.0, Motion::IDENTITY, theme.wave_rise_easing),
             (0.4, crest, theme.wave_fall_easing),
             (1.0, theme.wave_settle, Easing::Linear),
         ],
-        local / duration_ms,
-    )
+        progress,
+    );
+    let near = if !part.long_word || theme.wave_glow == 0.0 {
+        0.0
+    } else if progress < 0.4 {
+        theme.wave_rise_easing.at(progress / 0.4)
+    } else {
+        1.0 - theme.wave_fall_easing.at((progress - 0.4) / 0.6)
+    };
+    (motion, near)
+}
+
+/// Whether a part is timed word by word, which the rest pose and the past opacity need.
+fn word_timed(part: &Part, moment: Moment) -> bool {
+    moment.sync == SyncType::Richsync && !part.line_synced && part.duration_s > 0.0
+}
+
+/// How far a word has risen out of its rest pose at lyric time `lyric`, in its line being sung.
+fn rise(part: &Part, lyric: f32, theme: &Theme) -> f32 {
+    let t = lyric - part.start_s;
+    if t < 0.0 {
+        return 0.0;
+    }
+    theme.word_rise_easing.at(t / (part.duration_s + theme.word_rise_extra_s).max(1e-3))
+}
+
+/// The word's rest pose (`--blyrics-word-rest-transform`), as far as it holds this moment: whole
+/// until the sung line reaches the word, gone once it has risen, and back as the line ends.
+fn rest_pose(part: &Part, style: &PartStyle, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
+    if style.rest == Motion::IDENTITY || theme.reduced_motion || !word_timed(part, moment) {
+        return Motion::IDENTITY;
+    }
+    let risen = match phase {
+        Phase::Idle => 0.0,
+        Phase::Live => rise(part, moment.lyric, theme),
+        Phase::Exiting { since_ms, lyric_s } => rise(part, lyric_s, theme) * (1.0 - exit_fade(since_ms, moment, theme)),
+    };
+    Motion::lerp(style.rest, Motion::IDENTITY, risen)
+}
+
+/// How far a word has faded to its past opacity at lyric time `lyric`, in its line being sung.
+fn past(part: &Part, lyric: f32, theme: &Theme) -> f32 {
+    let t = lyric - part.start_s - part.duration_s;
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if theme.animate_fade {
+        theme.fade_out_easing.at(t / theme.fade_out_s)
+    } else {
+        1.0
+    }
+}
+
+/// The opacity a word is drawn at for having been sung (`--blyrics-word-past-opacity`): 1 until
+/// its time is over, easing to the past opacity, and back to 1 as the line ends.
+fn past_opacity(part: &Part, style: &PartStyle, phase: Phase, moment: Moment, theme: &Theme) -> f32 {
+    if style.past_opacity == 1.0 || !word_timed(part, moment) {
+        return 1.0;
+    }
+    let faded = match phase {
+        Phase::Idle => 0.0,
+        Phase::Live => past(part, moment.lyric, theme),
+        Phase::Exiting { since_ms, lyric_s } => past(part, lyric_s, theme) * (1.0 - exit_fade(since_ms, moment, theme)),
+    };
+    1.0 + (style.past_opacity - 1.0) * faded
+}
+
+/// How far a line's exit fade has run.
+fn exit_fade(since_ms: f64, moment: Moment, theme: &Theme) -> f32 {
+    if theme.animate_fade {
+        theme.fade_out_easing.at(((moment.now_ms - since_ms) / 1000.0) as f32 / theme.fade_out_s)
+    } else {
+        1.0
+    }
+}
+
+/// `color` through the line's `saturate()` and `brightness()`, as CSS filters apply them.
+fn filtered(color: Rgba, placement: &Placement) -> Rgba {
+    let (s, b) = (placement.saturate, placement.brightness);
+    if s == 1.0 && b == 1.0 {
+        return color;
+    }
+    let [r, g, bl, a] = color;
+    let channel = |v: f32| (v * b).clamp(0.0, 1.0);
+    [
+        channel((0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * bl),
+        channel((0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * bl),
+        channel((0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * bl),
+        a,
+    ]
+}
+
+/// The shadows of a text slot, in their own colours, under where its text is drawn.
+fn push_shadow(under: &mut Vec<Quad>, slot: &Slot, affine: Affine, alpha: f32, placement: &Placement) {
+    if alpha <= 0.0 {
+        return;
+    }
+    let outer = slot.rect.expand(slot.margin, slot.margin);
+    under.push(Quad {
+        rect: to_canvas(affine.rect(outer), placement),
+        uv: uv_of(slot, outer, placement.dpr),
+        unlit: [0.0, 0.0, 0.0, alpha],
+        lit: [0.0, 0.0, 0.0, alpha],
+        ramp: [0.0, 0.0, 1.0, 0.0],
+        wave: [0.0, 0.0, Quad::COLOR, 0.0],
+    });
 }
 
 fn uv_of(slot: &Slot, rect: Rect, dpr: f32) -> [f32; 4] {
@@ -325,10 +451,12 @@ pub struct Blur {
     pub sigma: f32,
 }
 
-/// Draws one line into `out`, and what of it glows into `blurs`.
+/// Draws one line into `out`, its text-shadows into `under` (drawn before its glows), and what of
+/// it glows into `blurs`.
 #[allow(clippy::too_many_arguments)]
 pub fn paint_line(
     out: &mut Vec<Quad>,
+    under: &mut Vec<Quad>,
     blurs: &mut Vec<Blur>,
     line: &Line,
     layout: &LineLayout,
@@ -351,35 +479,63 @@ pub fn paint_line(
     let fade = theme.swipe_fade();
 
     for slot in &layout.slots {
+        let shadow = matches!(slot.ink, Ink::Shadow(..));
         match slot.owner {
             Owner::Part(index) => {
                 let part = &line.parts[index];
                 let style = &layout.parts[index];
                 let group = &line.groups[part.group];
-                let look = word_look(part, phase, moment, theme, style.glow);
                 let group_rect = layout.groups.get(part.group).copied().unwrap_or(slot.rect);
-                let wobble = wobble(&line.parts[group.parts[0]], group.long, phase, moment, theme);
-                let word_affine = line_affine.then(Affine::about(centre(&group_rect), wobble, style.em));
+                let (wobble, wobble_centre) = if theme.wobble_per_syllable {
+                    (wobble(part.start_s, part.duration_s, group.long, phase, moment, theme), centre(&slot.rect))
+                } else {
+                    let first = &line.parts[group.parts[0]];
+                    let last = &line.parts[group.parts[group.parts.len() - 1]];
+                    let duration = last.end_s() - first.start_s;
+                    (wobble(first.start_s, duration, group.long, phase, moment, theme), centre(&group_rect))
+                };
+                let rest = rest_pose(part, style, phase, moment, theme);
+                let word_affine = line_affine.then(Affine::about(wobble_centre, wobble, style.em)).then(Affine::about(
+                    centre(&group_rect),
+                    rest,
+                    style.em,
+                ));
+                let opacity = placement.opacity * past_opacity(part, style, phase, moment, theme);
+                if shadow {
+                    push_shadow(under, slot, word_affine, opacity, &placement);
+                    continue;
+                }
+                let look = word_look(part, phase, moment, theme, style.glow);
 
                 // Each letter's wave, which the glyphs and the glow under them both follow.
-                let letters: Vec<Motion> = slot
+                let letters: Vec<(Motion, f32)> = slot
                     .glyphs
                     .iter()
                     .map(|glyph| {
+                        // From the word's centre to where the outermost letter's centre would be.
+                        let reach = ((group_rect.w - glyph.rect.w) / 2.0).max(1e-3);
+                        let outward = ((centre(&glyph.rect).0 - centre(&group_rect).0) / reach).clamp(-1.0, 1.0);
                         glyph
                             .letter
-                            .map(|i| letter_wave(part, i, style.letters, phase, moment, theme))
-                            .unwrap_or(Motion::IDENTITY)
+                            .map(|i| letter_wave(part, i, style.letters, outward, phase, moment, theme))
+                            .unwrap_or((Motion::IDENTITY, 0.0))
                     })
                     .collect();
-                let unlit = premultiply(style.inactive, placement.opacity);
-                let lit = premultiply(mix(style.inactive, style.active, look.lit), placement.opacity);
+                let inactive = match placement.hover_color {
+                    Some((color, share)) if share > 0.0 => mix(style.inactive, color, share),
+                    _ => style.inactive,
+                };
+                let (inactive, active) = (filtered(inactive, &placement), filtered(style.active, &placement));
+                let unlit = premultiply(inactive, opacity);
+                let lit = premultiply(mix(inactive, active, look.lit), opacity);
                 // The glow: one drop shadow of the lit part of the word, which is the word's own
                 // letters, where they are, in the glow colour behind the sweep, blurred.
                 let glowing = slot.halo && !slot.color && look.glow_alpha > 0.0 && look.glow > 0.0;
                 let mut glow = Blur { quads: Vec::new(), sigma: theme.glow_radius_px * look.glow };
-                let glow_color = premultiply(style.glow, look.glow_alpha / style.glow[3].max(1e-6) * placement.opacity);
-                for (glyph, letter) in slot.glyphs.iter().zip(&letters) {
+                let glow_color =
+                    premultiply(filtered(style.glow, &placement), look.glow_alpha / style.glow[3].max(1e-6) * opacity);
+                let peak = if part.long_word { theme.wave_glow } else { 0.0 };
+                for (glyph, (letter, near)) in slot.glyphs.iter().zip(&letters) {
                     let affine = word_affine.then(Affine::about(centre(&glyph.rect), *letter, style.em));
                     let quad = Quad {
                         rect: to_canvas(affine.rect(glyph.rect), &placement),
@@ -390,7 +546,9 @@ pub fn paint_line(
                         wave: [0.0, 0.0, if slot.color { Quad::COLOR } else { Quad::TEXT }, 0.0],
                     };
                     if glowing {
-                        glow.quads.push(Quad { unlit: [0.0; 4], lit: glow_color, ..quad });
+                        let boost = (1.0 + peak * near).min(1.0 / glow_color[3].max(1e-6));
+                        let lit = glow_color.map(|c| c * boost);
+                        glow.quads.push(Quad { unlit: [0.0; 4], lit, ..quad });
                     }
                     out.push(quad);
                 }
@@ -398,27 +556,50 @@ pub fn paint_line(
                     blurs.push(glow);
                 }
             }
-            Owner::Note => push_note(out, blurs, slot, layout, line, phase, moment, line_affine, &placement, theme),
+            Owner::Note => {
+                let pulse = Affine::scale_about(centre(&slot.rect), pulse(line, phase, moment, theme));
+                let affine = line_affine.then(pulse);
+                if slot.ink == Ink::Dots {
+                    push_dots(out, slot, layout, line, phase, moment, affine, &placement, theme);
+                } else {
+                    push_note(out, blurs, slot, layout, line, phase, moment, affine, &placement, theme);
+                }
+            }
             // Drawn by `push_note`, with the note it fills.
             Owner::NoteImage => {}
-            Owner::Pill | Owner::Translation | Owner::Romanization | Owner::Credits => {
+            Owner::Pill | Owner::Translation | Owner::Romanization | Owner::Credits | Owner::Icon => {
                 let color = match slot.owner {
                     Owner::Pill => layout.pill_color,
                     _ => layout.static_color,
                 };
                 // Decorations fade in and settle from 0.4em above when they first appear.
-                let entry = if slot.owner == Owner::Credits { 1.0 } else { DECORATION_EASE.at(placement.entry) };
+                let entry = if matches!(slot.owner, Owner::Credits | Owner::Icon) {
+                    1.0
+                } else {
+                    DECORATION_EASE.at(placement.entry)
+                };
                 let slide = Affine { sx: 1.0, sy: 1.0, tx: 0.0, ty: -0.4 * layout.static_em * (1.0 - entry) };
-                let flat = premultiply(color, placement.opacity * entry);
+                if shadow {
+                    push_shadow(under, slot, line_affine.then(slide), placement.opacity * entry, &placement);
+                    continue;
+                }
+                let flat = premultiply(filtered(color, &placement), placement.opacity * entry);
                 for glyph in &slot.glyphs {
-                    out.push(Quad {
+                    let quad = Quad {
                         rect: to_canvas(line_affine.then(slide).rect(glyph.rect), &placement),
                         uv: uv_of(slot, glyph.rect, dpr),
                         unlit: flat,
                         lit: flat,
                         ramp: [0.0, 0.0, 1.0, 0.0],
                         wave: [0.0, 0.0, if slot.color { Quad::COLOR } else { Quad::TEXT }, 0.0],
-                    });
+                    };
+                    // The romanization's box goes under everything, the shadows of its text
+                    // included, whether that text was laid out before it (timed) or after.
+                    if slot.owner == Owner::Pill {
+                        under.insert(0, quad);
+                    } else {
+                        out.push(quad);
+                    }
                 }
             }
         }
@@ -444,7 +625,7 @@ fn push_note(
     let rect = slot.glyphs[0].rect;
     let uv = uv_of(slot, rect, dpr);
     let canvas_rect = to_canvas(affine.rect(rect), placement);
-    let base = premultiply(layout.inactive, placement.opacity);
+    let base = premultiply(filtered(layout.inactive, placement), placement.opacity);
     out.push(Quad {
         rect: canvas_rect,
         uv,
@@ -517,19 +698,130 @@ fn push_note(
         });
         return;
     }
-    let lit = premultiply(layout.active, opacity * placement.opacity);
+    let lit = premultiply(filtered(layout.active, placement), opacity * placement.opacity);
     let fill = Quad { rect: canvas_rect, uv, unlit: [0.0; 4], lit, ramp, wave: [wave[0], wave[1], Quad::TEXT, 0.0] };
     // Its glow is the filled part blurred by 5 units, as the DOM renderer's SVG blur was. Until the
     // surface has reached the note there is nothing filled, and nothing glows.
     let lowest_surface = level - amplitude.abs();
     if lowest_surface < NOTE_BOTTOM_UNITS {
-        let glow = premultiply(layout.active, 0.6 * opacity * placement.opacity);
+        let glow = premultiply(filtered(layout.active, placement), 0.6 * opacity * placement.opacity);
         blurs.push(Blur { quads: vec![Quad { lit: glow, ..fill }], sigma: NOTE_GLOW_UNITS * unit });
     }
     out.push(fill);
+}
+
+/// The scale the instrumental icon beats to (`--blyrics-instrumental-pulse-scale`), swelling and
+/// settling once a period while the instrumental plays, and back to 1 as it ends.
+fn pulse(line: &Line, phase: Phase, moment: Moment, theme: &Theme) -> f32 {
+    let to = theme.instrumental_pulse_scale;
+    if to == 1.0 || theme.reduced_motion || !theme.animate_instrumental {
+        return 1.0;
+    }
+    let at = |lyric: f32| {
+        let t = lyric - line.start_s;
+        if t < 0.0 {
+            return 1.0;
+        }
+        let swell = 0.5 - 0.5 * (std::f32::consts::TAU * t / theme.instrumental_pulse_s).cos();
+        1.0 + (to - 1.0) * swell
+    };
+    match phase {
+        Phase::Idle => 1.0,
+        Phase::Live => at(moment.lyric),
+        Phase::Exiting { since_ms, lyric_s } => 1.0 + (at(lyric_s) - 1.0) * (1.0 - exit_fade(since_ms, moment, theme)),
+    }
+}
+
+/// The instrumental as three dots: inactive, and over them the lit colour sweeping across in
+/// reading order over the instrumental, a dot's width soft.
+#[allow(clippy::too_many_arguments)]
+fn push_dots(
+    out: &mut Vec<Quad>,
+    slot: &Slot,
+    layout: &LineLayout,
+    line: &Line,
+    phase: Phase,
+    moment: Moment,
+    affine: Affine,
+    placement: &Placement,
+    theme: &Theme,
+) {
+    let dpr = placement.dpr;
+    let rect = slot.rect;
+    let uv = uv_of(slot, rect, dpr);
+    let canvas_rect = to_canvas(affine.rect(rect), placement);
+    let base = premultiply(filtered(layout.inactive, placement), placement.opacity);
+    let quad = Quad {
+        rect: canvas_rect,
+        uv,
+        unlit: base,
+        lit: base,
+        ramp: [0.0, 0.0, 1.0, 0.0],
+        wave: [0.0, 0.0, Quad::TEXT, 0.0],
+    };
+    out.push(quad);
+    let (opacity, progress) = match phase {
+        Phase::Idle => return,
+        Phase::Exiting { since_ms, .. } => (1.0 - exit_fade(since_ms, moment, theme), 1.0),
+        Phase::Live => {
+            let t = moment.lyric - line.start_s;
+            if t < 0.0 {
+                return;
+            }
+            let progress =
+                if theme.animate_instrumental { (t / line.duration_s.max(0.001)).clamp(0.0, 1.0) } else { 1.0 };
+            (1.0, progress)
+        }
+    };
+    if opacity <= 0.0 || progress <= 0.0 {
+        return;
+    }
+    // How lit a texel is, as a ramp in the line's texels: 1 behind the edge, 0 a dot past it.
+    let soft = rect.h.max(1e-3);
+    let to_x = (slot.placement.tex.0 - slot.placement.origin.0) / dpr;
+    let ramp = if line.rtl {
+        let edge = rect.right() - progress * (rect.w + soft);
+        [1.0 / (dpr * soft), 0.0, (-edge - to_x) / soft, 0.0]
+    } else {
+        let edge = rect.x + progress * (rect.w + soft);
+        [-1.0 / (dpr * soft), 0.0, (edge + to_x) / soft, 0.0]
+    };
+    let lit = premultiply(filtered(layout.active, placement), opacity * placement.opacity);
+    out.push(Quad { unlit: [0.0; 4], lit, ramp, ..quad });
 }
 
 /// The note's lowest point in its 24-unit view box, which the fill rises from.
 const NOTE_BOTTOM_UNITS: f32 = 21.0;
 /// The fill's glow in the DOM renderer was an SVG blur with a standard deviation of 5 view-box units.
 const NOTE_GLOW_UNITS: f32 = 5.0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn placement(saturate: f32, brightness: f32) -> Placement {
+        Placement {
+            x: 0.0,
+            y: 0.0,
+            dpr: 1.0,
+            opacity: 1.0,
+            entry: 1.0,
+            hover_scale: (1.0, 0.0),
+            hover_color: None,
+            saturate,
+            brightness,
+        }
+    }
+
+    #[test]
+    fn line_filters_work_as_css_filters() {
+        let red = [1.0, 0.0, 0.0, 0.5];
+        assert_eq!(filtered(red, &placement(1.0, 1.0)), red);
+        // saturate(0) leaves the luminance, as grey; the alpha is untouched.
+        let grey = filtered(red, &placement(0.0, 1.0));
+        assert!(grey[..3].iter().all(|c| (c - 0.213).abs() < 1e-6));
+        assert_eq!(grey[3], 0.5);
+        // brightness() scales the channels, clamped.
+        assert_eq!(filtered([0.4, 0.8, 0.2, 1.0], &placement(1.0, 1.5)), [0.6, 1.0, 0.3, 1.0]);
+    }
+}

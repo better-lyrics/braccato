@@ -16,6 +16,7 @@ use crate::scroll::{self, AutoScroll, Curve, ScrollLine, ScrollParams, Viewport}
 use crate::song::{self, Decorations, Hung, Song};
 use crate::stage::{self, Role};
 use crate::style;
+use crate::theme::LineLook;
 use crate::theme::{CommentSettings, Theme};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlMediaElement, Window};
@@ -80,6 +81,9 @@ struct LineState {
     decorated_ms: f64,
     /// How far the line has eased toward the theme's hover look, 0 to 1.
     hover: Tween,
+    /// How far the line has eased to the theme's browsing opacity, 0 to 1: toward 1 while the
+    /// pointer is over the lyrics or a reader scrolls, unless the line is being sung.
+    browse: Tween,
 }
 
 /// A value easing from `from` to `to` since `since_ms`.
@@ -320,6 +324,7 @@ pub struct View {
     /// What is drawn blurred this frame (see `gpu.rs`), and scratch space for a line's paint.
     blur_jobs: Vec<BlurJob>,
     line_quads: Vec<Quad>,
+    line_under: Vec<Quad>,
     line_blurs: Vec<paint::Blur>,
     pub events: Vec<Event>,
     pub stats: Stats,
@@ -430,6 +435,7 @@ impl View {
             quads: Vec::new(),
             blur_jobs: Vec::new(),
             line_quads: Vec::new(),
+            line_under: Vec::new(),
             line_blurs: Vec::new(),
             events: Vec::new(),
             stats: Stats::default(),
@@ -491,7 +497,7 @@ impl View {
         self.time_overrides.clear();
         self.lyrics = lyrics;
         self.options = options;
-        let song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        let song = self.build_song();
         self.apply_song(song, &origins, true);
         self.layout();
     }
@@ -502,7 +508,7 @@ impl View {
         if self.song.is_none() {
             return;
         }
-        let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        let mut song = self.build_song();
         self.apply_time_overrides(&mut song);
         let origins: Vec<Option<usize>> = (0..song.lines.len()).map(Some).collect();
         self.apply_song(song, &origins, settle);
@@ -857,6 +863,32 @@ impl View {
         }
     }
 
+    /// The song from the lyrics on hand, with the theme's no-lyrics message and icon in place of
+    /// the host's message.
+    fn build_song(&self) -> Song {
+        let message = self.theme.no_lyrics_text.as_ref().filter(|_| self.options.no_lyrics);
+        let replaced: Vec<Lyric>;
+        let lyrics = match message {
+            Some(text) => {
+                replaced = self
+                    .lyrics
+                    .iter()
+                    .take(1)
+                    .map(|l| Lyric { words: text.clone(), parts: None, ..l.clone() })
+                    .collect();
+                &replaced
+            }
+            None => &self.lyrics,
+        };
+        let mut song = song::build_song(lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        if song.no_lyrics {
+            if let Some(first) = song.lines.first_mut() {
+                first.icon = self.theme.no_lyrics_icon.clone();
+            }
+        }
+        song
+    }
+
     fn read_theme(&mut self) {
         self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px(&self.doc));
         if let Some(url) = &self.theme.highlight_image {
@@ -985,14 +1017,16 @@ impl View {
     /// The pointer moved to `client`, or off the lines. Returns whether that changes the hovered
     /// line, and so wants a frame.
     pub fn set_pointer(&mut self, client: Option<(f32, f32)>) -> bool {
+        let entered = self.pointer.is_some() != client.is_some();
         self.pointer = client;
         let Some(song) = &self.song else { return false };
-        self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
+        (entered && self.theme.line_opacity_browsing.is_some())
+            || self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
     }
 
     /// The line drawn under the pointer, if the theme has a hover look.
     fn pointed_line(&self, song: &Song, now_ms: f64) -> Option<usize> {
-        if self.stage || song.no_lyrics || !self.theme.line_hover.is_set() {
+        if self.stage || song.no_lyrics || !self.theme.tracks_hover() {
             return None;
         }
         self.line_at(self.pointer?, now_ms)
@@ -1098,9 +1132,16 @@ impl View {
         if !self.host.is_same_node(self.container.parent_node().as_ref()) {
             let _ = self.host.append_child(&self.container);
         }
-        self.read_theme();
         self.hung.resize(self.lyrics.len(), Hung::default());
-        let mut song = song::build_song(&self.lyrics, &self.hung, &self.options, &self.settings, self.decorations);
+        // The theme is read with the container marked for this song (`data-sync`,
+        // `data-no-lyrics`), so what a theme scopes by them applies. The no-lyrics message and icon
+        // are part of the song, so a no-lyrics song is built again once they are read.
+        let mut song = self.build_song();
+        layout::mark_container(&self.container, &song);
+        self.read_theme();
+        if song.no_lyrics {
+            song = self.build_song();
+        }
         self.apply_time_overrides(&mut song);
         self.release_textures();
         let old_dom = self.dom.take().filter(|_| keep_host);
@@ -1125,7 +1166,16 @@ impl View {
         self.stage_roles.clear();
         self.stage_area = None;
         let now = self.now.ms();
-        self.lines = song.lines.iter().map(|_| LineState { decorated_ms: now, ..Default::default() }).collect();
+        // A rebuild of the same lyrics keeps how far each line has eased to its hover look and the
+        // browsing opacity, so neither the line under the pointer nor a dimmed view flashes.
+        let eased: Vec<(Tween, Tween)> =
+            if keep_host { self.lines.iter().map(|state| (state.hover, state.browse)).collect() } else { Vec::new() };
+        self.lines = (0..song.lines.len())
+            .map(|i| {
+                let (hover, browse) = eased.get(i).copied().unwrap_or_default();
+                LineState { decorated_ms: now, hover, browse, ..Default::default() }
+            })
+            .collect();
         self.events.push(Event::LyricsLoaded { line_count: song.lines.len(), sync: song.sync });
         self.song = Some(song);
         self.dom = Some(dom_);
@@ -1752,7 +1802,11 @@ impl View {
         if effects_on && (self.focus.moving(now_ms) || now_ms < self.effects.2 + EFFECTS_FADE_MS) {
             moving = true;
         }
-
+        // Lines other than the sung and hovered ones ease to the browsing opacity while the pointer
+        // is over the lyrics or a reader scrolls.
+        let hover_timing = (self.theme.line_hover.duration_s, self.theme.line_hover.easing);
+        let browsing_opacity = self.theme.line_opacity_browsing.filter(|_| !self.stage && !song.no_lyrics);
+        let browsing = browsing_opacity.is_some() && (self.pointer.is_some() || !following);
         // Unsynced lyrics have nothing to follow, so they drift instead.
         if song.sync == SyncType::None
             && !song.no_lyrics
@@ -1801,7 +1855,7 @@ impl View {
                 _ if self.stage => (0.0, 0.0),
                 _ => (layout.top + offset - canvas_top, 1.0),
             };
-            let mut line_blur = 0.0;
+            let mut look = LineLook::PLAIN;
             if effects_on {
                 let (first, last) = self.focus.at(now_ms, self.theme.scroll_easing);
                 let at = index as f32;
@@ -1812,16 +1866,15 @@ impl View {
                 } else {
                     0.0
                 };
-                let (effect_opacity, blur) = self.theme.line_effects.at(distance);
-                let strength = effect_strength(self.effects, now_ms);
-                opacity *= 1.0 + (effect_opacity - 1.0) * strength;
-                line_blur = blur * strength;
+                look = self.theme.line_effects.at(distance).scaled(effect_strength(self.effects, now_ms));
+                opacity *= look.opacity;
             }
+            let mut line_blur = look.blur;
             // The line under the pointer eases to the theme's hover look.
             let hover = self.theme.line_hover;
             let target = if pointed == Some(index) { 1.0 } else { 0.0 };
             state.hover.aim(target, now_ms, hover.duration_s, hover.easing);
-            let hovered = if self.stage || song.no_lyrics || !hover.is_set() {
+            let hovered = if self.stage || song.no_lyrics || !self.theme.tracks_hover() {
                 0.0
             } else {
                 if state.hover.moving(now_ms, hover.duration_s) {
@@ -1829,6 +1882,21 @@ impl View {
                 }
                 state.hover.at(now_ms, hover.duration_s, hover.easing)
             };
+            if let Some(to) = browsing_opacity {
+                // The lines being sung now, not the ones autoscroll last followed, which stand
+                // still while a reader has paused it. A line is live a little before it starts,
+                // to prepare its animation; it is sung from its start.
+                let is_sung = state.phase == Phase::Live && lyric >= line.start_s;
+                let target = if browsing && !is_sung { 1.0 } else { 0.0 };
+                state.browse.aim(target, now_ms, hover_timing.0, hover_timing.1);
+                if state.browse.moving(now_ms, hover_timing.0) {
+                    moving = true;
+                }
+                let share = state.browse.at(now_ms, hover_timing.0, hover_timing.1) * (1.0 - hovered);
+                if share > 0.0 {
+                    opacity += (to - opacity) * share;
+                }
+            }
             if hovered > 0.0 {
                 if let Some(to) = hover.opacity {
                     opacity += (to - opacity) * hovered;
@@ -1865,12 +1933,23 @@ impl View {
             if entry < 1.0 && (line.translation.is_some() || line.romanization.is_some() || line.rows.len() > 1) {
                 moving = true;
             }
-            let placement =
-                Placement { x: self.bleed_left + layout.left, y, dpr: self.dpr, opacity, entry, hover_scale };
+            let placement = Placement {
+                x: self.bleed_left + layout.left,
+                y,
+                dpr: self.dpr,
+                opacity,
+                entry,
+                hover_scale,
+                hover_color: hover.color.map(|color| (color, hovered)),
+                saturate: look.saturate,
+                brightness: look.brightness,
+            };
             self.line_quads.clear();
+            self.line_under.clear();
             self.line_blurs.clear();
             paint::paint_line(
                 &mut self.line_quads,
+                &mut self.line_under,
                 &mut self.line_blurs,
                 line,
                 layout,
@@ -1881,18 +1960,22 @@ impl View {
             );
             let texture = state.texture.as_ref().unwrap();
             texture.place(&mut self.line_quads);
+            texture.place(&mut self.line_under);
             for blur in &mut self.line_blurs {
                 texture.place(&mut blur.quads);
             }
             // A line the theme blurs for its distance is drawn whole into the atlas, glows and all.
             if line_blur * self.dpr >= MIN_BLUR_PX {
-                let mut quads: Vec<Quad> = self.line_blurs.drain(..).flat_map(|b| b.quads).collect();
+                let mut quads: Vec<Quad> = self.line_under.clone();
+                quads.extend(self.line_blurs.drain(..).flat_map(|b| b.quads));
                 quads.extend_from_slice(&self.line_quads);
                 self.blur_jobs.push(BlurJob { quads, sigma: line_blur, composite: self.quads.len() });
                 self.quads.push(Quad::default());
                 continue;
             }
-            // Glows go under the line's text: blurred, or as they are once too small to blur.
+            // Shadows go under everything of the line, and glows under its text: blurred, or as they
+            // are once too small to blur.
+            self.quads.extend_from_slice(&self.line_under);
             for blur in self.line_blurs.drain(..) {
                 if blur.sigma * self.dpr >= MIN_BLUR_PX {
                     self.blur_jobs.push(BlurJob { quads: blur.quads, sigma: blur.sigma, composite: self.quads.len() });
@@ -1949,6 +2032,9 @@ impl View {
                         opacity,
                         entry: 1.0,
                         hover_scale: (1.0, 0.0),
+                        hover_color: None,
+                        saturate: 1.0,
+                        brightness: 1.0,
                     };
                     paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
                     texture.place(&mut self.quads[first..]);

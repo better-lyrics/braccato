@@ -123,12 +123,92 @@ the line as it is:
   --blyrics-line-hover-opacity: 1;   /* over the distance opacity */
   --blyrics-line-hover-blur: 0;      /* over the distance blur; px, rem or blur(…) */
   --blyrics-line-hover-scale: 1.04;  /* over --blyrics-scale / --blyrics-active-scale */
+  --blyrics-line-hover-color: white; /* the words' inactive colour; the sung part keeps its own */
   --blyrics-line-hover-duration: 0.2s;
   --blyrics-line-hover-easing: ease;
 }
 ```
 
 Touch has no hover, so a tap never leaves a line looking hovered.
+
+A few more properties stand in for rules that styled lines and words by state:
+
+```css
+.blyrics-container {
+  /* other lines while the pointer is over the lyrics or a reader scrolls */
+  --blyrics-line-opacity-browsing: 0.5;
+  /* distance lists like the opacity ones, applied to the line's colours */
+  --blyrics-line-saturate-after: 1 0.9 0.8;
+  --blyrics-line-brightness-before: 1 0.8;
+}
+
+.blyrics--word {
+  /* a sung word, while its line is still being sung */
+  --blyrics-word-past-opacity: 0.6;
+  /* word-synced words wait here until sung, then rise out of it over their duration */
+  --blyrics-word-rest-transform: translateY(3px);
+  --blyrics-word-rise-extra-duration: 0.2s;
+  --blyrics-word-rise-easing: ease;
+}
+
+.blyrics--line, .blyrics--translated {
+  /* text-shadow's syntax; drawn once with the line, the same in every state */
+  --blyrics-text-shadow: 0 0.3rem 0.5rem rgb(0 0 0 / 0.15);
+}
+```
+
+The shadow, the past opacity and the rest pose are read from each element, so selectors scope them
+as they do colours. The browsing opacity and the distance lists are read from the container.
+
+Instrumental lines and the no-lyrics message, which themes restyled with `::before` and `::after`,
+take these instead:
+
+```css
+.blyrics-container {
+  /* note (the default), dots (lit one after another in reading order), or text such as "♫" */
+  --blyrics-instrumental-icon: dots;
+  /* swells to this scale and back once a period while the instrumental plays */
+  --blyrics-instrumental-pulse-scale: 1.14;
+  --blyrics-instrumental-pulse-duration: 3s;
+  /* in place of the host's message when there are no lyrics, and text drawn above it */
+  --blyrics-no-lyrics-text: "No lyrics found";
+  --blyrics-no-lyrics-icon: "♫";
+}
+
+/* the no-lyrics icon is an element of its own, 4em by default */
+.blyrics-no-lyrics-icon { font-size: 6rem; }
+```
+
+The wobble and the letter wave have a few more controls. A held word is one sung for longer than
+`blyrics-long-word-threshold`, and with `blyrics-long-word-max-letters = 8;` one of at most 8
+letters, so a long word like "everybody" is not one however long it is held.
+`blyrics-letter-wave = long;` waves only held words; the rest move as one piece.
+
+```css
+.blyrics-container {
+  /* held words: the outermost letters move this far out at their crest, the rest in proportion */
+  --blyrics-letter-wave-spread: 0.04em;
+  /* held words that glow: each letter's glow up to 1 + this as bright at its crest */
+  --blyrics-letter-wave-glow: 0.8;
+  /* word (the default) or syllable: each syllable wobbles on its own, about its own centre */
+  --blyrics-word-wobble-scope: syllable;
+  /* the wobble lasts --blyrics-wobble-duration plus this many times the syllable's duration */
+  --blyrics-word-wobble-duration-ratio: 0.5;
+  /* any easing can be a linear() curve, such as a spring */
+  --blyrics-word-wobble-easing: linear(0, 0.6 20%, 1.08 40%, 0.98 65%, 1);
+}
+
+.blyrics--romanized {
+  /* the box behind romanization; transparent for none */
+  --blyrics-romanized-bg-color: transparent;
+  /* the box's padding and border-radius are the theme's own, as in the DOM renderer */
+  padding: 0;
+}
+```
+
+The glow peak brightens a glow up to its colour fully opaque, so it shows on a translucent glow
+colour such as the default. A word's text-shadow moves with the word, but not with each letter's
+wave.
 
 ## How it works
 
