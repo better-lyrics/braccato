@@ -81,6 +81,9 @@ struct LineState {
     decorated_ms: f64,
     /// How far the line has eased toward the theme's hover look, 0 to 1.
     hover: Tween,
+    /// How far the line has eased to the theme's browsing opacity, 0 to 1: toward 1 while the
+    /// pointer is over the lyrics or a reader scrolls, unless the line is being sung.
+    browse: Tween,
 }
 
 /// A value easing from `from` to `to` since `since_ms`.
@@ -331,9 +334,6 @@ pub struct View {
     /// (1, easing to 0 while a reader scrolls): (from, to, since).
     focus: Focus,
     effects: (f32, f32, f64),
-    /// How far the lines have eased to the theme's browsing opacity, 1 while the pointer is over the
-    /// lyrics or a reader scrolls.
-    browsing: Tween,
 
     /// The stage layout: only the lines being sung, at the bottom of the element.
     pub stage: bool,
@@ -442,7 +442,6 @@ impl View {
             profile: Profile::default(),
             focus: Focus::default(),
             effects: (1.0, 1.0, 0.0),
-            browsing: Tween::default(),
             stage: false,
             stage_motion: Vec::new(),
             stage_area: None,
@@ -890,17 +889,6 @@ impl View {
         song
     }
 
-    /// Marks the container `data-no-lyrics` for the lyrics on hand before the theme is read and
-    /// the song built, so the no-lyrics text and icon a theme sets under that attribute are there
-    /// to build with.
-    fn mark_no_lyrics(&self) {
-        if self.options.no_lyrics {
-            let _ = self.container.set_attribute("data-no-lyrics", "true");
-        } else {
-            let _ = self.container.remove_attribute("data-no-lyrics");
-        }
-    }
-
     fn read_theme(&mut self) {
         self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px(&self.doc));
         if let Some(url) = &self.theme.highlight_image {
@@ -1144,10 +1132,16 @@ impl View {
         if !self.host.is_same_node(self.container.parent_node().as_ref()) {
             let _ = self.host.append_child(&self.container);
         }
-        self.mark_no_lyrics();
-        self.read_theme();
         self.hung.resize(self.lyrics.len(), Hung::default());
+        // The theme is read with the container marked for this song (`data-sync`,
+        // `data-no-lyrics`), so what a theme scopes by them applies. The no-lyrics message and icon
+        // are part of the song, so a no-lyrics song is built again once they are read.
         let mut song = self.build_song();
+        layout::mark_container(&self.container, &song);
+        self.read_theme();
+        if song.no_lyrics {
+            song = self.build_song();
+        }
         self.apply_time_overrides(&mut song);
         self.release_textures();
         let old_dom = self.dom.take().filter(|_| keep_host);
@@ -1803,12 +1797,7 @@ impl View {
         // is over the lyrics or a reader scrolls.
         let hover_timing = (self.theme.line_hover.duration_s, self.theme.line_hover.easing);
         let browsing_opacity = self.theme.line_opacity_browsing.filter(|_| !self.stage && !song.no_lyrics);
-        let browsing_to = if browsing_opacity.is_some() && (self.pointer.is_some() || !following) { 1.0 } else { 0.0 };
-        self.browsing.aim(browsing_to, now_ms, hover_timing.0, hover_timing.1);
-        if self.browsing.moving(now_ms, hover_timing.0) {
-            moving = true;
-        }
-        let browsing = self.browsing.at(now_ms, hover_timing.0, hover_timing.1);
+        let browsing = browsing_opacity.is_some() && (self.pointer.is_some() || !following);
         // Unsynced lyrics have nothing to follow, so they drift instead.
         if song.sync == SyncType::None
             && !song.no_lyrics
@@ -1889,8 +1878,13 @@ impl View {
                 // still while a reader has paused it. A line is live a little before it starts,
                 // to prepare its animation; it is sung from its start.
                 let is_sung = state.phase == Phase::Live && lyric >= line.start_s;
-                let share = browsing * (1.0 - hovered);
-                if !is_sung && share > 0.0 {
+                let target = if browsing && !is_sung { 1.0 } else { 0.0 };
+                state.browse.aim(target, now_ms, hover_timing.0, hover_timing.1);
+                if state.browse.moving(now_ms, hover_timing.0) {
+                    moving = true;
+                }
+                let share = state.browse.at(now_ms, hover_timing.0, hover_timing.1) * (1.0 - hovered);
+                if share > 0.0 {
                     opacity += (to - opacity) * share;
                 }
             }
