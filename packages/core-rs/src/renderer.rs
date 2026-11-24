@@ -498,6 +498,7 @@ impl View {
         self.time_overrides.clear();
         self.lyrics = lyrics;
         self.options = options;
+        self.mark_no_lyrics();
         let song = self.build_song();
         self.apply_song(song, &origins, true);
         self.layout();
@@ -890,6 +891,21 @@ impl View {
         song
     }
 
+    /// Marks the container `data-no-lyrics` for the lyrics on hand before the song is built, and
+    /// rereads the theme when that changes it, so the no-lyrics text and icon a theme sets under
+    /// that attribute are there to build with.
+    fn mark_no_lyrics(&mut self) {
+        if self.container.has_attribute("data-no-lyrics") == self.options.no_lyrics {
+            return;
+        }
+        if self.options.no_lyrics {
+            let _ = self.container.set_attribute("data-no-lyrics", "true");
+        } else {
+            let _ = self.container.remove_attribute("data-no-lyrics");
+        }
+        self.read_theme();
+    }
+
     fn read_theme(&mut self) {
         self.theme = Theme::read(&self.container, self.settings.clone(), root_font_px(&self.doc));
         if let Some(url) = &self.theme.highlight_image {
@@ -1027,7 +1043,7 @@ impl View {
 
     /// The line drawn under the pointer, if the theme has a hover look.
     fn pointed_line(&self, song: &Song, now_ms: f64) -> Option<usize> {
-        if self.stage || song.no_lyrics || !self.theme.line_hover.is_set() {
+        if self.stage || song.no_lyrics || !self.theme.tracks_hover() {
             return None;
         }
         self.line_at(self.pointer?, now_ms)
@@ -1133,6 +1149,7 @@ impl View {
         if !self.host.is_same_node(self.container.parent_node().as_ref()) {
             let _ = self.host.append_child(&self.container);
         }
+        self.mark_no_lyrics();
         self.read_theme();
         self.hung.resize(self.lyrics.len(), Hung::default());
         let mut song = self.build_song();
@@ -1797,8 +1814,6 @@ impl View {
             moving = true;
         }
         let browsing = self.browsing.at(now_ms, hover_timing.0, hover_timing.1);
-        let sung = self.autoscroll.followed_range();
-
         // Unsynced lyrics have nothing to follow, so they drift instead.
         if song.sync == SyncType::None
             && !song.no_lyrics
@@ -1866,7 +1881,7 @@ impl View {
             let hover = self.theme.line_hover;
             let target = if pointed == Some(index) { 1.0 } else { 0.0 };
             state.hover.aim(target, now_ms, hover.duration_s, hover.easing);
-            let hovered = if self.stage || song.no_lyrics || !hover.is_set() {
+            let hovered = if self.stage || song.no_lyrics || !self.theme.tracks_hover() {
                 0.0
             } else {
                 if state.hover.moving(now_ms, hover.duration_s) {
@@ -1875,7 +1890,9 @@ impl View {
                 state.hover.at(now_ms, hover.duration_s, hover.easing)
             };
             if let Some(to) = browsing_opacity {
-                let is_sung = sung.is_some_and(|(first, last)| (first..=last).contains(&index));
+                // The lines being sung now, not the ones autoscroll last followed, which stand
+                // still while a reader has paused it.
+                let is_sung = state.phase == Phase::Live;
                 let share = browsing * (1.0 - hovered);
                 if !is_sung && share > 0.0 {
                     opacity += (to - opacity) * share;

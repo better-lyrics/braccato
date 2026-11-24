@@ -89,7 +89,7 @@ impl Rasterizer {
                     self.note_image(slot.rect, dpr, url);
                     ctx.set_global_composite_operation("lighter").ok();
                 }
-                Ink::Pill { radius } => self.pill(slot.rect, *radius),
+                Ink::Pill { radius, solid } => self.pill(slot.rect, *radius, *solid),
                 Ink::Shadow(runs, shadows) => {
                     ctx.set_global_composite_operation("source-over").ok();
                     self.shadows(runs, shadows, dpr);
@@ -234,15 +234,19 @@ impl Rasterizer {
         let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(&scratch, x, y, w, h);
     }
 
-    /// The romanization's background and border, as coverage the shader tints: the border is
-    /// opaque and the fill a third of it, matching 5% and 10% white over the line.
-    fn pill(&self, rect: Rect, radius: f32) {
+    /// The romanization's background, as coverage the shader tints. A `solid` one is filled in
+    /// the theme's colour. The default has a border, and a fill a third of it, matching 5% and 10%
+    /// white over the line.
+    fn pill(&self, rect: Rect, radius: f32, solid: bool) {
         let ctx = &self.context;
         let radius = radius.min(rect.h / 2.0) as f64;
         ctx.begin_path();
         round_rect(ctx, rect.x as f64, rect.y as f64, rect.w as f64, rect.h as f64, radius);
-        ctx.set_fill_style_str("rgb(255 0 0 / 0.345)");
+        ctx.set_fill_style_str(if solid { "rgb(255 0 0)" } else { "rgb(255 0 0 / 0.345)" });
         ctx.fill();
+        if solid {
+            return;
+        }
         ctx.begin_path();
         round_rect(
             ctx,

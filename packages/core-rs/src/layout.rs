@@ -81,9 +81,11 @@ pub enum Ink {
     Dots,
     /// The note filled with an image (image highlights), in the image's own colours.
     NoteImage(Rc<str>),
-    /// The romanization's rounded background.
+    /// The romanization's rounded background: a solid fill in the colour a theme set, or else
+    /// the default's faint fill and border.
     Pill {
         radius: f32,
+        solid: bool,
     },
     /// The text-shadows of the runs, in their own colours, without the text: drawn under the text
     /// slot that follows it, which has the same owner and rect.
@@ -672,7 +674,10 @@ struct ElementStyle {
 
 impl ElementStyle {
     fn shadows(&self, root_px: f32) -> Rc<[TextShadow]> {
-        Rc::from(theme::parse_text_shadows(&self.text_shadow, self.font_px, root_px))
+        // A shadow without a colour, or with `currentColor`, takes the text's own, as in CSS.
+        let [r, g, b, a] = self.color;
+        let current = format!("rgb({} {} {} / {a})", r * 255.0, g * 255.0, b * 255.0);
+        Rc::from(theme::parse_text_shadows(&self.text_shadow, self.font_px, root_px, &current))
     }
 }
 
@@ -1067,9 +1072,9 @@ fn measure_line(
         layout.scroll_height = layout.height.max(words_bottom + 2.0 * root_px);
     }
 
-    let pill_color = dom_.romanization.as_ref().map(|pill| {
-        let value = dom::computed_value(pill, "--blyrics-romanized-bg-color");
-        let value = value.trim();
+    let pill_value = dom_.romanization.as_ref().map(|pill| dom::computed_value(pill, "--blyrics-romanized-bg-color"));
+    let solid = pill_value.as_ref().is_some_and(|value| !value.is_empty());
+    let pill_color = dom_.romanization.as_ref().zip(pill_value.as_ref()).map(|(pill, value)| {
         parse_color(&dom::doc_of(pill), if value.is_empty() { "rgb(255 255 255 / 0.145)" } else { value })
     });
     // A transparent pill (`--blyrics-romanized-bg-color: transparent`) is not drawn at all.
@@ -1077,7 +1082,7 @@ fn measure_line(
         let rect = Rect::relative(&pill.get_bounding_client_rect(), origin);
         layout.pill_color = color;
         layout.slots.push(Slot {
-            ink: Ink::Pill { radius: dom::px(&dom::computed_value(pill, "border-top-left-radius")) },
+            ink: Ink::Pill { radius: dom::px(&dom::computed_value(pill, "border-top-left-radius")), solid },
             owner: Owner::Pill,
             rect,
             margin: 1.0,

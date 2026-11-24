@@ -17,4 +17,4 @@ Themes get more ways to say what `:hover`, `filter`, `text-shadow`, `::before`/`
 - `--blyrics-romanized-bg-color` sets the box behind romanization; `transparent` draws none. A theme's own `padding` and `border-radius` on `.blyrics--romanized` now apply whatever their selector, as they did in the DOM renderer, so plain-text romanization sits flush with the line.
 - `--blyrics-text-shadow` takes `text-shadow`'s syntax on lines, words, translations and romanizations. It is drawn once into the line's texture under its text, so it costs nothing per frame, and it is static: the same whether the line is sung or hovered.
 
-A theme that sets none of them looks the same as before.
+A theme that sets none of them looks the same as before, with two exceptions. A `::before` or `::after` on an instrumental or no-lyrics line no longer takes up room it was never drawn in. And when a theme hides the host's no-lyrics message to show its own in a pseudo-element, which this renderer does not draw, the host's message now shows instead of nothing; `--blyrics-no-lyrics-text` puts the theme's own there.

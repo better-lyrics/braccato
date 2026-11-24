@@ -371,6 +371,14 @@ pub struct Theme {
     pub no_lyrics_icon: Option<String>,
 }
 
+impl Theme {
+    /// Whether the line under the pointer matters: it has a hover look, or it is the line the
+    /// browsing opacity leaves alone.
+    pub fn tracks_hover(&self) -> bool {
+        self.line_hover.is_set() || self.line_opacity_browsing.is_some()
+    }
+}
+
 /// What an instrumental line shows.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InstrumentalIcon {
@@ -587,7 +595,7 @@ impl TextShadow {
 
 /// A `text-shadow` value: comma-separated shadows of an optional colour and two or three lengths in
 /// px, em or rem. A shadow the renderer cannot read is left out. `none` and the empty value give none.
-pub fn parse_text_shadows(value: &str, em_px: f32, root_font_px: f32) -> Vec<TextShadow> {
+pub fn parse_text_shadows(value: &str, em_px: f32, root_font_px: f32, current_color: &str) -> Vec<TextShadow> {
     let value = value.trim();
     if value.is_empty() || value == "none" {
         return Vec::new();
@@ -612,6 +620,9 @@ pub fn parse_text_shadows(value: &str, em_px: f32, root_font_px: f32) -> Vec<Tex
             for token in split_top_level(shadow, ' ') {
                 match length(token) {
                     Some(v) => lengths.push(v),
+                    None if color.is_none() && token.eq_ignore_ascii_case("currentcolor") => {
+                        color = Some(current_color.to_string())
+                    }
                     None if color.is_none() => color = Some(token.to_string()),
                     None => return None,
                 }
@@ -620,7 +631,7 @@ pub fn parse_text_shadows(value: &str, em_px: f32, root_font_px: f32) -> Vec<Tex
                 return None;
             }
             Some(TextShadow {
-                color: color.unwrap_or_else(|| "black".into()),
+                color: color.unwrap_or_else(|| current_color.to_string()),
                 x: lengths[0],
                 y: lengths[1],
                 blur: lengths.get(2).copied().unwrap_or(0.0).max(0.0),
@@ -893,7 +904,8 @@ mod tests {
 
     #[test]
     fn text_shadows_read_like_css() {
-        let shadows = parse_text_shadows("0 .3rem .5rem rgba(0, 0, 0, .15), hsl(0, 0%, 0%, .5) 1px 2px", 20.0, 16.0);
+        let shadows =
+            parse_text_shadows("0 .3rem .5rem rgba(0, 0, 0, .15), hsl(0, 0%, 0%, .5) 1px 2px", 20.0, 16.0, "black");
         assert_eq!(
             shadows,
             vec![
@@ -901,14 +913,18 @@ mod tests {
                 TextShadow { color: "hsl(0, 0%, 0%, .5)".into(), x: 1.0, y: 2.0, blur: 0.0 },
             ]
         );
+        // No colour, or currentColor, is the text's own.
         assert_eq!(
-            parse_text_shadows("0 0 0.5em", 20.0, 16.0)[0],
-            TextShadow { color: "black".into(), x: 0.0, y: 0.0, blur: 10.0 }
+            parse_text_shadows("0 0 0.5em, currentColor 1px 1px", 20.0, 16.0, "white"),
+            vec![
+                TextShadow { color: "white".into(), x: 0.0, y: 0.0, blur: 10.0 },
+                TextShadow { color: "white".into(), x: 1.0, y: 1.0, blur: 0.0 },
+            ]
         );
         // What it cannot read is left out, and the rest kept.
-        assert_eq!(parse_text_shadows("0 0 2vw red, 0 1px red", 20.0, 16.0).len(), 1);
-        assert!(parse_text_shadows("none", 20.0, 16.0).is_empty());
-        assert!(parse_text_shadows("", 20.0, 16.0).is_empty());
+        assert_eq!(parse_text_shadows("0 0 2vw red, 0 1px red", 20.0, 16.0, "black").len(), 1);
+        assert!(parse_text_shadows("none", 20.0, 16.0, "black").is_empty());
+        assert!(parse_text_shadows("", 20.0, 16.0, "black").is_empty());
     }
 
     #[test]

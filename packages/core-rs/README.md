@@ -207,7 +207,8 @@ letters, so a long word like "everybody" is not one however long it is held.
 ```
 
 The glow peak brightens a glow up to its colour fully opaque, so it shows on a translucent glow
-colour such as the default.
+colour such as the default. A word's text-shadow moves with the word, but not with each letter's
+wave.
 
 ## How it works
 

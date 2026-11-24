@@ -255,7 +255,7 @@ fn wobble(start_s: f32, duration_s: f32, group_long: bool, phase: Phase, moment:
 
 /// The letter wave on letter `index` of `count`: each letter rises to its crest as the sweep
 /// finishes lighting it, then settles a little below. `outward` is where the letter sits from the
-/// word's centre, -1 at its left edge to 1 at its right, which the spread moves it along. Also
+/// word's centre, -1 for its leftmost letter to 1 for its rightmost, which the spread moves it along. Also
 /// returns how near its crest the letter is, 0 to 1, which its glow peak follows.
 fn letter_wave(
     part: &Part,
@@ -295,10 +295,10 @@ fn letter_wave(
     if local < 0.0 {
         return (Motion::IDENTITY, 0.0);
     }
-    let mut crest = theme.wave_crest;
+    // Only held words swell at the crest, whatever scale the crest transform has.
+    let emphasis = if part.long_word { theme.wave_emphasis_scale } else { 1.0 };
+    let mut crest = Motion { sx: emphasis, sy: emphasis, ..theme.wave_crest };
     if part.long_word {
-        crest.sx = theme.wave_emphasis_scale;
-        crest.sy = theme.wave_emphasis_scale;
         crest.tx_em += theme.wave_spread.tx_em * outward;
         crest.tx_px += theme.wave_spread.tx_px * outward;
     }
@@ -311,7 +311,9 @@ fn letter_wave(
         ],
         progress,
     );
-    let near = if progress < 0.4 {
+    let near = if !part.long_word || theme.wave_glow == 0.0 {
+        0.0
+    } else if progress < 0.4 {
         theme.wave_rise_easing.at(progress / 0.4)
     } else {
         1.0 - theme.wave_fall_easing.at((progress - 0.4) / 0.6)
@@ -506,12 +508,13 @@ pub fn paint_line(
                 let look = word_look(part, phase, moment, theme, style.glow);
 
                 // Each letter's wave, which the glyphs and the glow under them both follow.
-                let half_width = (group_rect.w / 2.0).max(1e-3);
                 let letters: Vec<(Motion, f32)> = slot
                     .glyphs
                     .iter()
                     .map(|glyph| {
-                        let outward = ((centre(&glyph.rect).0 - centre(&group_rect).0) / half_width).clamp(-1.0, 1.0);
+                        // From the word's centre to where the outermost letter's centre would be.
+                        let reach = ((group_rect.w - glyph.rect.w) / 2.0).max(1e-3);
+                        let outward = ((centre(&glyph.rect).0 - centre(&group_rect).0) / reach).clamp(-1.0, 1.0);
                         glyph
                             .letter
                             .map(|i| letter_wave(part, i, style.letters, outward, phase, moment, theme))
@@ -581,8 +584,10 @@ pub fn paint_line(
                     continue;
                 }
                 let flat = premultiply(filtered(color, &placement), placement.opacity * entry);
+                // The romanization's box goes under everything, its text's shadow included.
+                let target = if slot.owner == Owner::Pill { &mut *under } else { &mut *out };
                 for glyph in &slot.glyphs {
-                    out.push(Quad {
+                    target.push(Quad {
                         rect: to_canvas(line_affine.then(slide).rect(glyph.rect), &placement),
                         uv: uv_of(slot, glyph.rect, dpr),
                         unlit: flat,
