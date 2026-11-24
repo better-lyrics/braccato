@@ -1166,15 +1166,14 @@ impl View {
         self.stage_roles.clear();
         self.stage_area = None;
         let now = self.now.ms();
-        // A rebuild of the same lyrics keeps how far each line has eased to the browsing opacity,
-        // so a reader's dimmed view doesn't flash.
-        let browse: Vec<Tween> =
-            if keep_host { self.lines.iter().map(|state| state.browse).collect() } else { Vec::new() };
+        // A rebuild of the same lyrics keeps how far each line has eased to its hover look and the
+        // browsing opacity, so neither the line under the pointer nor a dimmed view flashes.
+        let eased: Vec<(Tween, Tween)> =
+            if keep_host { self.lines.iter().map(|state| (state.hover, state.browse)).collect() } else { Vec::new() };
         self.lines = (0..song.lines.len())
-            .map(|i| LineState {
-                decorated_ms: now,
-                browse: browse.get(i).copied().unwrap_or_default(),
-                ..Default::default()
+            .map(|i| {
+                let (hover, browse) = eased.get(i).copied().unwrap_or_default();
+                LineState { decorated_ms: now, hover, browse, ..Default::default() }
             })
             .collect();
         self.events.push(Event::LyricsLoaded { line_count: song.lines.len(), sync: song.sync });
