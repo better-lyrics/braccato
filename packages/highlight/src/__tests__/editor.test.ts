@@ -1070,5 +1070,6 @@ describe("attachEditor style window on one wrapped line", () => {
 			const [from, to] = visibleChars(layer);
 			for (let k = from; k < Math.min(to, want.length); k++) expect(got[k]).toBe(want[k]);
 		}
-	});
+		// 300 edits on a long line take seconds on a shared CI runner, where the Rust build runs alongside.
+	}, 30_000);
 });
