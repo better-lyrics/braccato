@@ -1067,9 +1067,15 @@ fn measure_line(
         layout.scroll_height = layout.height.max(words_bottom + 2.0 * root_px);
     }
 
-    if let Some(pill) = &dom_.romanization {
+    let pill_color = dom_.romanization.as_ref().map(|pill| {
+        let value = dom::computed_value(pill, "--blyrics-romanized-bg-color");
+        let value = value.trim();
+        parse_color(&dom::doc_of(pill), if value.is_empty() { "rgb(255 255 255 / 0.145)" } else { value })
+    });
+    // A transparent pill (`--blyrics-romanized-bg-color: transparent`) is not drawn at all.
+    if let (Some(pill), Some(color)) = (&dom_.romanization, pill_color.filter(|color| color[3] > 0.0)) {
         let rect = Rect::relative(&pill.get_bounding_client_rect(), origin);
-        layout.pill_color = parse_color(&dom::doc_of(pill), "rgb(255 255 255 / 0.145)");
+        layout.pill_color = color;
         layout.slots.push(Slot {
             ink: Ink::Pill { radius: dom::px(&dom::computed_value(pill, "border-top-left-radius")) },
             owner: Owner::Pill,
@@ -1080,9 +1086,9 @@ fn measure_line(
             placement: Placement::default(),
             color: false,
         });
-        if let Some(text_el) = &dom_.romanization_text {
-            push_static_text(&mut layout, text_el, origin, Owner::Romanization, root_px);
-        }
+    }
+    if let (Some(_), Some(text_el)) = (&dom_.romanization, &dom_.romanization_text) {
+        push_static_text(&mut layout, text_el, origin, Owner::Romanization, root_px);
     }
     if let Some(translation) = &dom_.translation {
         push_static_text(&mut layout, translation, origin, Owner::Translation, root_px);

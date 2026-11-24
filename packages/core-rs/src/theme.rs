@@ -8,6 +8,7 @@
 
 use crate::dom;
 use crate::easing::Easing;
+use crate::layout::{parse_color, Rgba};
 use web_sys::Element;
 
 /// A 2D transform made of translations and scales only, which is all the word and letter keyframes
@@ -145,6 +146,16 @@ pub fn parse_seconds(text: &str) -> Option<f32> {
     None
 }
 
+/// Which words split into letters for the letter wave (`blyrics-letter-wave = true;`, `false` or
+/// `long`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LetterWave {
+    Off,
+    All,
+    /// Only held words, sung past `blyrics-long-word-threshold`.
+    Long,
+}
+
 /// The `blyrics-key = value;` settings in a theme's comments.
 #[derive(Clone, Debug)]
 pub struct CommentSettings {
@@ -153,7 +164,9 @@ pub struct CommentSettings {
     pub lyric_ending_threshold_s: f32,
     pub long_word_threshold_ms: f32,
     pub long_word_wrap_threshold: usize,
-    pub letter_wave: bool,
+    /// Words longer than this many letters are never held words; 0 for no limit.
+    pub long_word_max_letters: usize,
+    pub letter_wave: LetterWave,
     pub disable_richsync: bool,
     pub line_synced_delay_ms: f32,
     pub hide_credits: bool,
@@ -176,7 +189,8 @@ impl Default for CommentSettings {
             lyric_ending_threshold_s: 0.5,
             long_word_threshold_ms: 1500.0,
             long_word_wrap_threshold: 10,
-            letter_wave: true,
+            long_word_max_letters: 0,
+            letter_wave: LetterWave::All,
             disable_richsync: false,
             line_synced_delay_ms: 50.0,
             hide_credits: false,
@@ -217,7 +231,16 @@ impl CommentSettings {
             "blyrics-lyric-ending-threshold-s" => self.lyric_ending_threshold_s = float(0.5),
             "blyrics-long-word-threshold" => self.long_word_threshold_ms = float(1500.0),
             "blyrics-long-word-wrap-threshold" => self.long_word_wrap_threshold = float(10.0).max(1.0) as usize,
-            "blyrics-letter-wave" => self.letter_wave = flag,
+            "blyrics-long-word-max-letters" => self.long_word_max_letters = float(0.0).max(0.0) as usize,
+            "blyrics-letter-wave" => {
+                self.letter_wave = if value.eq_ignore_ascii_case("long") {
+                    LetterWave::Long
+                } else if flag {
+                    LetterWave::All
+                } else {
+                    LetterWave::Off
+                }
+            }
             "blyrics-disable-richsync" => self.disable_richsync = flag,
             "blyrics-line-synced-animation-delay" => self.line_synced_delay_ms = float(50.0),
             "blyrics-hide-credits" => self.hide_credits = flag,
@@ -289,6 +312,12 @@ pub struct Theme {
     pub wobble_settle_offset: f32,
     pub wobble_easing: Easing,
     pub wobble_peak_easing: Easing,
+    /// Each syllable wobbles on its own (`--blyrics-word-wobble-scope: syllable`) rather than the
+    /// whole word once.
+    pub wobble_per_syllable: bool,
+    /// How many times the syllable's (or word's) own duration the wobble lasts longer
+    /// (`--blyrics-word-wobble-duration-ratio`).
+    pub wobble_duration_ratio: f32,
 
     pub wave_crest: Motion,
     pub wave_settle: Motion,
@@ -296,6 +325,11 @@ pub struct Theme {
     pub wave_s: f32,
     pub wave_rise_easing: Easing,
     pub wave_fall_easing: Easing,
+    /// How far a held word's outermost letters move out from its centre at their crest
+    /// (`--blyrics-letter-wave-spread`).
+    pub wave_spread: Motion,
+    /// How much brighter a held word's letter glows at its crest (`--blyrics-letter-wave-glow`).
+    pub wave_glow: f32,
 
     pub instrumental_fill_fade_s: f32,
     pub instrumental_oscillation_s: f32,
@@ -409,13 +443,15 @@ pub struct LineHover {
     /// Blur standard deviation, CSS pixels.
     pub blur_px: Option<f32>,
     pub scale: Option<f32>,
+    /// The inactive colour the line's words ease to (`--blyrics-line-hover-color`).
+    pub color: Option<Rgba>,
     pub duration_s: f32,
     pub easing: Easing,
 }
 
 impl LineHover {
     pub fn is_set(&self) -> bool {
-        self.opacity.is_some() || self.blur_px.is_some() || self.scale.is_some()
+        self.opacity.is_some() || self.blur_px.is_some() || self.scale.is_some() || self.color.is_some()
     }
 
     /// Reads the hover variables from their raw values. A blur may be written as `blur(4px)`.
@@ -435,6 +471,7 @@ impl LineHover {
             opacity: number(opacity).map(|v| v.clamp(0.0, 1.0)),
             blur_px: blur_px.map(|v| v.max(0.0)),
             scale: number(scale).filter(|v| *v > 0.0),
+            color: None,
             duration_s,
             easing,
         }
@@ -736,6 +773,8 @@ impl Theme {
             wobble_settle_offset: num("--blyrics-word-wobble-settle-offset", 0.75).clamp(0.0, 1.0),
             wobble_easing: ease("--blyrics-word-wobble-easing", Easing::EASE),
             wobble_peak_easing: ease("--blyrics-word-wobble-peak-easing", Easing::EASE_IN_OUT),
+            wobble_per_syllable: raw("--blyrics-word-wobble-scope") == "syllable",
+            wobble_duration_ratio: num("--blyrics-word-wobble-duration-ratio", 0.0).max(0.0),
 
             wave_crest: motion("--blyrics-letter-wave-transform", "translateY(-0.05em)"),
             wave_settle: motion("--blyrics-letter-wave-settle", "translateY(-0.02em)"),
@@ -743,6 +782,11 @@ impl Theme {
             wave_s: secs("--blyrics-letter-wave-duration", 0.9),
             wave_rise_easing: ease("--blyrics-letter-wave-rise-easing", Easing::EASE_IN_OUT),
             wave_fall_easing: ease("--blyrics-letter-wave-fall-easing", Easing::EASE_OUT),
+            wave_spread: {
+                let spread = raw("--blyrics-letter-wave-spread");
+                Motion::parse(&format!("translateX({})", if spread.is_empty() { "0" } else { &spread }))
+            },
+            wave_glow: num("--blyrics-letter-wave-glow", 0.0).max(0.0),
 
             instrumental_fill_fade_s: secs("--blyrics-instrumental-fill-fade-duration", 0.15),
             instrumental_oscillation_s: secs("--blyrics-instrumental-wave-oscillation-duration", 1.25),
@@ -777,14 +821,19 @@ impl Theme {
                     brightness_after: side("--blyrics-line-brightness", "--blyrics-line-brightness-after"),
                 }
             },
-            line_hover: LineHover::parse(
-                &raw("--blyrics-line-hover-opacity"),
-                &raw("--blyrics-line-hover-blur"),
-                &raw("--blyrics-line-hover-scale"),
-                secs("--blyrics-line-hover-duration", 0.2),
-                ease("--blyrics-line-hover-easing", Easing::EASE),
-                root_font_px,
-            ),
+            line_hover: LineHover {
+                color: Some(raw("--blyrics-line-hover-color"))
+                    .filter(|value| !value.is_empty())
+                    .map(|value| parse_color(&dom::doc_of(container), &value)),
+                ..LineHover::parse(
+                    &raw("--blyrics-line-hover-opacity"),
+                    &raw("--blyrics-line-hover-blur"),
+                    &raw("--blyrics-line-hover-scale"),
+                    secs("--blyrics-line-hover-duration", 0.2),
+                    ease("--blyrics-line-hover-easing", Easing::EASE),
+                    root_font_px,
+                )
+            },
             line_opacity_browsing: fraction(&raw("--blyrics-line-opacity-browsing")),
             word_rise_extra_s: parse_seconds(&raw("--blyrics-word-rise-extra-duration")).unwrap_or(0.2).max(0.0),
             word_rise_easing: ease("--blyrics-word-rise-easing", Easing::EASE),
@@ -887,7 +936,9 @@ mod tests {
             "/* blyrics-target-scroll-pos-ratio = 0.42; */ .x{} /* blyrics-letter-wave = false; */",
         );
         assert!((s.target_scroll_ratio - 0.42).abs() < 1e-6);
-        assert!(!s.letter_wave);
+        assert_eq!(s.letter_wave, LetterWave::Off);
+        let s = CommentSettings::parse("/* blyrics-letter-wave = long; blyrics-long-word-max-letters = 8; */");
+        assert_eq!((s.letter_wave, s.long_word_max_letters), (LetterWave::Long, 8));
     }
 
     #[test]

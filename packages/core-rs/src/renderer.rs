@@ -1924,6 +1924,7 @@ impl View {
                 opacity,
                 entry,
                 hover_scale,
+                hover_color: hover.color.map(|color| (color, hovered)),
                 saturate: look.saturate,
                 brightness: look.brightness,
             };
@@ -2015,6 +2016,7 @@ impl View {
                         opacity,
                         entry: 1.0,
                         hover_scale: (1.0, 0.0),
+                        hover_color: None,
                         saturate: 1.0,
                         brightness: 1.0,
                     };

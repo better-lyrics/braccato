@@ -51,6 +51,8 @@ pub struct Placement {
     pub entry: f32,
     /// The scale the pointer draws the line toward, and how far, 0 to 1.
     pub hover_scale: (f32, f32),
+    /// The inactive colour the pointer draws the line's words toward, and how far, 0 to 1.
+    pub hover_color: Option<(Rgba, f32)>,
     /// The line's `saturate()` and `brightness()`, 1 for none.
     pub saturate: f32,
     pub brightness: f32,
@@ -228,16 +230,17 @@ fn keyframes(frames: &[(f32, Motion, Easing)], progress: f32) -> Motion {
     frames[frames.len() - 1].1
 }
 
-/// The word wobble on a group, started by its first word.
-fn wobble(first: &Part, group_long: bool, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
+/// The word wobble on a word or syllable sung from `start_s` for `duration_s`.
+fn wobble(start_s: f32, duration_s: f32, group_long: bool, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
     if !theme.animate_wobble || group_long || phase != Phase::Live || moment.sync == SyncType::None {
         return Motion::IDENTITY;
     }
-    let t = moment.lyric - first.start_s;
+    let t = moment.lyric - start_s;
     if t < 0.0 {
         return Motion::IDENTITY;
     }
-    let progress = theme.wobble_easing.at(t / theme.wobble_s);
+    let length = theme.wobble_s + theme.wobble_duration_ratio * duration_s.max(0.0);
+    let progress = theme.wobble_easing.at(t / length);
     let settle = theme.wobble_settle_offset.max(theme.wobble_peak_offset);
     keyframes(
         &[
@@ -251,10 +254,20 @@ fn wobble(first: &Part, group_long: bool, phase: Phase, moment: Moment, theme: &
 }
 
 /// The letter wave on letter `index` of `count`: each letter rises to its crest as the sweep
-/// finishes lighting it, then settles a little below.
-fn letter_wave(part: &Part, index: u16, count: u16, phase: Phase, moment: Moment, theme: &Theme) -> Motion {
+/// finishes lighting it, then settles a little below. `outward` is where the letter sits from the
+/// word's centre, -1 at its left edge to 1 at its right, which the spread moves it along. Also
+/// returns how near its crest the letter is, 0 to 1, which its glow peak follows.
+fn letter_wave(
+    part: &Part,
+    index: u16,
+    count: u16,
+    outward: f32,
+    phase: Phase,
+    moment: Moment,
+    theme: &Theme,
+) -> (Motion, f32) {
     if !theme.animate_wobble || !part.lettered || phase != Phase::Live || moment.sync == SyncType::None {
-        return Motion::IDENTITY;
+        return (Motion::IDENTITY, 0.0);
     }
     let wave_ms = theme.wave_s * 1000.0;
     let rise_ms = 0.4 * wave_ms;
@@ -280,18 +293,30 @@ fn letter_wave(part: &Part, index: u16, count: u16, phase: Phase, moment: Moment
     };
     let local = (moment.lyric - part.start_s) * 1000.0 - delay_ms;
     if local < 0.0 {
-        return Motion::IDENTITY;
+        return (Motion::IDENTITY, 0.0);
     }
-    let emphasis = if part.long_word { theme.wave_emphasis_scale } else { 1.0 };
-    let crest = Motion { sx: emphasis, sy: emphasis, ..theme.wave_crest };
-    keyframes(
+    let mut crest = theme.wave_crest;
+    if part.long_word {
+        crest.sx = theme.wave_emphasis_scale;
+        crest.sy = theme.wave_emphasis_scale;
+        crest.tx_em += theme.wave_spread.tx_em * outward;
+        crest.tx_px += theme.wave_spread.tx_px * outward;
+    }
+    let progress = local / duration_ms;
+    let motion = keyframes(
         &[
             (0.0, Motion::IDENTITY, theme.wave_rise_easing),
             (0.4, crest, theme.wave_fall_easing),
             (1.0, theme.wave_settle, Easing::Linear),
         ],
-        local / duration_ms,
-    )
+        progress,
+    );
+    let near = if progress < 0.4 {
+        theme.wave_rise_easing.at(progress / 0.4)
+    } else {
+        1.0 - theme.wave_fall_easing.at((progress - 0.4) / 0.6)
+    };
+    (motion, near)
 }
 
 /// Whether a part is timed word by word, which the rest pose and the past opacity need.
@@ -459,11 +484,20 @@ pub fn paint_line(
                 let style = &layout.parts[index];
                 let group = &line.groups[part.group];
                 let group_rect = layout.groups.get(part.group).copied().unwrap_or(slot.rect);
-                let wobble = wobble(&line.parts[group.parts[0]], group.long, phase, moment, theme);
+                let (wobble, wobble_centre) = if theme.wobble_per_syllable {
+                    (wobble(part.start_s, part.duration_s, group.long, phase, moment, theme), centre(&slot.rect))
+                } else {
+                    let first = &line.parts[group.parts[0]];
+                    let last = &line.parts[group.parts[group.parts.len() - 1]];
+                    let duration = last.end_s() - first.start_s;
+                    (wobble(first.start_s, duration, group.long, phase, moment, theme), centre(&group_rect))
+                };
                 let rest = rest_pose(part, style, phase, moment, theme);
-                let word_affine = line_affine
-                    .then(Affine::about(centre(&group_rect), wobble, style.em))
-                    .then(Affine::about(centre(&group_rect), rest, style.em));
+                let word_affine = line_affine.then(Affine::about(wobble_centre, wobble, style.em)).then(Affine::about(
+                    centre(&group_rect),
+                    rest,
+                    style.em,
+                ));
                 let opacity = placement.opacity * past_opacity(part, style, phase, moment, theme);
                 if shadow {
                     push_shadow(under, slot, word_affine, opacity, &placement);
@@ -472,17 +506,23 @@ pub fn paint_line(
                 let look = word_look(part, phase, moment, theme, style.glow);
 
                 // Each letter's wave, which the glyphs and the glow under them both follow.
-                let letters: Vec<Motion> = slot
+                let half_width = (group_rect.w / 2.0).max(1e-3);
+                let letters: Vec<(Motion, f32)> = slot
                     .glyphs
                     .iter()
                     .map(|glyph| {
+                        let outward = ((centre(&glyph.rect).0 - centre(&group_rect).0) / half_width).clamp(-1.0, 1.0);
                         glyph
                             .letter
-                            .map(|i| letter_wave(part, i, style.letters, phase, moment, theme))
-                            .unwrap_or(Motion::IDENTITY)
+                            .map(|i| letter_wave(part, i, style.letters, outward, phase, moment, theme))
+                            .unwrap_or((Motion::IDENTITY, 0.0))
                     })
                     .collect();
-                let (inactive, active) = (filtered(style.inactive, &placement), filtered(style.active, &placement));
+                let inactive = match placement.hover_color {
+                    Some((color, share)) if share > 0.0 => mix(style.inactive, color, share),
+                    _ => style.inactive,
+                };
+                let (inactive, active) = (filtered(inactive, &placement), filtered(style.active, &placement));
                 let unlit = premultiply(inactive, opacity);
                 let lit = premultiply(mix(inactive, active, look.lit), opacity);
                 // The glow: one drop shadow of the lit part of the word, which is the word's own
@@ -491,7 +531,8 @@ pub fn paint_line(
                 let mut glow = Blur { quads: Vec::new(), sigma: theme.glow_radius_px * look.glow };
                 let glow_color =
                     premultiply(filtered(style.glow, &placement), look.glow_alpha / style.glow[3].max(1e-6) * opacity);
-                for (glyph, letter) in slot.glyphs.iter().zip(&letters) {
+                let peak = if part.long_word { theme.wave_glow } else { 0.0 };
+                for (glyph, (letter, near)) in slot.glyphs.iter().zip(&letters) {
                     let affine = word_affine.then(Affine::about(centre(&glyph.rect), *letter, style.em));
                     let quad = Quad {
                         rect: to_canvas(affine.rect(glyph.rect), &placement),
@@ -502,7 +543,9 @@ pub fn paint_line(
                         wave: [0.0, 0.0, if slot.color { Quad::COLOR } else { Quad::TEXT }, 0.0],
                     };
                     if glowing {
-                        glow.quads.push(Quad { unlit: [0.0; 4], lit: glow_color, ..quad });
+                        let boost = (1.0 + peak * near).min(1.0 / glow_color[3].max(1e-6));
+                        let lit = glow_color.map(|c| c * boost);
+                        glow.quads.push(Quad { unlit: [0.0; 4], lit, ..quad });
                     }
                     out.push(quad);
                 }
@@ -747,7 +790,17 @@ mod tests {
     use super::*;
 
     fn placement(saturate: f32, brightness: f32) -> Placement {
-        Placement { x: 0.0, y: 0.0, dpr: 1.0, opacity: 1.0, entry: 1.0, hover_scale: (1.0, 0.0), saturate, brightness }
+        Placement {
+            x: 0.0,
+            y: 0.0,
+            dpr: 1.0,
+            opacity: 1.0,
+            entry: 1.0,
+            hover_scale: (1.0, 0.0),
+            hover_color: None,
+            saturate,
+            brightness,
+        }
     }
 
     #[test]

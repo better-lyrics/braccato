@@ -123,6 +123,7 @@ the line as it is:
   --blyrics-line-hover-opacity: 1;   /* over the distance opacity */
   --blyrics-line-hover-blur: 0;      /* over the distance blur; px, rem or blur(…) */
   --blyrics-line-hover-scale: 1.04;  /* over --blyrics-scale / --blyrics-active-scale */
+  --blyrics-line-hover-color: white; /* the words' inactive colour; the sung part keeps its own */
   --blyrics-line-hover-duration: 0.2s;
   --blyrics-line-hover-easing: ease;
 }
@@ -177,6 +178,36 @@ take these instead:
 /* the no-lyrics icon is an element of its own, 4em by default */
 .blyrics-no-lyrics-icon { font-size: 6rem; }
 ```
+
+The wobble and the letter wave have a few more controls. A held word is one sung for longer than
+`blyrics-long-word-threshold`, and with `blyrics-long-word-max-letters = 8;` one of at most 8
+letters, so a long word like "everybody" is not one however long it is held.
+`blyrics-letter-wave = long;` waves only held words; the rest move as one piece.
+
+```css
+.blyrics-container {
+  /* held words: the outermost letters move this far out at their crest, the rest in proportion */
+  --blyrics-letter-wave-spread: 0.04em;
+  /* held words that glow: each letter's glow up to 1 + this as bright at its crest */
+  --blyrics-letter-wave-glow: 0.8;
+  /* word (the default) or syllable: each syllable wobbles on its own, about its own centre */
+  --blyrics-word-wobble-scope: syllable;
+  /* the wobble lasts --blyrics-wobble-duration plus this many times the syllable's duration */
+  --blyrics-word-wobble-duration-ratio: 0.5;
+  /* any easing can be a linear() curve, such as a spring */
+  --blyrics-word-wobble-easing: linear(0, 0.6 20%, 1.08 40%, 0.98 65%, 1);
+}
+
+.blyrics-container .blyrics--romanized {
+  /* the box behind romanization; transparent for none */
+  --blyrics-romanized-bg-color: transparent;
+  /* the box's padding still places the text, so plain-text romanization drops it too */
+  padding: 0;
+}
+```
+
+The glow peak brightens a glow up to its colour fully opaque, so it shows on a translucent glow
+colour such as the default.
 
 ## How it works
 

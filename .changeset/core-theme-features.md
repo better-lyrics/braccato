@@ -10,6 +10,11 @@ Themes get more ways to say what `:hover`, `filter`, `text-shadow`, `::before`/`
 - `--blyrics-line-saturate` and `--blyrics-line-brightness`, with `-before` and `-after`, are distance lists like the opacity and blur ones, applied to the line's colours.
 - `--blyrics-instrumental-icon` picks what instrumental lines show: `note` (the default), `dots` (Apple Music's three dots, lit one after another in reading order over the instrumental), or a string such as `"♫"`, which fills from the bottom and glows like the note. `--blyrics-instrumental-pulse-scale` and `--blyrics-instrumental-pulse-duration` (1.5s) make it swell and settle once a period while the instrumental plays.
 - `--blyrics-no-lyrics-text` replaces the host's message when there are no lyrics, and `--blyrics-no-lyrics-icon` draws a string above it in a `.blyrics-no-lyrics-icon` element, 4em by default, which the theme can size.
+- `--blyrics-line-hover-color` is the inactive colour the hovered line's words ease to, alongside the other hover properties.
+- `blyrics-letter-wave = long;` waves only held words, and `blyrics-long-word-max-letters = 8;` keeps words longer than 8 letters from counting as held. On held words, `--blyrics-letter-wave-spread` moves letters out from the word's centre at their crest, and `--blyrics-letter-wave-glow` brightens each letter's glow as its crest passes.
+- `--blyrics-word-wobble-scope: syllable` wobbles each syllable on its own, and `--blyrics-word-wobble-duration-ratio` lengthens the wobble by a share of the syllable's duration.
+- Every easing property accepts CSS `linear()`, so spring curves can be written directly. It used to fall back to `ease`.
+- `--blyrics-romanized-bg-color` sets the box behind romanization; `transparent` draws none.
 - `--blyrics-text-shadow` takes `text-shadow`'s syntax on lines, words, translations and romanizations. It is drawn once into the line's texture under its text, so it costs nothing per frame, and it is static: the same whether the line is sung or hovered.
 
 A theme that sets none of them looks the same as before.
