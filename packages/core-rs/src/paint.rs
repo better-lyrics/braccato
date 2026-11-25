@@ -138,8 +138,12 @@ pub fn line_scale(line: &Line, phase: Phase, moment: Moment, theme: &Theme) -> f
                 rest + (theme.active_scale - rest) * theme.enter_easing.at(t)
             }
         }
+        // At rest once the exit is done: the DOM renderer's exit did not hold its last value.
         Phase::Exiting { since_ms, .. } => {
             let t = ((moment.now_ms - since_ms) / 1000.0) as f32 / duration;
+            if t >= 1.0 {
+                return rest;
+            }
             theme.active_scale + (rest - theme.active_scale) * theme.exit_easing.at(t)
         }
     }
@@ -159,7 +163,11 @@ fn active_share(line: &Line, phase: Phase, moment: Moment, theme: &Theme) -> f32
             }
         }
         Phase::Exiting { since_ms, .. } => {
-            1.0 - theme.exit_easing.at(((moment.now_ms - since_ms) / 1000.0) as f32 / duration)
+            let t = ((moment.now_ms - since_ms) / 1000.0) as f32 / duration;
+            if t >= 1.0 {
+                return 0.0;
+            }
+            1.0 - theme.exit_easing.at(t)
         }
     };
     share.clamp(0.0, 1.0)

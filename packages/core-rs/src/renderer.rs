@@ -168,7 +168,8 @@ struct Focus {
 
 impl Focus {
     fn at(&self, now_ms: f64, easing: crate::easing::Easing) -> (f32, f32) {
-        if self.duration_ms <= 0.0 {
+        // Settled once done, as the scroll it follows is.
+        if !self.moving(now_ms) {
             return self.to;
         }
         let t = easing.at((((now_ms - self.start_ms) / self.duration_ms) as f32).clamp(0.0, 1.0));
