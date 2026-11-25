@@ -211,11 +211,20 @@ pub fn line_duration_ms(index: usize, lead: usize, delta: f32, differential: boo
     }
 }
 
+/// How far `at`, in CSS pixels, is from the nearest whole device pixel: where a line at rest is drawn,
+/// so its texels land one to one.
+pub fn pixel_shift(at: f32, dpr: f32) -> f32 {
+    (at * dpr).round() / dpr - at
+}
+
 /// Adds a glide to every line the scroll moves through view. `tops` are scroll content positions.
+/// `shifts` (one per line, or none) is how far each line's whole-pixel rest position moved against
+/// its exact one, which the glide also starts from, so a line starts exactly where it was drawn.
 #[allow(clippy::too_many_arguments)]
 pub fn start_glides(
     curves: &mut [Vec<Curve>],
     tops: &[(f32, f32)],
+    shifts: &[f32],
     plan: &Plan,
     from: f32,
     view_height: f32,
@@ -248,7 +257,8 @@ pub fn start_glides(
         }
         let own = line_duration_ms(index, plan.lead, delta, differential);
         let duration = active + (own - active) * squeeze;
-        curves[index].push(Curve { from: delta, start_ms: now_ms, duration_ms: duration.max(1.0), easing });
+        let from = delta + shifts.get(index).copied().unwrap_or(0.0);
+        curves[index].push(Curve { from, start_ms: now_ms, duration_ms: duration.max(1.0), easing });
     }
 }
 
@@ -258,6 +268,27 @@ mod tests {
 
     fn line(start: f32, top: f32) -> ScrollLine {
         ScrollLine { start_s: start, duration_s: 2.0, top, height: 100.0, instrumental: false }
+    }
+
+    #[test]
+    fn a_glide_starts_where_the_line_was_drawn_and_ends_on_whole_pixels() {
+        // At 1.25 device pixels per CSS pixel a whole CSS pixel scroll is not a whole device pixel,
+        // so the line's rest position moves against the grid.
+        let (dpr, top, before, after) = (1.25, 412.3, 40.0, 113.0);
+        let drawn = |canvas_top: f32, offset: f32| {
+            let rest = top - canvas_top;
+            rest + pixel_shift(rest, dpr) + offset
+        };
+        let shift = pixel_shift(top - before, dpr) - pixel_shift(top - after, dpr);
+        assert!(shift.abs() > 0.1, "the case moves against the grid");
+        let plan = Plan { to: after, lead: 0, continues: false };
+        let mut curves = vec![Vec::new()];
+        start_glides(&mut curves, &[(top, 50.0)], &[shift], &plan, before, 600.0, 0.0, Easing::EASE, true);
+        let curve = curves[0][0];
+        assert!((drawn(after, curve.value(0.0)) - drawn(before, 0.0)).abs() < 1e-3, "no step as it starts");
+        let end = drawn(after, curve.value(curve.duration_ms - 1e-3));
+        assert!((end * dpr - (end * dpr).round()).abs() < 1e-2, "lands on a whole device pixel");
+        assert!((end - drawn(after, 0.0)).abs() < 1e-2, "no step once the glide is dropped");
     }
 
     #[test]

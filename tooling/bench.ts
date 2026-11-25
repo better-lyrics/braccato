@@ -8,7 +8,9 @@
 //   pnpm bench --profile                         adds one CPU-profiled run per scenario (see below)
 //
 // A scenario is `song[:theme[:layout]]`: a song id from demo/song.js, a theme from demo/themes.js
-// (default `default`), and `scroll` or `stage` (default `scroll`).
+// (default `default`), and `scroll` or `stage` (default `scroll`). `song*N` plays the song's lines N
+// times over, one copy after another (the audio plays once): every built-in song fits a few screens,
+// so its lines are all drawn before it plays, and only a longer one draws lines while it scrolls.
 //
 // Each run loads `compare.html` with only that renderer, plays the song muted from `--start` and
 // throws away the first `--warmup` seconds, then measures for `--seconds`:
@@ -52,7 +54,10 @@ const WASM = join(ROOT, "packages/core-rs/pkg/braccato_core_rs_bg.wasm");
 
 const { values: args } = parseArgs({
   options: {
-    scenarios: { type: "string", default: "kettle:default,kettle:sustain,the-steps:default,kettle:default:stage" },
+    scenarios: {
+      type: "string",
+      default: "kettle:default,kettle:sustain,the-steps:default,kettle*4:default,kettle:default:stage",
+    },
     renderers: { type: "string", default: "rs" },
     timing: { type: "string", default: "syllables" },
     runs: { type: "string", default: "3" },
@@ -94,17 +99,22 @@ const SCENARIOS = args.scenarios.split(",").map(parseScenario);
 type Renderer = "rs" | "dom";
 interface Scenario {
   song: string;
+  repeat: number;
   theme: string;
   layout: "scroll" | "stage";
 }
 
 function parseScenario(text: string): Scenario {
-  const [song, theme = "default", layout = "scroll"] = text.trim().split(":");
+  const [named, theme = "default", layout = "scroll"] = text.trim().split(":");
   if (layout !== "scroll" && layout !== "stage") throw new Error(`${text}: layout is scroll or stage`);
-  return { song, theme, layout };
+  const [song, times = "1"] = named.split("*");
+  const repeat = Number(times);
+  if (!Number.isInteger(repeat) || repeat < 1) throw new Error(`${text}: song*N repeats a song N times, N 1 or more`);
+  return { song, repeat, theme, layout };
 }
 
-const label = (s: Scenario, r: Renderer) => `${s.song}:${s.theme}:${s.layout}:${r}`;
+const label = (s: Scenario, r: Renderer) =>
+  `${s.song}${s.repeat > 1 ? `*${s.repeat}` : ""}:${s.theme}:${s.layout}:${r}`;
 
 // -- Chrome DevTools Protocol ------------------------------------------------
 
@@ -372,6 +382,7 @@ async function measure(
 ): Promise<{ setup: Setup; numbers: Numbers }> {
   const query = new URLSearchParams({
     song: scenario.song,
+    repeat: String(scenario.repeat),
     theme: scenario.theme,
     layout: scenario.layout,
     timing: args.timing,
@@ -703,7 +714,7 @@ async function main() {
     await mkdir(args.out, { recursive: true });
     for (const scenario of SCENARIOS) {
       for (const renderer of RENDERERS) {
-        const path = join(args.out, `${label(scenario, renderer).replaceAll(":", "-")}.cpuprofile`);
+        const path = join(args.out, `${label(scenario, renderer).replace(/[:*]/g, "-")}.cpuprofile`);
         await measureSettled(cdp, page, scenario, renderer, base, path);
         printTopFunctions(path, JSON.parse(await readFile(path, "utf8")));
       }

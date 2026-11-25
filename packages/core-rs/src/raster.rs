@@ -33,7 +33,12 @@ impl Rasterizer {
     /// Draws with a canvas of `doc`, whose fonts it resolves text against.
     pub fn new(doc: &web_sys::Document) -> Rasterizer {
         let canvas: HtmlCanvasElement = doc.create_element("canvas").unwrap().unchecked_into();
-        let context: CanvasRenderingContext2d = canvas.get_context("2d").unwrap().unwrap().unchecked_into();
+        // Kept in memory rather than on the GPU: uploading a GPU canvas into the line pages takes
+        // Chrome's slow path, 8 to 15 ms a line, where this one takes well under 1 ms.
+        let options = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&options, &JsValue::from_str("willReadFrequently"), &JsValue::TRUE);
+        let context: CanvasRenderingContext2d =
+            canvas.get_context_with_context_options("2d", &options).unwrap().unwrap().unchecked_into();
         let has_filter = js_sys::Reflect::has(context.as_ref(), &JsValue::from_str("filter")).unwrap_or(false);
         Rasterizer {
             canvas,
