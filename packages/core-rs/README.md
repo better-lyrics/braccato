@@ -124,6 +124,8 @@ the line as it is:
   --blyrics-line-hover-blur: 0;      /* over the distance blur; px, rem or blur(…) */
   --blyrics-line-hover-scale: 1.04;  /* over --blyrics-scale / --blyrics-active-scale */
   --blyrics-line-hover-color: white; /* the words' inactive colour; the sung part keeps its own */
+  --blyrics-line-hover-bg-color: rgb(255 255 255 / 0.1);     /* the line's box, below */
+  --blyrics-line-hover-border-color: rgb(255 255 255 / 0.1);
   --blyrics-line-hover-duration: 0.2s;
   --blyrics-line-hover-easing: ease;
 }
@@ -152,13 +154,30 @@ A few more properties stand in for rules that styled lines and words by state:
 }
 
 .blyrics--line, .blyrics--translated {
-  /* text-shadow's syntax; drawn once with the line, the same in every state */
+  /* text-shadow's syntax; drawn once with the line */
   --blyrics-text-shadow: 0 0.3rem 0.5rem rgb(0 0 0 / 0.15);
+  /* while the line is sung (over its scale transition), and while it is hovered; none for none */
+  --blyrics-active-text-shadow: 0 0 1rem rgb(255 255 255 / 0.4);
+  --blyrics-line-hover-text-shadow: 0 0 0.5rem rgb(255 255 255 / 0.3);
+}
+
+.blyrics--line {
+  /* a box behind the line, over its whole box (padding included), with the line's border-radius */
+  --blyrics-line-bg-color: rgb(255 255 255 / 0.06);
+  /* a border inside the box's edge */
+  --blyrics-line-border-color: rgb(255 255 255 / 0.1);
+  --blyrics-line-border-width: 1px;
+  border-radius: 1rem;
 }
 ```
 
-The shadow, the past opacity and the rest pose are read from each element, so selectors scope them
-as they do colours. The browsing opacity and the distance lists are read from the container.
+The shadows, the box, the past opacity and the rest pose are read from each element, so selectors
+scope them as they do colours: `[data-layout="stage"] > .blyrics--line` gives only the stage view's
+lines a box, for instance. The box's corner is the line's `border-radius` as a length (a percentage
+or an elliptical corner reads as square), and a line with nothing to draw, such as an empty blank
+line, has no box. The browsing opacity and the distance lists are read from the container.
+Each shadow is drawn once with the line and cross-fades with its state, so a sung or hovered shadow
+eases in and out rather than moving from one offset to another.
 
 Instrumental lines and the no-lyrics message, which themes restyled with `::before` and `::after`,
 take these instead:

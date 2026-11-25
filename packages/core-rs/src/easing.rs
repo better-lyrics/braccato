@@ -66,15 +66,14 @@ impl Easing {
             Easing::Stops(index) => STOPS.with(|all| {
                 let all = all.borrow();
                 let Some(stops) = all.get(index as usize) else { return t };
-                // The first stop past `t`; at a repeated input (a jump) `t` is past all of them.
-                let next = stops.partition_point(|&(x, _)| x <= t);
-                if next == 0 {
-                    return stops[0].1;
+                // As CSS does: the segment from the last stop at or before `t`, the first or last
+                // segment carried on outside the stops (at 0 and 1 too, as an animation that fills
+                // forwards holds it), and a jump's later value at a repeated input.
+                let a = stops.partition_point(|&(x, _)| x <= t).saturating_sub(1).min(stops.len() - 2);
+                let ((x0, y0), (x1, y1)) = (stops[a], stops[a + 1]);
+                if x1 == x0 {
+                    return y1;
                 }
-                if next == stops.len() {
-                    return stops[next - 1].1;
-                }
-                let ((x0, y0), (x1, y1)) = (stops[next - 1], stops[next]);
                 y0 + (y1 - y0) * (t - x0) / (x1 - x0)
             }),
         }
@@ -222,6 +221,11 @@ mod tests {
         // The missing input between 0% and 80% lands halfway.
         let gap = Easing::parse("linear(0, 0.5, 1 80%, 1)");
         assert!(close(gap.at(0.4), 0.5) && close(gap.at(0.9), 1.0));
+        // Outside its first and last stops, the curve carries on along its end segments.
+        let inset = Easing::parse("linear(0 20%, 1 80%)");
+        assert!(close(inset.at(0.1), -1.0 / 6.0) && close(inset.at(0.9), 7.0 / 6.0) && close(inset.at(0.5), 0.5));
+        // ...as Chrome gives it at the ends too.
+        assert!(close(inset.at(0.0), -1.0 / 3.0) && close(inset.at(1.0), 4.0 / 3.0));
         // Rereading a curve finds the same one; nonsense is ease.
         assert_eq!(Easing::parse("linear(0, 1.2, 1)"), spring);
         assert_eq!(Easing::parse("linear(1)"), Easing::EASE);

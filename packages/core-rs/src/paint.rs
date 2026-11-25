@@ -11,7 +11,7 @@
 
 use crate::easing::Easing;
 use crate::gpu::Quad;
-use crate::layout::{Glyph, Ink, LineLayout, Owner, PartStyle, Rect, Rgba, Slot};
+use crate::layout::{Glyph, Ink, LineLayout, Owner, PartStyle, Rect, Rgba, ShadowStates, Slot};
 use crate::model::SyncType;
 use crate::song::{Line, Part};
 use crate::theme::{Motion, Theme};
@@ -53,6 +53,8 @@ pub struct Placement {
     pub hover_scale: (f32, f32),
     /// The inactive colour the pointer draws the line's words toward, and how far, 0 to 1.
     pub hover_color: Option<(Rgba, f32)>,
+    /// How far the line has eased to its hover look, 0 to 1.
+    pub hovered: f32,
     /// The line's `saturate()` and `brightness()`, 1 for none.
     pub saturate: f32,
     pub brightness: f32,
@@ -136,11 +138,82 @@ pub fn line_scale(line: &Line, phase: Phase, moment: Moment, theme: &Theme) -> f
                 rest + (theme.active_scale - rest) * theme.enter_easing.at(t)
             }
         }
+        // At rest once the exit is done: the DOM renderer's exit did not hold its last value.
         Phase::Exiting { since_ms, .. } => {
             let t = ((moment.now_ms - since_ms) / 1000.0) as f32 / duration;
+            if t >= 1.0 {
+                return rest;
+            }
             theme.active_scale + (rest - theme.active_scale) * theme.exit_easing.at(t)
         }
     }
+}
+
+/// How far the line has eased into being sung, 0 to 1, on its scale transition's timing.
+fn active_share(line: &Line, phase: Phase, moment: Moment, theme: &Theme) -> f32 {
+    let duration = theme.scale_duration_s.max(0.001);
+    let share = match phase {
+        Phase::Idle => 0.0,
+        Phase::Live => {
+            let t = (moment.lyric - line.start_s) / duration;
+            if t < 0.0 {
+                0.0
+            } else {
+                theme.enter_easing.at(t)
+            }
+        }
+        Phase::Exiting { since_ms, .. } => {
+            let t = ((moment.now_ms - since_ms) / 1000.0) as f32 / duration;
+            if t >= 1.0 {
+                return 0.0;
+            }
+            1.0 - theme.exit_easing.at(t)
+        }
+    };
+    share.clamp(0.0, 1.0)
+}
+
+/// The box behind the line, under everything else of it, when it has one this moment.
+fn push_line_box(under: &mut Vec<Quad>, layout: &LineLayout, affine: Affine, placement: &Placement, theme: &Theme) {
+    let line_box = layout.line_box;
+    let hover = &theme.line_hover;
+    if line_box.fill[3] <= 0.0
+        && line_box.border[3] <= 0.0
+        && (placement.hovered <= 0.0 || (hover.bg, hover.border) == (None, None))
+    {
+        return;
+    }
+    let color = |own: Rgba, hover: Option<Rgba>| {
+        let own = premultiply(filtered(own, placement), 1.0);
+        match hover {
+            Some(to) if placement.hovered > 0.0 => {
+                let to = premultiply(filtered(to, placement), 1.0);
+                [0, 1, 2, 3].map(|i| own[i] + (to[i] - own[i]) * placement.hovered)
+            }
+            _ => own,
+        }
+    };
+    let fill = color(line_box.fill, hover.bg);
+    let border = color(line_box.border, hover.border);
+    if fill[3] <= 0.0 && border[3] <= 0.0 {
+        return;
+    }
+    // The border over the fill, as CSS paints a border or an inset outline over a background, and
+    // then the whole box faded with the line.
+    let edge = [0, 1, 2, 3].map(|i| (border[i] + fill[i] * (1.0 - border[3])) * placement.opacity);
+    let fill = fill.map(|c| c * placement.opacity);
+    let dpr = placement.dpr;
+    let rect = Rect { x: 0.0, y: 0.0, w: layout.width, h: layout.height };
+    let (half_w, half_h) = (rect.w * dpr / 2.0, rect.h * dpr / 2.0);
+    let border_px = if border[3] > 0.0 { line_box.border_px * dpr } else { 0.0 };
+    under.push(Quad {
+        rect: to_canvas(affine.rect(rect), placement),
+        uv: [0.0, 0.0, rect.w * dpr, rect.h * dpr],
+        unlit: fill,
+        lit: edge,
+        ramp: [half_w, half_h, (line_box.radius * dpr).clamp(0.0, half_w.min(half_h)), border_px],
+        wave: [0.0, 0.0, Quad::BOX, 0.0],
+    });
 }
 
 /// How a word looks this moment, before geometry.
@@ -477,9 +550,20 @@ pub fn paint_line(
         placement.y = (placement.y * dpr).round() / dpr;
     }
     let fade = theme.swipe_fade();
+    push_line_box(under, layout, line_affine, &placement, theme);
+    // What goes under the line's text but over its box.
+    let floor = under.len();
+    let active = if layout.state_shadows { active_share(line, phase, moment, theme) } else { 0.0 };
 
     for slot in &layout.slots {
-        let shadow = matches!(slot.ink, Ink::Shadow(..));
+        let (shadow, shadow_share) = match slot.ink {
+            Ink::Shadow(_, _, states) if states == ShadowStates::ALL => (true, 1.0),
+            Ink::Shadow(_, _, states) => (true, states.share(active, placement.hovered)),
+            _ => (false, 1.0),
+        };
+        if shadow && shadow_share <= 0.0 {
+            continue;
+        }
         match slot.owner {
             Owner::Part(index) => {
                 let part = &line.parts[index];
@@ -502,7 +586,7 @@ pub fn paint_line(
                 ));
                 let opacity = placement.opacity * past_opacity(part, style, phase, moment, theme);
                 if shadow {
-                    push_shadow(under, slot, word_affine, opacity, &placement);
+                    push_shadow(under, slot, word_affine, opacity * shadow_share, &placement);
                     continue;
                 }
                 let look = word_look(part, phase, moment, theme, style.glow);
@@ -580,7 +664,8 @@ pub fn paint_line(
                 };
                 let slide = Affine { sx: 1.0, sy: 1.0, tx: 0.0, ty: -0.4 * layout.static_em * (1.0 - entry) };
                 if shadow {
-                    push_shadow(under, slot, line_affine.then(slide), placement.opacity * entry, &placement);
+                    let alpha = placement.opacity * entry * shadow_share;
+                    push_shadow(under, slot, line_affine.then(slide), alpha, &placement);
                     continue;
                 }
                 let flat = premultiply(filtered(color, &placement), placement.opacity * entry);
@@ -593,10 +678,11 @@ pub fn paint_line(
                         ramp: [0.0, 0.0, 1.0, 0.0],
                         wave: [0.0, 0.0, if slot.color { Quad::COLOR } else { Quad::TEXT }, 0.0],
                     };
-                    // The romanization's box goes under everything, the shadows of its text
-                    // included, whether that text was laid out before it (timed) or after.
+                    // The romanization's box goes under everything but the line's own box, the
+                    // shadows of its text included, whether that text was laid out before it
+                    // (timed) or after.
                     if slot.owner == Owner::Pill {
-                        under.insert(0, quad);
+                        under.insert(floor, quad);
                     } else {
                         out.push(quad);
                     }
@@ -808,6 +894,7 @@ mod tests {
             entry: 1.0,
             hover_scale: (1.0, 0.0),
             hover_color: None,
+            hovered: 0.0,
             saturate,
             brightness,
         }
