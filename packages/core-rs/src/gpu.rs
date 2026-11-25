@@ -69,9 +69,9 @@ impl Quad {
     pub const COLOR: f32 = -2.0;
     /// Reads the blur atlas, in its own colours.
     pub const BLURRED: f32 = 3.0;
-    /// No texture: a rounded box filled with `unlit` and bordered inside its edge with `lit`. Its
-    /// `uv` runs over the box in device pixels, and `ramp` is its half width, half height, corner
-    /// radius and border width in those pixels.
+    /// No texture: a rounded box filled with `unlit` and bordered inside its edge with `lit`, the
+    /// border already composited over the fill. Its `uv` runs over the box in device pixels, and
+    /// `ramp` is its half width, half height, corner radius and border width in those pixels.
     pub const BOX: f32 = 0.0;
 }
 

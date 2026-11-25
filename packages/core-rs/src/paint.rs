@@ -176,10 +176,10 @@ fn push_line_box(under: &mut Vec<Quad>, layout: &LineLayout, affine: Affine, pla
         return;
     }
     let color = |own: Rgba, hover: Option<Rgba>| {
-        let own = premultiply(filtered(own, placement), placement.opacity);
+        let own = premultiply(filtered(own, placement), 1.0);
         match hover {
             Some(to) if placement.hovered > 0.0 => {
-                let to = premultiply(filtered(to, placement), placement.opacity);
+                let to = premultiply(filtered(to, placement), 1.0);
                 [0, 1, 2, 3].map(|i| own[i] + (to[i] - own[i]) * placement.hovered)
             }
             _ => own,
@@ -190,6 +190,10 @@ fn push_line_box(under: &mut Vec<Quad>, layout: &LineLayout, affine: Affine, pla
     if fill[3] <= 0.0 && border[3] <= 0.0 {
         return;
     }
+    // The border over the fill, as CSS paints a border or an inset outline over a background, and
+    // then the whole box faded with the line.
+    let edge = [0, 1, 2, 3].map(|i| (border[i] + fill[i] * (1.0 - border[3])) * placement.opacity);
+    let fill = fill.map(|c| c * placement.opacity);
     let dpr = placement.dpr;
     let rect = Rect { x: 0.0, y: 0.0, w: layout.width, h: layout.height };
     let (half_w, half_h) = (rect.w * dpr / 2.0, rect.h * dpr / 2.0);
@@ -198,7 +202,7 @@ fn push_line_box(under: &mut Vec<Quad>, layout: &LineLayout, affine: Affine, pla
         rect: to_canvas(affine.rect(rect), placement),
         uv: [0.0, 0.0, rect.w * dpr, rect.h * dpr],
         unlit: fill,
-        lit: border,
+        lit: edge,
         ramp: [half_w, half_h, (line_box.radius * dpr).clamp(0.0, half_w.min(half_h)), border_px],
         wave: [0.0, 0.0, Quad::BOX, 0.0],
     });
