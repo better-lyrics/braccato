@@ -549,6 +549,9 @@ pub fn paint_line(
             Ink::Shadow(_, _, states) => (true, states.share(active, placement.hovered)),
             _ => (false, 1.0),
         };
+        if shadow && shadow_share <= 0.0 {
+            continue;
+        }
         match slot.owner {
             Owner::Part(index) => {
                 let part = &line.parts[index];

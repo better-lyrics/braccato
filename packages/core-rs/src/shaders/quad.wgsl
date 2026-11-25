@@ -34,8 +34,8 @@ struct Instance {
     // lit = clamp(u * ramp.x + v * ramp.y + ramp.z + ramp.w * sin(u * wave.x + wave.y), 0, 1)
     @location(5) ramp: vec4<f32>,
     // wave.z: what to read, layer * 4 + kind, where kind is 1 for page coverage to tint, 2 for page
-    // texels in their own colours, and 3 for the blur atlas; 0 reads nothing and draws a rounded box
-    // (uv: the box in pixels; ramp: half width, half height, radius, border width). wave.w: the mip level to read, 0 on the
+    // texels in their own colours, and 3 for the blur atlas; 0 reads nothing and draws a rounded
+    // box (uv: the box in pixels; ramp: half width, half height, radius, border width). wave.w: the mip level to read, 0 on the
     // canvas, coarser when drawn into the blur atlas at a fraction of the size.
     @location(6) wave: vec4<f32>,
 }
@@ -75,7 +75,9 @@ fn fs_main(in: Varyings) -> @location(0) vec4<f32> {
         let distance = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
         let inside = clamp(0.5 - distance, 0.0, 1.0);
         let within_border = clamp(0.5 - distance - in.ramp.w, 0.0, 1.0);
-        return mix(in.lit, in.unlit, within_border) * inside;
+        // The border over the fill, as CSS paints a border or an inset outline over a background.
+        let edge = in.lit + in.unlit * (1.0 - in.lit.a);
+        return mix(edge, in.unlit, within_border) * inside;
     }
     let layer = floor(in.wave.z / 4.0);
     let kind = in.wave.z - layer * 4.0;

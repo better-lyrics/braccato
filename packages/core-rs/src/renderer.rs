@@ -1948,7 +1948,8 @@ impl View {
                 entry,
                 hover_scale,
                 hover_color: hover.color.map(|color| (color, hovered)),
-                hovered,
+                // An easing that overshoots moves the line, but no colour or shadow past its own.
+                hovered: hovered.clamp(0.0, 1.0),
                 saturate: look.saturate,
                 brightness: look.brightness,
             };

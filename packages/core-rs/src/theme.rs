@@ -121,10 +121,15 @@ fn length(text: &str) -> (f32, f32) {
     (0.0, text.parse().unwrap_or(0.0))
 }
 
-/// A length in px, em lengths resolved against `em_px`.
-pub fn length_px(text: &str, em_px: f32) -> f32 {
-    let (em, px) = length(text);
-    em * em_px + px
+/// A length in px, em and rem lengths resolved against `em_px` and `root_px`.
+pub fn length_px(text: &str, em_px: f32, root_px: f32) -> f32 {
+    match text.trim().strip_suffix("rem") {
+        Some(rem) => rem.trim().parse::<f32>().unwrap_or(0.0) * root_px,
+        None => {
+            let (em, px) = length(text);
+            em * em_px + px
+        }
+    }
 }
 
 /// Seconds from a CSS time ("0.166s", "750ms").

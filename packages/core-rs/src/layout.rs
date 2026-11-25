@@ -914,7 +914,7 @@ fn line_box(el: &HtmlElement, container_origin: (f32, f32)) -> Rect {
 }
 
 /// The box a theme draws behind `line`.
-fn line_box_style(line: &HtmlElement, em_px: f32) -> LineBox {
+fn line_box_style(line: &HtmlElement, em_px: f32, root_px: f32) -> LineBox {
     let style = dom::computed(line);
     let get = |name: &str| style.get_property_value(name).unwrap_or_default();
     let doc = dom::doc_of(line);
@@ -922,7 +922,7 @@ fn line_box_style(line: &HtmlElement, em_px: f32) -> LineBox {
     LineBox {
         fill: read_color(&doc, &get("--blyrics-line-bg-color")).unwrap_or_default(),
         border: read_color(&doc, &get("--blyrics-line-border-color")).unwrap_or_default(),
-        border_px: if width.trim().is_empty() { 1.0 } else { theme::length_px(&width, em_px).max(0.0) },
+        border_px: if width.trim().is_empty() { 1.0 } else { theme::length_px(&width, em_px, root_px).max(0.0) },
         radius: dom::px(&get("border-top-left-radius")),
     }
 }
@@ -961,7 +961,7 @@ fn measure_line(
         pill_color: [1.0, 1.0, 1.0, 0.145],
         font_px: line_style.font_px,
         static_em: line_style.font_px,
-        line_box: line_box_style(&dom_.element, line_style.font_px),
+        line_box: line_box_style(&dom_.element, line_style.font_px, root_px),
         hover_shadows: false,
         state_shadows: false,
     };

@@ -173,7 +173,9 @@ A few more properties stand in for rules that styled lines and words by state:
 
 The shadows, the box, the past opacity and the rest pose are read from each element, so selectors
 scope them as they do colours: `[data-layout="stage"] > .blyrics--line` gives only the stage view's
-lines a box, for instance. The browsing opacity and the distance lists are read from the container.
+lines a box, for instance. The box's corner is the line's `border-radius` as a length (a percentage
+or an elliptical corner reads as square), and a line with nothing to draw, such as an empty blank
+line, has no box. The browsing opacity and the distance lists are read from the container.
 Each shadow is drawn once with the line and cross-fades with its state, so a sung or hovered shadow
 eases in and out rather than moving from one offset to another.
 
