@@ -58,6 +58,10 @@ pub struct Placement {
     /// The line's `saturate()` and `brightness()`, 1 for none.
     pub saturate: f32,
     pub brightness: f32,
+    /// Whether a line at its rest scale is rounded to whole device pixels here. Scrolled lines are
+    /// not: the view keeps their rest positions on whole pixels and moves them from one to another,
+    /// so they never jump to the grid as a glide starts or ends.
+    pub snap: bool,
 }
 
 const DECORATION_EASE: Easing = Easing::Bezier(0.25, 1.0, 0.5, 1.0);
@@ -545,7 +549,7 @@ pub fn paint_line(
     let dpr = placement.dpr;
     // Lines at rest are drawn on whole device pixels, so their texels land one to one.
     let mut placement = placement;
-    if (scale - 1.0).abs() < 1e-4 {
+    if placement.snap && (scale - 1.0).abs() < 1e-4 {
         placement.x = (placement.x * dpr).round() / dpr;
         placement.y = (placement.y * dpr).round() / dpr;
     }
@@ -897,6 +901,7 @@ mod tests {
             hovered: 0.0,
             saturate,
             brightness,
+            snap: true,
         }
     }
 

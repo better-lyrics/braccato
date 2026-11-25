@@ -973,6 +973,13 @@ impl View {
         top
     }
 
+    /// Where the canvas's top is in the lyrics, for a scroll position: it sticks to the view's top,
+    /// within the lyrics.
+    fn canvas_top_at(&self, scroll_top: f32) -> f32 {
+        let content = self.measured.as_ref().map(|m| m.content_height).unwrap_or(0.0);
+        (scroll_top - self.host_top_in_scroll).clamp(0.0, (content - self.canvas_size.1).max(0.0))
+    }
+
     /// The scroller scrolled, or may have: the next `scroll_top` reads it.
     pub fn scroll_changed(&self) {
         self.scroll_cache.set(None);
@@ -1730,6 +1737,8 @@ impl View {
         }
         let synced = !song.no_lyrics && song.sync != SyncType::None;
         let first = fresh && synced;
+        // Whether autoscroll moved this frame, which has the glide's start to draw.
+        let mut committed = false;
         if (animating || first) && following && !self.stage && (self.started || self.autoscroll.force || first) {
             if let Some(measured) = &self.measured {
                 let offset = self.host_top_in_scroll;
@@ -1766,7 +1775,20 @@ impl View {
                     scroll_top,
                     jumped || first,
                 ) {
+                    // Written first, so the glide starts from where the scroll landed: the browser
+                    // rounds it, and may clamp it.
+                    self.write_scroll_top(plan.to);
+                    let landed = self.scroll_top();
+                    let plan = scroll::Plan { to: landed, ..plan };
+                    committed = true;
                     if !first && self.tick_options.smooth_scroll && self.theme.animate_scroll {
+                        let (before, after) = (self.canvas_top_at(scroll_top), self.canvas_top_at(landed));
+                        let dpr = self.dpr;
+                        let shifts: Vec<f32> = lines
+                            .iter()
+                            .map(|l| l.top - offset)
+                            .map(|top| scroll::pixel_shift(top - before, dpr) - scroll::pixel_shift(top - after, dpr))
+                            .collect();
                         let tops: Vec<(f32, f32)> = lines
                             .iter()
                             .map(|l| (l.top, l.height))
@@ -1778,6 +1800,7 @@ impl View {
                         scroll::start_glides(
                             &mut curves,
                             &tops,
+                            &shifts,
                             &plan,
                             scroll_top,
                             self.viewport.height,
@@ -1790,7 +1813,6 @@ impl View {
                             state.curves = line_curves;
                         }
                     }
-                    self.write_scroll_top(plan.to);
                 }
             }
         }
@@ -1834,15 +1856,7 @@ impl View {
         }
 
         // Draw.
-        let scroll_top = self.scroll_top();
-        let canvas_top = if self.stage {
-            0.0
-        } else {
-            (scroll_top - self.host_top_in_scroll).clamp(
-                0.0,
-                (self.measured.as_ref().map(|m| m.content_height).unwrap_or(0.0) - self.canvas_size.1).max(0.0),
-            )
-        };
+        let canvas_top = if self.stage { 0.0 } else { self.canvas_top_at(self.scroll_top()) };
         self.profile.lap(profile::Phase::Update);
         self.quads.clear();
         self.blur_jobs.clear();
@@ -1865,7 +1879,12 @@ impl View {
             let (y, mut opacity) = match self.stage_motion.get(index) {
                 Some(motion) if self.stage => (motion.y(now_ms), motion.opacity(now_ms)),
                 _ if self.stage => (0.0, 0.0),
-                _ => (layout.top + offset - canvas_top, 1.0),
+                _ => {
+                    // Its place at rest is on whole device pixels, and its glides start and end on
+                    // such places, so the line is never pulled to the grid while it moves.
+                    let rest = layout.top - canvas_top;
+                    (rest + scroll::pixel_shift(rest, self.dpr) + offset, 1.0)
+                }
             };
             let mut look = LineLook::PLAIN;
             if effects_on {
@@ -1928,7 +1947,9 @@ impl View {
                 }
                 continue;
             }
-            if state.texture.is_none() && (visible || (near && prefetched < PREFETCH_PER_FRAME)) {
+            // Not on the frame a scroll starts, which already has a glide to start smoothly.
+            let prefetch = near && !committed && prefetched < PREFETCH_PER_FRAME;
+            if state.texture.is_none() && (visible || prefetch) {
                 if !visible {
                     prefetched += 1;
                 }
@@ -1945,8 +1966,9 @@ impl View {
             if entry < 1.0 && (line.translation.is_some() || line.romanization.is_some() || line.rows.len() > 1) {
                 moving = true;
             }
+            let x = self.bleed_left + layout.left;
             let placement = Placement {
-                x: self.bleed_left + layout.left,
+                x: if self.stage { x } else { x + scroll::pixel_shift(x, self.dpr) },
                 y,
                 dpr: self.dpr,
                 opacity,
@@ -1957,6 +1979,7 @@ impl View {
                 hovered: hovered.clamp(0.0, 1.0),
                 saturate: look.saturate,
                 brightness: look.brightness,
+                snap: self.stage,
             };
             self.line_quads.clear();
             self.line_under.clear();
@@ -2050,6 +2073,7 @@ impl View {
                         hovered: 0.0,
                         saturate: 1.0,
                         brightness: 1.0,
+                        snap: false,
                     };
                     paint_static(&mut self.quads, credits, placement, self.theme.rest_scale);
                     texture.place(&mut self.quads[first..]);

@@ -41,6 +41,9 @@ const state = {
   play: params.has("play"),
   mode: params.get("mode") ?? "split",
   layout: params.get("layout") === "stage" ? "stage" : "scroll",
+  // Plays the song's lines this many times over, one copy after another: a song long enough that
+  // lines still come into reach while it plays (`pnpm bench` uses it). The audio plays only once.
+  repeat: Math.max(1, Number.parseInt(params.get("repeat") ?? "1", 10) || 1),
 };
 
 panes.dataset.mode = state.mode;
@@ -84,6 +87,20 @@ function mixedSong() {
     at += 3200;
   }
   return lyrics;
+}
+
+function repeated(score, times) {
+  const last = score.at(-1);
+  const span = last ? last.startTimeMs + last.durationMs : 0;
+  const shift = (parts, by) => parts?.map(part => ({ ...part, startTimeMs: part.startTimeMs + by }));
+  return Array.from({ length: times }, (_, copy) =>
+    score.map(line => ({
+      ...line,
+      startTimeMs: line.startTimeMs + copy * span,
+      parts: shift(line.parts, copy * span),
+      timedRomanization: shift(line.timedRomanization, copy * span),
+    }))
+  ).flat();
 }
 
 function shape(score, timing) {
@@ -165,7 +182,7 @@ function apply() {
   const song = mixed
     ? { ...SONGS[0], songwriters: ["Test Writer", "مؤلف الاختبار"] }
     : (SONGS.find(s => s.id === state.song) ?? SONGS[0]);
-  const lyrics = shape(mixed ? mixedSong() : buildScore(song.id).lyrics, state.timing);
+  const lyrics = shape(repeated(mixed ? mixedSong() : buildScore(song.id).lyrics, state.repeat), state.timing);
   const theme = THEMES.find(t => t.id === state.theme) ?? THEMES[0];
   for (const view of shownViews) {
     view.theme = theme.css;
@@ -184,6 +201,7 @@ function syncUrl() {
     theme: state.theme,
     mode: state.mode,
     layout: state.layout,
+    ...(state.repeat > 1 ? { repeat: String(state.repeat) } : {}),
   });
   history.replaceState(null, "", `?${next}`);
 }
