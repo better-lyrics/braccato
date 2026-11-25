@@ -59,6 +59,16 @@ pub fn computed_value(element: &Element, property: &str) -> String {
     computed(element).get_property_value(property).unwrap_or_default().trim().to_string()
 }
 
+/// The element's `scrollTop`, with its fraction. Chrome keeps scroll positions on whole device
+/// pixels, so at 1.25 a write of 101 reads back 100.8, which web-sys's whole-number getter would
+/// read as 100.
+pub fn scroll_top(element: &Element) -> f32 {
+    js_sys::Reflect::get(element, &JsValue::from_str("scrollTop"))
+        .ok()
+        .and_then(|value| value.as_f64())
+        .unwrap_or_else(|| element.scroll_top() as f64) as f32
+}
+
 /// How far the element's `transform` and `translate` move it down, in pixels. Only translations are
 /// read, which is what a page slides content in with.
 pub fn translated_y(element: &Element) -> f32 {
