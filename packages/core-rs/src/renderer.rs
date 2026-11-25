@@ -966,7 +966,7 @@ impl View {
             return top;
         }
         let top = match &self.scroller {
-            Some(el) => el.scroll_top() as f32,
+            Some(el) => dom::scroll_top(el),
             None => self.win.scroll_y().unwrap_or(0.0) as f32,
         };
         self.scroll_cache.set(Some(top));
@@ -1481,7 +1481,7 @@ impl View {
                 let rect = el.get_bounding_client_rect();
                 let left = rect.left() as f32 + el.client_left() as f32;
                 let top = rect.top() as f32 + el.client_top() as f32;
-                (el.client_height() as f32, top, left, left + el.client_width() as f32, el.scroll_top() as f32)
+                (el.client_height() as f32, top, left, left + el.client_width() as f32, dom::scroll_top(el))
             }
             None => {
                 let height = window.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0) as f32;
@@ -1576,7 +1576,7 @@ impl View {
         match &self.scroller {
             Some(el) => {
                 let rect = el.get_bounding_client_rect();
-                host - (rect.top() as f32 + el.client_top() as f32) + el.scroll_top() as f32
+                host - (rect.top() as f32 + el.client_top() as f32) + dom::scroll_top(el)
             }
             None => host + self.win.scroll_y().unwrap_or(0.0) as f32,
         }
