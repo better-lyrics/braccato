@@ -69,6 +69,10 @@ impl Quad {
     pub const COLOR: f32 = -2.0;
     /// Reads the blur atlas, in its own colours.
     pub const BLURRED: f32 = 3.0;
+    /// No texture: a rounded box filled with `unlit` and bordered inside its edge with `lit`. Its
+    /// `uv` runs over the box in device pixels, and `ramp` is its half width, half height, corner
+    /// radius and border width in those pixels.
+    pub const BOX: f32 = 0.0;
 }
 
 const FLOATS_PER_QUAD: usize = std::mem::size_of::<Quad>() / 4;
@@ -142,6 +146,9 @@ impl LineTexture {
         let (x, y) = (self.x as f32, self.y as f32);
         let layer = self.layer as f32;
         for q in quads {
+            if q.wave[2] == Quad::BOX {
+                continue;
+            }
             q.uv[0] += x;
             q.uv[2] += x;
             q.uv[1] += y;

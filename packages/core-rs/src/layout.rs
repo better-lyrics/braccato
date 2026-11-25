@@ -88,8 +88,58 @@ pub enum Ink {
         solid: bool,
     },
     /// The text-shadows of the runs, in their own colours, without the text: drawn under the text
-    /// slot that follows it, which has the same owner and rect.
-    Shadow(Vec<TextRun>, Rc<[TextShadow]>),
+    /// slot that follows it, which has the same owner and rect, in the line states it is set for.
+    Shadow(Vec<TextRun>, Rc<[TextShadow]>, ShadowStates),
+}
+
+/// The line states a shadow is drawn in, as bits: `REST` (neither sung nor hovered), `ACTIVE`
+/// (sung), `HOVER` (hovered) and `ACTIVE_HOVER` (both). A line between states, easing from one to
+/// another, draws each of its shadows at the share of the states it is set for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShadowStates(pub u8);
+
+impl ShadowStates {
+    pub const REST: u8 = 1;
+    pub const ACTIVE: u8 = 2;
+    pub const HOVER: u8 = 4;
+    pub const ACTIVE_HOVER: u8 = 8;
+    pub const ALL: ShadowStates = ShadowStates(15);
+
+    /// How much of the shadow shows, with the line `active` sung and `hovered` hovered, 0 to 1.
+    pub fn share(self, active: f32, hovered: f32) -> f32 {
+        let bit = |b: u8, w: f32| if self.0 & b != 0 { w } else { 0.0 };
+        bit(Self::REST, (1.0 - active) * (1.0 - hovered))
+            + bit(Self::ACTIVE, active * (1.0 - hovered))
+            + bit(Self::HOVER, (1.0 - active) * hovered)
+            + bit(Self::ACTIVE_HOVER, active * hovered)
+    }
+}
+
+/// An element's shadows by state: `rest` always, `active` while sung and `hover` while hovered when
+/// the theme sets them. Equal lists share one entry; empty ones are left out.
+pub fn shadow_states(
+    rest: Rc<[TextShadow]>,
+    active: Option<Rc<[TextShadow]>>,
+    hover: Option<Rc<[TextShadow]>>,
+) -> Vec<(Rc<[TextShadow]>, ShadowStates)> {
+    let active = active.unwrap_or_else(|| rest.clone());
+    let by_state = [
+        (ShadowStates::REST, &rest),
+        (ShadowStates::ACTIVE, &active),
+        (ShadowStates::HOVER, hover.as_ref().unwrap_or(&rest)),
+        (ShadowStates::ACTIVE_HOVER, hover.as_ref().unwrap_or(&active)),
+    ];
+    let mut out: Vec<(Rc<[TextShadow]>, ShadowStates)> = Vec::new();
+    for (bit, shadows) in by_state {
+        if shadows.is_empty() {
+            continue;
+        }
+        match out.iter_mut().find(|(seen, _)| seen == shadows) {
+            Some((_, states)) => states.0 |= bit,
+            None => out.push((shadows.clone(), ShadowStates(bit))),
+        }
+    }
+    out
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,6 +249,23 @@ pub struct LineLayout {
     pub font_px: f32,
     /// Font size of the line's decorations, which their entry slide is measured in.
     pub static_em: f32,
+    /// The box drawn behind the line.
+    pub line_box: LineBox,
+    /// Whether any of the line's text has a shadow of its own for when the line is hovered.
+    pub hover_shadows: bool,
+    /// Whether any of the line's shadows is drawn in some of its states only.
+    pub state_shadows: bool,
+}
+
+/// The box behind a line, over its whole border box: its fill (`--blyrics-line-bg-color`), a border
+/// inside its edge (`--blyrics-line-border-color` and `-width`) and its corner radius (the line's
+/// `border-radius`). Transparent when the theme sets none.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LineBox {
+    pub fill: Rgba,
+    pub border: Rgba,
+    pub border_px: f32,
+    pub radius: f32,
 }
 
 /// The clear space around a slot that is drawn blurred (a glow, the note's fill), in CSS pixels: the
@@ -510,7 +577,7 @@ struct Metrics {
     document: Document,
     context: CanvasRenderingContext2d,
     extents: HashMap<Rc<str>, (f32, f32)>,
-    colors: HashMap<String, Rgba>,
+    colors: HashMap<String, Option<Rgba>>,
     fonts: HashMap<String, Rc<str>>,
 }
 
@@ -635,23 +702,34 @@ fn baseline_for(rect: &Rect, ascent: f32, lines: &[(f32, f32, f32)]) -> f32 {
 /// Any CSS colour as straight sRGB. The browser parses it, whatever syntax it is in (`oklch()`,
 /// `color(display-p3 ...)`, `color-mix()`), by painting one pixel with it and reading it back.
 pub fn parse_color(doc: &Document, css: &str) -> Rgba {
+    read_color(doc, css).unwrap_or([0.0; 4])
+}
+
+/// `css` as a colour, `None` when it is not one (a typo, an empty value).
+pub fn read_color(doc: &Document, css: &str) -> Option<Rgba> {
     with_metrics(doc, |m| {
         if let Some(c) = m.colors.get(css) {
             return *c;
         }
         let ctx = &m.context;
-        ctx.clear_rect(0.0, 0.0, 1.0, 1.0);
-        ctx.set_fill_style_str("#0000");
-        ctx.set_fill_style_str(css);
-        ctx.fill_rect(0.0, 0.0, 1.0, 1.0);
-        let color = match ctx.get_image_data(0.0, 0.0, 1.0, 1.0) {
-            Ok(image) => {
-                let data = image.data();
-                let channel = |i: usize| data[i] as f32 / 255.0;
-                [channel(0), channel(1), channel(2), channel(3)]
+        // A value the canvas cannot read leaves the fill as it was, so two different fills before
+        // it tell a colour from nonsense.
+        let fill = |before: &str| {
+            ctx.clear_rect(0.0, 0.0, 1.0, 1.0);
+            ctx.set_fill_style_str(before);
+            ctx.set_fill_style_str(css);
+            ctx.fill_rect(0.0, 0.0, 1.0, 1.0);
+            match ctx.get_image_data(0.0, 0.0, 1.0, 1.0) {
+                Ok(image) => {
+                    let data = image.data();
+                    let channel = |i: usize| data[i] as f32 / 255.0;
+                    [channel(0), channel(1), channel(2), channel(3)]
+                }
+                Err(_) => [1.0, 1.0, 1.0, 1.0],
             }
-            Err(_) => [1.0, 1.0, 1.0, 1.0],
         };
+        let color = fill("#0000");
+        let color = (fill("#f00") == color).then_some(color);
         m.colors.insert(css.to_string(), color);
         color
     })
@@ -666,21 +744,30 @@ struct ElementStyle {
     active: Rgba,
     glow: Rgba,
     rtl: bool,
-    /// `--blyrics-text-shadow`, as written.
+    /// `--blyrics-text-shadow`, and the ones for the sung and hovered line, as written.
     text_shadow: String,
+    active_text_shadow: String,
+    hover_text_shadow: String,
     past_opacity: f32,
     rest: Motion,
 }
 
 impl ElementStyle {
-    fn shadows(&self, root_px: f32) -> Rc<[TextShadow]> {
-        if self.text_shadow.is_empty() || self.text_shadow == "none" {
-            return Rc::from([]);
-        }
+    /// The element's shadows, by the line states they are drawn in.
+    fn shadows(&self, root_px: f32) -> Vec<(Rc<[TextShadow]>, ShadowStates)> {
         // A shadow without a colour, or with `currentColor`, takes the text's own, as in CSS.
         let [r, g, b, a] = self.color;
         let current = format!("rgb({} {} {} / {a})", r * 255.0, g * 255.0, b * 255.0);
-        Rc::from(theme::parse_text_shadows(&self.text_shadow, self.font_px, root_px, &current))
+        let parse = |value: &str| -> Rc<[TextShadow]> {
+            Rc::from(theme::parse_text_shadows(value, self.font_px, root_px, &current))
+        };
+        let set = |value: &str| (!value.is_empty()).then(|| parse(value));
+        shadow_states(parse(&self.text_shadow), set(&self.active_text_shadow), set(&self.hover_text_shadow))
+    }
+
+    /// Whether the element has a shadow of its own for the hovered line.
+    fn hover_shadow(&self) -> bool {
+        !self.hover_text_shadow.is_empty()
     }
 }
 
@@ -702,6 +789,8 @@ fn element_style(el: &Element) -> ElementStyle {
         glow: parse_color(&doc, &get("caret-color")),
         rtl: get("direction") == "rtl",
         text_shadow: get("--blyrics-text-shadow").trim().to_string(),
+        active_text_shadow: get("--blyrics-active-text-shadow").trim().to_string(),
+        hover_text_shadow: get("--blyrics-line-hover-text-shadow").trim().to_string(),
         past_opacity: theme::fraction(&get("--blyrics-word-past-opacity")).unwrap_or(1.0),
         rest: Motion::parse(&get("--blyrics-word-rest-transform")),
         doc,
@@ -801,24 +890,41 @@ pub struct Measured {
     pub lines: Vec<LineLayout>,
     pub credits: Option<LineLayout>,
     pub content_height: f32,
+    /// Whether a line has a shadow for when it is hovered, which makes hover matter.
+    pub hover_shadows: bool,
 }
 
 pub fn measure(dom_: &LayoutDom, song: &Song, theme: &Theme, root_px: f32) -> Measured {
     let container_rect = dom_.container.get_bounding_client_rect();
     let container_origin = (container_rect.left() as f32, container_rect.top() as f32);
     let container_style = element_style(&dom_.container);
-    let lines = song
+    let lines: Vec<LineLayout> = song
         .lines
         .iter()
         .zip(&dom_.lines)
         .map(|(line, line_dom)| measure_line(line, line_dom, container_origin, &container_style, song, theme, root_px))
         .collect();
     let credits = dom_.credits.as_ref().map(|p| measure_credits(p, container_origin, root_px));
-    Measured { lines, credits, content_height: container_rect.height() as f32 }
+    let hover_shadows = lines.iter().any(|line: &LineLayout| line.hover_shadows);
+    Measured { lines, credits, content_height: container_rect.height() as f32, hover_shadows }
 }
 
 fn line_box(el: &HtmlElement, container_origin: (f32, f32)) -> Rect {
     Rect::relative(&el.get_bounding_client_rect(), container_origin)
+}
+
+/// The box a theme draws behind `line`.
+fn line_box_style(line: &HtmlElement, em_px: f32) -> LineBox {
+    let style = dom::computed(line);
+    let get = |name: &str| style.get_property_value(name).unwrap_or_default();
+    let doc = dom::doc_of(line);
+    let width = get("--blyrics-line-border-width");
+    LineBox {
+        fill: read_color(&doc, &get("--blyrics-line-bg-color")).unwrap_or_default(),
+        border: read_color(&doc, &get("--blyrics-line-border-color")).unwrap_or_default(),
+        border_px: if width.trim().is_empty() { 1.0 } else { theme::length_px(&width, em_px).max(0.0) },
+        radius: dom::px(&get("border-top-left-radius")),
+    }
 }
 
 fn measure_line(
@@ -855,6 +961,9 @@ fn measure_line(
         pill_color: [1.0, 1.0, 1.0, 0.145],
         font_px: line_style.font_px,
         static_em: line_style.font_px,
+        line_box: line_box_style(&dom_.element, line_style.font_px),
+        hover_shadows: false,
+        state_shadows: false,
     };
 
     if let Some(note) = &dom_.note {
@@ -934,7 +1043,8 @@ fn measure_line(
             rest: style.rest,
         });
         let shadows = style.shadows(root_px);
-        let shadow_reach = shadows.iter().map(TextShadow::reach).fold(0.0, f32::max);
+        let shadow_reach = reach(&shadows);
+        layout.hover_shadows |= style.hover_shadow();
 
         // The pieces of the word as drawn: its letters, or its text cut where it wraps or reorders.
         let pieces: Vec<(Rect, String, Option<u16>)> = if part.lettered && !letters.is_empty() {
@@ -1043,8 +1153,9 @@ fn measure_line(
                 .collect();
             let runs: Vec<TextRun> = row_pieces.iter().map(|(r, text, _)| run_for(r, text)).collect();
             let color = runs.iter().any(|run| text::has_color_glyphs(&run.text));
-            if !shadows.is_empty() {
-                layout.slots.push(shadow_slot(&runs, &shadows, Owner::Part(index), rect, overhang + shadow_reach));
+            for set in &shadows {
+                layout.state_shadows |= set.1 != ShadowStates::ALL;
+                layout.slots.push(shadow_slot(&runs, set, Owner::Part(index), rect, overhang + shadow_reach));
             }
             layout.slots.push(Slot {
                 ink: Ink::Text(runs),
@@ -1075,13 +1186,16 @@ fn measure_line(
         layout.scroll_height = layout.height.max(words_bottom + 2.0 * root_px);
     }
 
-    let pill_value = dom_.romanization.as_ref().map(|pill| dom::computed_value(pill, "--blyrics-romanized-bg-color"));
-    let solid = pill_value.as_ref().is_some_and(|value| !value.is_empty());
-    let pill_color = dom_.romanization.as_ref().zip(pill_value.as_ref()).map(|(pill, value)| {
-        parse_color(&dom::doc_of(pill), if value.is_empty() { "rgb(255 255 255 / 0.145)" } else { value })
+    // The theme's pill colour, filled solid, or the legacy translucent pill when it sets none.
+    let pill_color = dom_.romanization.as_ref().map(|pill| {
+        let doc = dom::doc_of(pill);
+        match read_color(&doc, &dom::computed_value(pill, "--blyrics-romanized-bg-color")) {
+            Some(color) => (color, true),
+            None => (parse_color(&doc, "rgb(255 255 255 / 0.145)"), false),
+        }
     });
     // A transparent pill (`--blyrics-romanized-bg-color: transparent`) is not drawn at all.
-    if let (Some(pill), Some(color)) = (&dom_.romanization, pill_color.filter(|color| color[3] > 0.0)) {
+    if let (Some(pill), Some((color, solid))) = (&dom_.romanization, pill_color.filter(|(color, _)| color[3] > 0.0)) {
         let rect = Rect::relative(&pill.get_bounding_client_rect(), origin);
         layout.pill_color = color;
         layout.slots.push(Slot {
@@ -1107,10 +1221,21 @@ fn measure_line(
     layout
 }
 
+/// How far past the text the furthest of these shadows reaches, CSS pixels.
+fn reach(shadows: &[(Rc<[TextShadow]>, ShadowStates)]) -> f32 {
+    shadows.iter().flat_map(|(set, _)| set.iter()).map(TextShadow::reach).fold(0.0, f32::max)
+}
+
 /// The slot `Ink::Shadow` draws into: the text's rect, with room for the shadows to spread.
-fn shadow_slot(runs: &[TextRun], shadows: &Rc<[TextShadow]>, owner: Owner, rect: Rect, margin: f32) -> Slot {
+fn shadow_slot(
+    runs: &[TextRun],
+    (shadows, states): &(Rc<[TextShadow]>, ShadowStates),
+    owner: Owner,
+    rect: Rect,
+    margin: f32,
+) -> Slot {
     Slot {
-        ink: Ink::Shadow(runs.to_vec(), shadows.clone()),
+        ink: Ink::Shadow(runs.to_vec(), shadows.clone(), *states),
         owner,
         rect,
         margin,
@@ -1125,8 +1250,9 @@ fn shadow_slot(runs: &[TextRun], shadows: &Rc<[TextShadow]>, owner: Owner, rect:
 fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32), owner: Owner, root_px: f32) {
     let style = element_style(el);
     // The credits are drawn flat (`paint_static`), without shadows.
-    let shadows = if owner == Owner::Credits { Rc::from([]) } else { style.shadows(root_px) };
-    let shadow_reach = shadows.iter().map(TextShadow::reach).fold(0.0, f32::max);
+    let shadows = if owner == Owner::Credits { Vec::new() } else { style.shadows(root_px) };
+    let shadow_reach = reach(&shadows);
+    layout.hover_shadows |= owner != Owner::Credits && style.hover_shadow();
     layout.static_color = style.color;
     layout.static_em = style.font_px;
     let base_ascent = ascent(&style.doc, &style.font);
@@ -1147,8 +1273,9 @@ fn push_static_text(layout: &mut LineLayout, el: &HtmlElement, origin: (f32, f32
         };
         let glyph_rect = rect.expand(overhang * 0.5, overhang);
         let color = text::has_color_glyphs(&run.text);
-        if !shadows.is_empty() {
-            layout.slots.push(shadow_slot(std::slice::from_ref(&run), &shadows, owner, rect, overhang + shadow_reach));
+        for set in &shadows {
+            layout.state_shadows |= set.1 != ShadowStates::ALL;
+            layout.slots.push(shadow_slot(std::slice::from_ref(&run), set, owner, rect, overhang + shadow_reach));
         }
         layout.slots.push(Slot {
             ink: Ink::Text(vec![run]),
@@ -1183,9 +1310,38 @@ fn measure_credits(p: &HtmlElement, container_origin: (f32, f32), root_px: f32) 
         pill_color: [0.0; 4],
         font_px: style.font_px,
         static_em: style.font_px,
+        line_box: LineBox::default(),
+        hover_shadows: false,
+        state_shadows: false,
     };
     if let Some(text) = p.first_element_child() {
         push_static_text(&mut layout, text.unchecked_ref(), origin, Owner::Credits, root_px);
     }
     layout
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shadow(blur: f32) -> Rc<[TextShadow]> {
+        Rc::from([TextShadow { color: "black".into(), x: 0.0, y: 0.0, blur }])
+    }
+
+    #[test]
+    fn shadows_are_kept_once_per_look_and_shared_out_by_state() {
+        // Nothing set for the sung or hovered line: one shadow, drawn in every state.
+        assert_eq!(shadow_states(shadow(2.0), None, None), vec![(shadow(2.0), ShadowStates::ALL)]);
+        // A sung-line shadow, and none at rest: hovering keeps each state's own.
+        let states = shadow_states(Rc::from([]), Some(shadow(4.0)), None);
+        assert_eq!(states, vec![(shadow(4.0), ShadowStates(ShadowStates::ACTIVE | ShadowStates::ACTIVE_HOVER))]);
+        // A hover shadow wins over the sung one, which is drawn only while not hovered.
+        let states = shadow_states(shadow(2.0), Some(shadow(4.0)), Some(shadow(8.0)));
+        assert_eq!(states.len(), 3);
+        let share = |i: usize, active: f32, hovered: f32| states[i].1.share(active, hovered);
+        assert_eq!((share(0, 0.0, 0.0), share(1, 0.0, 0.0), share(2, 0.0, 0.0)), (1.0, 0.0, 0.0));
+        assert_eq!((share(0, 1.0, 1.0), share(1, 1.0, 1.0), share(2, 1.0, 1.0)), (0.0, 0.0, 1.0));
+        // Halfway into being sung, the two cross-fade.
+        assert_eq!((share(0, 0.5, 0.0), share(1, 0.5, 0.0)), (0.5, 0.5));
+    }
 }

@@ -8,7 +8,7 @@
 
 use crate::dom;
 use crate::easing::Easing;
-use crate::layout::{parse_color, Rgba};
+use crate::layout::{read_color, Rgba};
 use web_sys::Element;
 
 /// A 2D transform made of translations and scales only, which is all the word and letter keyframes
@@ -119,6 +119,12 @@ fn length(text: &str) -> (f32, f32) {
         return (0.0, value.parse().unwrap_or(0.0));
     }
     (0.0, text.parse().unwrap_or(0.0))
+}
+
+/// A length in px, em lengths resolved against `em_px`.
+pub fn length_px(text: &str, em_px: f32) -> f32 {
+    let (em, px) = length(text);
+    em * em_px + px
 }
 
 /// Seconds from a CSS time ("0.166s", "750ms").
@@ -453,13 +459,22 @@ pub struct LineHover {
     pub scale: Option<f32>,
     /// The inactive colour the line's words ease to (`--blyrics-line-hover-color`).
     pub color: Option<Rgba>,
+    /// The fill and border colours the line's box eases to (`--blyrics-line-hover-bg-color`,
+    /// `--blyrics-line-hover-border-color`).
+    pub bg: Option<Rgba>,
+    pub border: Option<Rgba>,
     pub duration_s: f32,
     pub easing: Easing,
 }
 
 impl LineHover {
     pub fn is_set(&self) -> bool {
-        self.opacity.is_some() || self.blur_px.is_some() || self.scale.is_some() || self.color.is_some()
+        self.opacity.is_some()
+            || self.blur_px.is_some()
+            || self.scale.is_some()
+            || self.color.is_some()
+            || self.bg.is_some()
+            || self.border.is_some()
     }
 
     /// Reads the hover variables from their raw values. A blur may be written as `blur(4px)`.
@@ -480,6 +495,8 @@ impl LineHover {
             blur_px: blur_px.map(|v| v.max(0.0)),
             scale: number(scale).filter(|v| *v > 0.0),
             color: None,
+            bg: None,
+            border: None,
             duration_s,
             easing,
         }
@@ -833,9 +850,9 @@ impl Theme {
                 }
             },
             line_hover: LineHover {
-                color: Some(raw("--blyrics-line-hover-color"))
-                    .filter(|value| !value.is_empty())
-                    .map(|value| parse_color(&dom::doc_of(container), &value)),
+                color: read_color(&dom::doc_of(container), &raw("--blyrics-line-hover-color")),
+                bg: read_color(&dom::doc_of(container), &raw("--blyrics-line-hover-bg-color")),
+                border: read_color(&dom::doc_of(container), &raw("--blyrics-line-hover-border-color")),
                 ..LineHover::parse(
                     &raw("--blyrics-line-hover-opacity"),
                     &raw("--blyrics-line-hover-blur"),

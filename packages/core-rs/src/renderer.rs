@@ -1024,9 +1024,15 @@ impl View {
             || self.pointed_line(song, self.now.ms()) != self.lines.iter().position(|state| state.hover.to == 1.0)
     }
 
+    /// Whether the line under the pointer matters: the theme has a hover look (a shadow of the
+    /// hovered line's among them), or the browsing opacity leaves that line alone.
+    fn tracks_hover(&self) -> bool {
+        self.theme.tracks_hover() || self.measured.as_ref().is_some_and(|m| m.hover_shadows)
+    }
+
     /// The line drawn under the pointer, if the theme has a hover look.
     fn pointed_line(&self, song: &Song, now_ms: f64) -> Option<usize> {
-        if self.stage || song.no_lyrics || !self.theme.tracks_hover() {
+        if self.stage || song.no_lyrics || !self.tracks_hover() {
             return None;
         }
         self.line_at(self.pointer?, now_ms)
@@ -1839,6 +1845,7 @@ impl View {
         let mut prefetched = 0;
         let mut last_line_offset = 0.0;
         let pointed = self.pointed_line(song, now_ms);
+        let tracks_hover = self.tracks_hover();
         let Some(measured) = self.measured.as_mut() else { return false };
         for (index, line) in song.lines.iter().enumerate() {
             let layout = &mut measured.lines[index];
@@ -1874,7 +1881,7 @@ impl View {
             let hover = self.theme.line_hover;
             let target = if pointed == Some(index) { 1.0 } else { 0.0 };
             state.hover.aim(target, now_ms, hover.duration_s, hover.easing);
-            let hovered = if self.stage || song.no_lyrics || !self.theme.tracks_hover() {
+            let hovered = if self.stage || song.no_lyrics || !tracks_hover {
                 0.0
             } else {
                 if state.hover.moving(now_ms, hover.duration_s) {
@@ -1941,6 +1948,7 @@ impl View {
                 entry,
                 hover_scale,
                 hover_color: hover.color.map(|color| (color, hovered)),
+                hovered,
                 saturate: look.saturate,
                 brightness: look.brightness,
             };
@@ -2033,6 +2041,7 @@ impl View {
                         entry: 1.0,
                         hover_scale: (1.0, 0.0),
                         hover_color: None,
+                        hovered: 0.0,
                         saturate: 1.0,
                         brightness: 1.0,
                     };

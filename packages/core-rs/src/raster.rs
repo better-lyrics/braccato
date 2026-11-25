@@ -90,7 +90,7 @@ impl Rasterizer {
                     ctx.set_global_composite_operation("lighter").ok();
                 }
                 Ink::Pill { radius, solid } => self.pill(slot.rect, *radius, *solid),
-                Ink::Shadow(runs, shadows) => {
+                Ink::Shadow(runs, shadows, _) => {
                     ctx.set_global_composite_operation("source-over").ok();
                     self.shadows(runs, shadows, dpr);
                     ctx.set_global_composite_operation("lighter").ok();
