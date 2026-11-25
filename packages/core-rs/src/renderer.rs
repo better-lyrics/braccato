@@ -107,6 +107,10 @@ impl Tween {
             return self.to;
         }
         let t = ((now_ms - self.since_ms) / (duration_s.max(0.001) as f64 * 1000.0)).clamp(0.0, 1.0) as f32;
+        // Settled once done, as a finished CSS transition is, whatever the curve's last value.
+        if t >= 1.0 {
+            return self.to;
+        }
         self.from + (self.to - self.from) * easing.at(t)
     }
 

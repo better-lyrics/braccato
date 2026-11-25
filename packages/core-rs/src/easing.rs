@@ -63,14 +63,12 @@ impl Easing {
                 let s = solve_bezier_x(t, x1, x2);
                 bezier(s, y1, y2)
             }
-            // Settled at the ends, as a finished transition is; between them a curve's end segments
-            // carry on past its first and last stops.
-            Easing::Stops(_) if t == 0.0 || t == 1.0 => t,
             Easing::Stops(index) => STOPS.with(|all| {
                 let all = all.borrow();
                 let Some(stops) = all.get(index as usize) else { return t };
-                // As CSS does: the segment from the last stop at or before `t`, and a jump's later
-                // value at a repeated input.
+                // As CSS does: the segment from the last stop at or before `t`, the first or last
+                // segment carried on outside the stops (at 0 and 1 too, as an animation that fills
+                // forwards holds it), and a jump's later value at a repeated input.
                 let a = stops.partition_point(|&(x, _)| x <= t).saturating_sub(1).min(stops.len() - 2);
                 let ((x0, y0), (x1, y1)) = (stops[a], stops[a + 1]);
                 if x1 == x0 {
@@ -226,8 +224,8 @@ mod tests {
         // Outside its first and last stops, the curve carries on along its end segments.
         let inset = Easing::parse("linear(0 20%, 1 80%)");
         assert!(close(inset.at(0.1), -1.0 / 6.0) && close(inset.at(0.9), 7.0 / 6.0) && close(inset.at(0.5), 0.5));
-        // ...and settles at the ends.
-        assert!(close(inset.at(0.0), 0.0) && close(inset.at(1.0), 1.0));
+        // ...as Chrome gives it at the ends too.
+        assert!(close(inset.at(0.0), -1.0 / 3.0) && close(inset.at(1.0), 4.0 / 3.0));
         // Rereading a curve finds the same one; nonsense is ease.
         assert_eq!(Easing::parse("linear(0, 1.2, 1)"), spring);
         assert_eq!(Easing::parse("linear(1)"), Easing::EASE);
