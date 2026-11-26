@@ -17,7 +17,10 @@
 			"types": "./js/renderer.d.ts",
 			"import": "./js/renderer.js"
 		},
-		"./element": "./js/element.js",
+		"./element": {
+			"types": "./js/element.d.ts",
+			"import": "./js/element.js"
+		},
 		"./wasm": "./pkg/braccato_core_rs_bg.wasm",
 		"./constants": {
 			"types": "./dist/constants.d.ts",

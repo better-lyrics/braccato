@@ -155,6 +155,30 @@ window.elementAt = async seconds => {
   await new Promise(done => setTimeout(done, 1500));
   return scroller.scrollTop;
 };
+// \`<braccato-lyrics>\` that is its own scroller, as 1.x's element could be, paused at a time. With
+// early, its properties are written before the element is defined, as a page that imports it lazily
+// does. Answers where it scrolled to and where line \`line\`'s box is on the screen.
+window.selfScrolling = async ({ seconds, line, early = false }) => {
+  clearInterval(ticker);
+  view?.destroy();
+  view = null;
+  document.getElementById("scroller").outerHTML = '<div id="scroller"></div>';
+  scroller = document.getElementById("scroller");
+  const { defineLyricsElement } = await import("/js/element.js");
+  const tag = early ? "braccato-lyrics-late" : "braccato-lyrics";
+  if (!early) defineLyricsElement(tag);
+  const element = document.createElement(tag);
+  element.style.cssText = "display:block;overflow-y:auto;height:700px";
+  element.lyrics = Array.from({ length: 40 }, (_, i) => ({ startTimeMs: i * ${STEP_S * 1000}, durationMs: ${STEP_S * 1000},
+    words: "line number " + i + " of the song" }));
+  element.currentTime = seconds;
+  element.playing = false;
+  scroller.append(element);
+  if (early) defineLyricsElement(tag);
+  await new Promise(done => setTimeout(done, 1500));
+  const box = element.querySelector('.blyrics--line[data-line-number="' + line + '"]')?.getBoundingClientRect();
+  return { scrolled: element.scrollTop, top: box?.top ?? null, bottom: box?.bottom ?? null };
+};
 window.scrollByReader = px => { scroller.scrollTop += px };
 window.hideButton = () => { button = false };
 window.relayout = () => view.relayout();

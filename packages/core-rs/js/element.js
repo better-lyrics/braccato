@@ -8,6 +8,19 @@ import { load } from "./renderer.js";
 export { load };
 
 const OBSERVED = ["source", "theme", "current-time", "playing", "layout"];
+/** What a page can write before the element is defined, in the order they are applied again. */
+const UPGRADED = [
+	"lyricsOptions",
+	"lyrics",
+	"tickOptions",
+	"currentTime",
+	"playing",
+	"theme",
+	"host",
+	"layout",
+	"decorations",
+	"source",
+];
 
 export class BraccatoLyricsElement extends HTMLElement {
 	static observedAttributes = OBSERVED;
@@ -27,6 +40,14 @@ export class BraccatoLyricsElement extends HTMLElement {
 	#connecting = null;
 
 	connectedCallback() {
+		// A page that writes these before `customElements.define` (a lazily imported element) leaves
+		// own properties that hide the accessors: they are handed to the accessors instead.
+		for (const name of UPGRADED) {
+			if (!Object.hasOwn(this, name)) continue;
+			const value = this[name];
+			delete this[name];
+			this[name] = value;
+		}
 		// A disconnect, or a later connect, while the wasm loads makes this connect stale.
 		const generation = Symbol();
 		this.#connecting = generation;
@@ -127,7 +148,7 @@ export class BraccatoLyricsElement extends HTMLElement {
 		this.#applyLyrics();
 	}
 
-	/** `{ noLyrics?, language?, songwriters? }`, read by the next `lyrics` write. */
+	/** `{ noLyrics?, language?, songwriters?, songKey? }`, read by the next `lyrics` write. */
 	get lyricsOptions() {
 		return this.#lyricsOptions;
 	}
@@ -165,7 +186,10 @@ export class BraccatoLyricsElement extends HTMLElement {
 		this.#renderer?.setTime(this.#currentTime, this.#playing);
 	}
 
-	/** `{ lyricOffset?, globalLyricOffset?, playbackRate?, smoothScroll? }`. */
+	/**
+	 * `{ lyricOffset?, globalLyricOffset?, richsyncOffsetTrim?, lineOffsetTrim?, playbackRate?,
+	 * smoothScroll?, passiveScrollEnabled? }`.
+	 */
 	get tickOptions() {
 		return this.#tickOptions;
 	}

@@ -592,9 +592,25 @@ impl Renderer {
         self.shared.request_frame();
     }
 
-    /// `[start, duration]` in seconds of line `index`, or with `part` one of its parts.
-    pub fn timing(&self, index: usize, part: Option<usize>) -> Option<Vec<f32>> {
-        self.shared.view.borrow().timing(index, part).map(|(start, duration)| vec![start, duration])
+    /// `[start, duration]` in seconds of line `index`, or with `part` one of its parts, to the
+    /// microsecond.
+    pub fn timing(&self, index: usize, part: Option<usize>) -> Option<Vec<f64>> {
+        let micro = |s: f32| (s as f64 * 1e6).round() / 1e6;
+        self.shared.view.borrow().timing(index, part).map(|(start, duration)| vec![micro(start), micro(duration)])
+    }
+
+    /// `{ richsync, line }`: how far ahead of the player word-synced and line-synced lines light, in
+    /// seconds. They are the theme's `--blyrics-richsync-timing-offset` and `--blyrics-timing-offset`
+    /// as the lines resolve them, or the defaults (0.15 and 0.115) where it sets none, before the
+    /// tick options' trims. Read once the lyrics are built.
+    #[wasm_bindgen(js_name = timingOffsets, unchecked_return_type = "{ richsync: number; line: number }")]
+    pub fn timing_offsets(&self) -> JsValue {
+        let (richsync, line) = self.shared.view.borrow().timing_offsets();
+        let micro = |s: f32| JsValue::from((s as f64 * 1e6).round() / 1e6);
+        let out = js_sys::Object::new();
+        dom::set(&out, "richsync", &micro(richsync));
+        dom::set(&out, "line", &micro(line));
+        out.into()
     }
 
     /// `[{ element, parts: HTMLElement[] }]`, one per line, in order.
