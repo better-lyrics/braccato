@@ -688,6 +688,13 @@ impl View {
         self.time_overrides.push(TimeOverride { line: index, part, start_s });
     }
 
+    /// How far ahead of the player word-synced and line-synced lines light, in seconds: the theme's
+    /// `--blyrics-richsync-timing-offset` and `--blyrics-timing-offset`, or their defaults, before
+    /// any trim.
+    pub fn timing_offsets(&self) -> (f32, f32) {
+        (self.theme.richsync_offset_s, self.theme.line_offset_s)
+    }
+
     /// Line `index`'s start and duration, or with `part` one of its parts', in seconds.
     pub fn timing(&self, index: usize, part: Option<usize>) -> Option<(f32, f32)> {
         let line = self.song.as_ref()?.lines.get(index)?;
@@ -1112,7 +1119,7 @@ impl View {
                 time = line.parts[part].start_s as f64;
             }
         }
-        let player_time = (time - self.lyric_shift(song.sync)).max(0.0);
+        let player_time = seek_time(time as f32, self.lyric_shift(song.sync));
         if let Some(media) = &self.media {
             media.set_current_time(player_time);
         } else {
@@ -1490,7 +1497,9 @@ impl View {
                 (height, 0.0, left, right, window.scroll_y().unwrap_or(0.0) as f32)
             }
         };
-        self.host_top_in_scroll = host_rect.top() as f32 - self.host_translation() - view_top + scroll_top;
+        // An element that is its own scroller does not move with its scroll position.
+        let moves = if self.scrolls_itself() { 0.0 } else { scroll_top };
+        self.host_top_in_scroll = host_rect.top() as f32 - self.host_translation() - view_top + moves;
         let (inset_top, inset_bottom) = self.scroll_insets(view_height);
         let content = self.container.get_bounding_client_rect().height() as f32;
         self.viewport = Viewport {
@@ -1570,13 +1579,19 @@ impl View {
         shift
     }
 
+    /// Whether the element is the scroll element itself, as `overflow-y: auto` on it makes it.
+    fn scrolls_itself(&self) -> bool {
+        self.scroller.as_ref().is_some_and(|s| s.is_same_node(Some(&self.host)))
+    }
+
     /// Where the element's top is in the scroll element's content.
     fn host_top_now(&self) -> f32 {
         let host = self.host.get_bounding_client_rect().top() as f32 - self.host_translation();
         match &self.scroller {
             Some(el) => {
                 let rect = el.get_bounding_client_rect();
-                host - (rect.top() as f32 + el.client_top() as f32) + dom::scroll_top(el)
+                let moves = if self.scrolls_itself() { 0.0 } else { dom::scroll_top(el) };
+                host - (rect.top() as f32 + el.client_top() as f32) + moves
             }
             None => host + self.win.scroll_y().unwrap_or(0.0) as f32,
         }
@@ -2408,6 +2423,16 @@ impl Drop for View {
     }
 }
 
+/// The player time that lights what starts at `start`, the lyrics lit `shift` seconds ahead of the
+/// player: to the microsecond, off the f32 times underneath, and never so early that the player
+/// reaches it a few nanoseconds before `start`.
+fn seek_time(start: f32, shift: f64) -> f64 {
+    let exact = start as f64 - shift;
+    let nearest = (exact * 1e6).round() / 1e6;
+    let time = if (nearest + shift) as f32 >= start { nearest } else { (exact * 1e6).ceil() / 1e6 };
+    time.max(0.0)
+}
+
 pub fn event_detail(event: &Event) -> (&'static str, JsValue) {
     let detail = js_sys::Object::new();
     let name = match event {
@@ -2444,7 +2469,7 @@ pub fn event_detail(event: &Event) -> (&'static str, JsValue) {
 
 #[cfg(test)]
 mod tests {
-    use super::Tween;
+    use super::{seek_time, Tween};
     use crate::easing::Easing;
 
     #[test]
@@ -2458,5 +2483,20 @@ mod tests {
         assert!((hover.at(200.0, 0.2, Easing::Linear) - 0.25).abs() < 1e-6);
         assert_eq!(hover.at(400.0, 0.2, Easing::Linear), 0.0);
         assert!(!hover.moving(400.0, 0.2));
+    }
+
+    #[test]
+    fn a_seek_time_is_the_round_time_that_lights_the_line() {
+        let lead = 0.15_f32 as f64;
+        // The lead trimmed off, as a host that shows the playhead as it is does, and left on.
+        for (start, shift, expected) in [(2.0, lead - 0.15, 2.0), (1.85, lead - 0.15, 1.85), (2.0, lead, 1.85)] {
+            let time = seek_time(start, shift);
+            assert_eq!(time, expected);
+            assert!((time + shift) as f32 >= start);
+        }
+        // Where the nearest microsecond is early, the next one.
+        let (start, shift) = (312.47_f32, 0.115_f32 as f64 - 0.0287);
+        let time = seek_time(start, shift);
+        assert!((time + shift) as f32 >= start && time - (start as f64 - shift) < 1e-6);
     }
 }

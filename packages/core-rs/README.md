@@ -69,18 +69,34 @@ The element takes the same `Lyric[]` as `@braccato/core` and keeps most of its s
 | Property        | Notes |
 | --------------- | ----- |
 | `lyrics`        | `Lyric[]`. Writing it builds the view. |
-| `lyricsOptions` | `{ noLyrics?, language?, songwriters? }`, read by the next `lyrics` write. |
+| `lyricsOptions` | `{ noLyrics?, language?, songwriters?, songKey? }`, read by the next `lyrics` write. |
 | `source`        | A media element or a selector for one. It drives the clock. |
 | `currentTime`, `playing` | Drive the clock by hand when there is no `source`. |
-| `tickOptions`   | `{ lyricOffset?, globalLyricOffset?, playbackRate?, smoothScroll?, passiveScrollEnabled? }` |
+| `tickOptions`   | `{ lyricOffset?, globalLyricOffset?, richsyncOffsetTrim?, lineOffsetTrim?, playbackRate?, smoothScroll?, passiveScrollEnabled? }`. The trims, in seconds, come off the theme's lead (below). |
 | `theme`         | A stylesheet: `--blyrics-*` custom properties, and `/* blyrics-key = value; */` settings in comments. |
-| `host`          | `{ getScrollElement? }`, the element autoscroll moves. |
+| `host`          | `{ getScrollElement? }`, the element autoscroll moves. Without it, the nearest scrollable element, which can be the element itself (`overflow-y: auto` and a height on it). |
 | `layout`        | `"scroll"` or `"stage"`. Also an attribute. |
 | `decorations`   | `{ translations, romanizations }`: whether to show the lyrics' own `translations` and `romanization` / `timedRomanization`. Both on by default. |
-| `renderer`      | The Rust `Renderer`, which has `resumeAutoscroll()`, `relayout()`, `setProfiling(on)`, `stats()` and `takeProfile()`. |
+| `renderer`      | The Rust `Renderer`, which has `resumeAutoscroll()`, `relayout()`, `timingOffsets()`, `setProfiling(on)`, `stats()` and `takeProfile()`. |
+
+Properties written before the element is defined, as a page that imports it lazily may write them,
+are applied once it connects. `@braccato/core/element` has types, which name each event's `detail`.
 
 It dispatches the same events: `braccato:lyrics-loaded`, `braccato:line-click`,
-`braccato:scroll-state`, `braccato:stage-layout` and `braccato:error`.
+`braccato:scroll-state`, `braccato:stage-layout` and `braccato:error`. A line click's `timeS` is the
+player time to seek to, to the microsecond.
+
+Lines light ahead of the player by the theme's `--blyrics-richsync-timing-offset` (word-synced,
+0.15s by default) and `--blyrics-timing-offset` (line-synced, 0.115s), less the trims in
+`tickOptions`. `renderer.timingOffsets()` answers `{ richsync, line }`, the leads as the lines resolve
+them before the trims, so a host that wants none while paused can trim them all off without reading
+the theme's CSS.
+
+A scroll of the scroll element that autoscroll did not cause pauses autoscroll, as a reader's
+does, with a `braccato:scroll-state` event and `blyrics-user-scrolling` on the container. Scrolls
+in the 600 ms and two frames after the lines are built or measured again are taken for the page
+settling (a position clamped to new content) and ignored, so a test that scrolls as a reader waits
+that long first.
 
 Anything the host puts in the container stays ordinary, visible DOM (a footer, buttons), and so does
 anything it puts in the credits (a source card), which moves with the credits on the stage. The
