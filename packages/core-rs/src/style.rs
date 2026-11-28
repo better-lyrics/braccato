@@ -227,7 +227,9 @@ pub const CSS: &str = r#"
   white-space: normal;
 }
 
+/* Spaces as written: romanizations put two between the words of a line, one between syllables. */
 .brs-layout .blyrics--romanized {
+  white-space: pre-wrap;
   border: 1px solid transparent;
   box-sizing: border-box;
   font-size: calc(var(--blyrics-translated-font-size, 2rem) / 1.25);
