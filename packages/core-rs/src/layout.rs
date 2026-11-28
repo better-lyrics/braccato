@@ -822,8 +822,13 @@ fn content_rect(node: &Node, origin: (f32, f32)) -> Rect {
 /// the text sits in one box; otherwise grapheme by grapheme, regrouped by where they landed.
 fn text_pieces(el: &Element, origin: (f32, f32)) -> Vec<(Rect, String)> {
     let rects = content_rects(el, origin);
-    let full = el.text_content().unwrap_or_default();
     if rects.len() <= 1 {
+        let mut full = el.text_content().unwrap_or_default();
+        // The page draws a run of spaces as one, and none at either end of the box. Drawn as they
+        // are, a romanization written with two spaces between words overran its pill.
+        if matches!(dom::computed_value(el, "white-space-collapse").as_str(), "" | "collapse" | "preserve-breaks") {
+            full = collapse_spaces(&full);
+        }
         return rects.into_iter().map(|rect| (rect, full.clone())).collect();
     }
     let mut graphemes: Vec<(Rect, String)> = Vec::new();
@@ -855,6 +860,12 @@ fn text_pieces(el: &Element, origin: (f32, f32)) -> Vec<(Rect, String)> {
     }
     pieces.retain(|(rect, text)| rect.w > 0.01 && !text.trim().is_empty());
     pieces
+}
+
+/// `text` with each run of collapsible white space (spaces, tabs, line breaks) made one space, and
+/// none at either end, as `white-space: normal` lays it out on one row.
+fn collapse_spaces(text: &str) -> String {
+    text.split([' ', '\t', '\n', '\r', '\x0c']).filter(|word| !word.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 impl Slot {
@@ -1323,6 +1334,13 @@ fn measure_credits(p: &HtmlElement, container_origin: (f32, f32), root_px: f32) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spaces_collapse_as_the_page_lays_them_out() {
+        assert_eq!(collapse_spaces(" keo jin  sim jang\t\nso ril "), "keo jin sim jang so ril");
+        // A no-break space is not collapsible.
+        assert_eq!(collapse_spaces("a\u{a0}\u{a0}b"), "a\u{a0}\u{a0}b");
+    }
 
     fn shadow(blur: f32) -> Rc<[TextShadow]> {
         Rc::from([TextShadow { color: "black".into(), x: 0.0, y: 0.0, blur }])
