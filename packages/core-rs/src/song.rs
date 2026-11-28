@@ -127,7 +127,9 @@ pub struct Decorations {
 
 /// Decorations a host hung on one line after the lyrics were given (`injectTranslation`,
 /// `injectRomanization`). They are shown whatever `Decorations` says, take the place of the line's
-/// own, and belong to the line: a swap that keeps the line, or rebuilds it in place, keeps them.
+/// own, and belong to the line's lyric: a swap keeps them on a line that is the same lyric, even one
+/// rebuilt for its timing, and drops them from a line whose words or own decorations changed
+/// (`carry_hung`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hung {
     /// Text and language.
@@ -278,6 +280,29 @@ pub fn match_lines<T: PartialEq>(old: &[T], new: &[T]) -> Vec<Option<usize>> {
     new_run.extend(j..m);
     pair(&mut old_run, &mut new_run, &mut origins);
     origins
+}
+
+/// What the host hung on each line of a swap, given where each line came from (`match_lines`). A
+/// line keeps what was hung on the one it came from only when it is the same lyric, its words and its
+/// own decorations, as the DOM renderer does: one rebuilt for its timing keeps them, while an edited
+/// line, or another lyric paired into its place, would show decorations made for other text.
+pub fn carry_hung(old: &[Lyric], hung: &[Hung], new: &[Lyric], origins: &[Option<usize>]) -> Vec<Hung> {
+    let same_lyric = |a: &Lyric, b: &Lyric| {
+        a.words == b.words
+            && a.translation == b.translation
+            && a.translations == b.translations
+            && a.romanization == b.romanization
+            && a.timed_romanization == b.timed_romanization
+    };
+    new.iter()
+        .zip(origins)
+        .map(|(lyric, origin)| {
+            origin
+                .filter(|&o| old.get(o).is_some_and(|before| same_lyric(before, lyric)))
+                .and_then(|o| hung.get(o).cloned())
+                .unwrap_or_default()
+        })
+        .collect()
 }
 
 /// Decorations equal to the lyric (ignoring case, punctuation and edges) are not shown.
@@ -745,6 +770,21 @@ mod tests {
         let new: [&str; 0] = [];
         assert!(match_lines(&old, &new).is_empty());
         assert_eq!(match_lines(&[] as &[&str], &["a"]), vec![None]);
+    }
+
+    #[test]
+    fn a_swap_carries_hung_decorations_only_onto_the_same_lyric() {
+        let at = |start: f64, words: &str| Lyric { start_time_ms: start, words: words.into(), ..Default::default() };
+        let hung = vec![Hung {
+            translation: Some(("It's because the moon rises quickly".into(), "en".into())),
+            romanization: Some(("dal-i ppalli tteoseo geulae".into(), None)),
+        }];
+        let old = [at(1000.0, "달이 빨리 떠서 그래")];
+        // Retimed, the line is the same lyric and keeps what was hung on it.
+        assert_eq!(carry_hung(&old, &hung, &[at(1200.0, "달이 빨리 떠서 그래")], &[Some(0)]), hung);
+        // Another lyric paired into its place in the swap takes none of it.
+        let new = [at(900.0, "Lately, I've been thinking a lot that"), at(1200.0, "달이 빨리 떠서 그래")];
+        assert_eq!(carry_hung(&old, &hung, &new, &[Some(0), None]), vec![Hung::default(); 2]);
     }
 
     #[test]

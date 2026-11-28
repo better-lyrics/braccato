@@ -497,8 +497,7 @@ impl View {
             song::build_song(lyrics, &[], options, &self.settings, self.decorations).lines
         };
         let origins = song::match_lines(&bare(&self.lyrics, &self.options), &bare(&lyrics, &options));
-        // What was hung on a line goes with it.
-        self.hung = origins.iter().map(|o| o.and_then(|o| self.hung.get(o).cloned()).unwrap_or_default()).collect();
+        self.hung = song::carry_hung(&self.lyrics, &self.hung, &lyrics, &origins);
         self.time_overrides.clear();
         self.lyrics = lyrics;
         self.options = options;
