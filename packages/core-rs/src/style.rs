@@ -49,6 +49,10 @@ pub const CSS: &str = r#"
   line-height: var(--blyrics-line-height, 1.333);
   position: relative !important;
   isolation: isolate;
+  /* Under the canvas, whatever the page's stylesheet says (the DOM renderer's lyrics.css gives the
+     container z-index 1): the container stacks what it holds, so a backdrop a page draws in its
+     ::before or ::after at z-index -1 would otherwise cover the lines. */
+  z-index: 0 !important;
   color: var(--blyrics-lyric-inactive-color, rgb(255 255 255 / 0.3));
   text-decoration-color: var(--blyrics-lyric-active-color, rgb(255 255 255));
   caret-color: var(--blyrics-glow-color, var(--blyrics-highlight-color, rgb(255 255 255 / 0.5)));
