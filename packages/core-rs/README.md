@@ -45,7 +45,8 @@ under `@braccato/core/styles/` are 1.x's own. What is different underneath:
 - `setTheme` always returns false: the renderer keeps the lyrics and rebuilds them itself.
 - Lyrics given with the `songKey` of the song on screen are swapped in: lines the two share keep their
   elements, state and decorations, a changed line is rebuilt in its old element, the line in view
-  holds still and the others slide.
+  holds still and the others slide. A line keeps what was hung on it only while it is the same lyric:
+  one retimed keeps it, one whose words or own decorations changed starts bare.
 - A view can live in another window (Document Picture-in-Picture): it draws on that window's frames
   and resolves fonts against its document.
 
